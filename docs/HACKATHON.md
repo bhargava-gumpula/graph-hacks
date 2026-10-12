@@ -45,3 +45,9 @@ No rubric has been published. Inferred from the brief: the graph does real work,
 
 ## FalkorDB quick facts (from the event pages)
 Open source, Cypher, fast traversals, many isolated graphs in one instance (one per user, agent or tenant). Built-in algorithms: shortest path, PageRank, centrality, connected components, community detection. Integrations: GraphRAG-SDK, QueryWeaver (text-to-SQL), MCP, Graphiti, Cognee, LangChain, LlamaIndex. Clients: Python, Node, Java, Rust, Go, PHP, C#. FalkorDB Browser for exploring. `docker pull falkordb/falkordb:latest` · Cloud: https://app.falkordb.cloud · Docs: https://docs.falkordb.com
+
+## Our infrastructure decisions (2026-10-11)
+- FalkorDB: free, open source, runs locally in Docker (OrbStack on the dev Mac).
+- Live demo host: the owner's **other Mac** (always on) running FalkorDB + the app, exposed with a **Cloudflare Tunnel** on the owner's free .xyz domain (to be confirmed). It must stay up until judging ends (a few weeks after Oct 18).
+- Host Mac setup: never sleep, auto-restart after a power failure, containers restart on boot, auto-updates off until judging ends.
+- Protect the $100 API credits: per-visitor rate limit, a hard daily spending cap, and a static fallback (pre-saved example answers and graph views) shown when the cap is hit or the host is down.

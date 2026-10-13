@@ -37,3 +37,14 @@ Shared findings: in both, only the multi-hop parts truly need the graph, so make
 B competitors: Befall, Junto, agent-locks, CoordMCP, Claude Code agent teams (native claims and task list), Graphiti MCP on FalkorDB. B's best form: Claude Code only; symbol-level import graph; PreToolUse hook *denies* conflicting edits and shows the dependency path; claims with a time limit; SessionStart hook auto-briefing (kill and resume); "why" path; graph canvas as the hero; WCC for "safe to run in parallel"; built with itself.
 A competitors: FalkorDB's own Code-Graph (code structure, not people), Unblocked, Dosu, GitHub native duplicate detection, checkowners. A's best form: the triage path issue → component → past fix → expert; labelPropagation on co-change to derive components; PageRank on co-review for experts; bus factor; ownership drift; corrections as bi-temporal facts (the live correction loop); 3 typed MCP tools; decision extraction only on the triage path; hand-verified answers; maybe a livelier repo than FalkorDB's (its ownership may be the same two people everywhere).
 Practical (either idea): install Docker/OrbStack + cloudflared on the demo Mac tonight; Claude Code agents must run on the subscription, not the $100 API key; Anthropic has no embeddings (use local).
+
+# Council 4, 2026-10-13: blind Fable finalists
+Ten Fable advisors, five per idea, each seeing only its own brief (brief-standards.md, brief-npm.md).
+| Average | Standards Brain | npm blast radius |
+|---|---|---|
+| Graph / Demo / Feasibility / Originality / Usefulness | 6.2 / 6.8 / 6.6 / 6.0 / 6.0 | 7.2 / 6.8 / 6.0 / 5.2 / 5.6 |
+| Win % per advisor | 6, 10, 10, 12, 12–18 | 5–8, 6–8, 8, 12, 12–15 |
+| Average win % | **~10.6%** (the best so far) | ~9.4% |
+npm problems: a live "Blast Radius" web app already exists; the 2025 replay can't be reproduced from today's maintainer lists (7 of the 18 packages); in-graph reach undercounts by 10×; the seed list is led by devDependencies.
+Standards Brain problems: the mail archive is bot-blocked (use Datatracker ballots); the headline lookup risks looking like a dict (lead with fan-out, citation blast radius, PageRank, ballots); a strawman RAG baseline; the section mapping is unknowable.
+→ Revised into docs/brief-standards-v2.md for a round 2.

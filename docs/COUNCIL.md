@@ -19,3 +19,21 @@ Ten Opus advisors. Five saw only brief-1 (Switchboard) and five saw only brief-2
 All 10 verdicts: "build it with changes". Both are crowded and over-scoped.
 B narrowed: a claim with a multi-hop blast-radius warning, kill-and-resume briefing, a "why" trace; Claude Code only; seeded deterministic demo; claim time limit; built with itself.
 A narrowed: one triage story on FalkorDB's repo (stale or declared owner → real expert + past fix, each cited); bus-factor via PageRank/centrality; an MCP server; a "graph off" comparison; extraction only for releases and RFCs.
+
+# Council 3, 2026-10-13: deep, blind evaluations (Fable 5.1), which supersedes Council 2
+Same setup as Council 2 (each advisor saw one idea only), plus a required process (advisor-process.md): 6+ cited searches, a simulation of the build, demo and judge questions, steelman before attack. 13–23 research steps each.
+
+| Average (1–10) | Switchboard (B) | Maintainer Brain (A) |
+|---|---|---|
+| Graph essential | 6.4 | 6.2 |
+| Demo memorability | 6.0 | 6.2 |
+| 4-day feasibility | 5.4 | 5.0 |
+| Originality | 5.0 | 4.2 |
+| Real-world usefulness | 5.6 | 6.4 |
+| Win chance, main track | ~8% (6–10) | ~9% (6–11) |
+All 10 verdicts: "build it with changes". It's a statistical tie.
+
+Shared findings: in both, only the multi-hop parts truly need the graph, so make FalkorDB's graph algorithms the hero (no SQL equivalent); show the Cypher on screen; script or seed the demo; draw only the reasoning subgraph. FalkorDB's past winner (Atrium, Memory Meets Motion) won because the graph *was* the model.
+B competitors: Befall, Junto, agent-locks, CoordMCP, Claude Code agent teams (native claims and task list), Graphiti MCP on FalkorDB. B's best form: Claude Code only; symbol-level import graph; PreToolUse hook *denies* conflicting edits and shows the dependency path; claims with a time limit; SessionStart hook auto-briefing (kill and resume); "why" path; graph canvas as the hero; WCC for "safe to run in parallel"; built with itself.
+A competitors: FalkorDB's own Code-Graph (code structure, not people), Unblocked, Dosu, GitHub native duplicate detection, checkowners. A's best form: the triage path issue → component → past fix → expert; labelPropagation on co-change to derive components; PageRank on co-review for experts; bus factor; ownership drift; corrections as bi-temporal facts (the live correction loop); 3 typed MCP tools; decision extraction only on the triage path; hand-verified answers; maybe a livelier repo than FalkorDB's (its ownership may be the same two people everywhere).
+Practical (either idea): install Docker/OrbStack + cloudflared on the demo Mac tonight; Claude Code agents must run on the subscription, not the $100 API key; Anthropic has no embeddings (use local).

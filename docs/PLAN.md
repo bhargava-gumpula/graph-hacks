@@ -1,10 +1,117 @@
 # Switchboard: build plan (Graph Hacks, Oct 14–18 2026)
 
-Written 2026-10-13 (planning only; no product code before Tue 11:31 AM PT). Sources for every tooling claim are in §13. Labels: **VERIFIED** (read in official docs or local output today), **UNVERIFIED** (forum, inference, or not testable before the start). Anything UNVERIFIED that the plan depends on has a Day-0 test in §5 P0.
+Written 2026-10-13 (planning only; no product code before Tue 11:31 AM PT). Sources for every tooling claim are in §16. Labels: **VERIFIED** (read in official docs or local output today), **UNVERIFIED** (forum, inference, or not testable before the start). Anything UNVERIFIED that the plan depends on has a Day-0 test in §5 P0.
 
 Inputs: HACKATHON.md, COUNCIL.md (Council 3 "best version"), research/SWITCHBOARD-COMPETITORS.md, PASEO.md + research/PASEO-DEEP.md, research/IDEA-RESEARCH.md §1.
 
 > **Rules check (2026-10-13 evening, site + WeMakeDevs Discord):** the deadline is confirmed as Sat Oct 18, 11:29 AM PDT. Judged projects get a **public score and written feedback**, and the judges will be listed on the site. No rubric yet. The submission form opens at the start, so its fields and any video length limit are unknown: have Aside check it at 11:31 AM Tue. Details are in HACKATHON.md.
+
+---
+
+## 0. Start here: everything a newcomer needs to know
+
+Read this section first. After it you should know as much as the owner and the orchestrator do. Everything else in this file is the detailed plan.
+
+### 0.1 The hackathon in 60 seconds
+- **Graph Hacks: Context for AI Agents**, run by **WeMakeDevs** (Kunal Kushwaha's developer community) and sponsored by **FalkorDB** (an open-source, in-memory graph database queried with Cypher). Online, free, about 3,000 registrants. The owner is registered.
+- **When:** starts **Tue Oct 14, 11:31 AM PT**; submissions close **Sat Oct 18, 11:29 AM PT** (11:59 PM IST, which is the official time). Luma's times are wrong; ignore them.
+- **Prizes:** one per track:
+  - Agents That Act on Connected Data: iPhone 18 Pro
+  - **Agent Memory and Coordination: PS5 + GTA VI (our main track)**
+  - Company Brain: M6 Mac Mini
+
+  Plus AirPods 5 for the best blog post, and t-shirts for the top 50. One project can enter several tracks.
+- **Judging:** no rubric has been published. Every judged project gets a **public score and written feedback**, and the judges will be listed on the site.
+- **The rules that shape everything** (full text in HACKATHON.md):
+  1. **FalkorDB must be central:** "if the product still works once FalkorDB is taken out, the graph is decoration."
+  2. **No main coding before the start.** Before it, only notes, sketches and diagrams are allowed.
+  3. **AI coding tools are allowed but must be disclosed.** The owner must be able to explain the graph model, the queries, the architecture and the decisions. "Entirely AI-generated" projects may be rejected.
+  4. **Data must be public, synthetic or our own.**
+  5. **Submission needs:**
+     - a public repo
+     - a README with setup + graph model
+     - the Cypher queries
+     - a demo video
+     - a live deployment (preferred) or local setup
+     - the tracks named
+
+### 0.2 Who is building, and with what
+- **One builder (the owner)**, directing AI agents. Roles:
+  - **Orchestrator:** a Claude chat that plans, writes task briefs, reviews and merges. It doesn't write product code.
+  - **Workers:** **Cursor agents** (two Cursor accounts) launched through **Paseo**, a desktop app and CLI that runs coding agents in separate git worktrees.
+  - **Aside:** browser tasks such as dashboards, Discord and forms.
+  - **Composio CLI:** app integrations (installed; GitHub, Gmail, Notion, Discord and others connected).
+- **Budget:** $100 of Claude API credits, for the product's runtime only. The coding agents run on the Cursor subscriptions.
+- **Machines:**
+  - **Dev Mac:** OrbStack/Docker, FalkorDB image, cloudflared installed and smoke-tested.
+  - **Spare Mac:** the demo host, exposed through a Cloudflare Tunnel on the owner's **.xyz** subdomain. Buy it Thursday evening.
+- **Repo:** `~/Projects/graph-hacks` → github.com/bhargava-gumpula/graph-hacks. Private now; make it public at submission.
+
+### 0.3 How we chose Switchboard (so nobody re-litigates it)
+- **We tested ideas with "councils":** 5 independent AI advisors per idea (Contrarian, First Principles, Expansionist, Outsider, Executor), each seeing only one idea, doing real web research and estimating the chance of winning. That was about 7 councils and roughly 150 advisor runs in total (COUNCIL.md has every result).
+- **Ideas tested** (average win estimate):
+  - Maintainer Brain (~9%)
+  - npm blast radius (~9%)
+  - rfc-brain / Standards Brain (~10–11%; dropped because the owner disliked it)
+  - Tool Atlas (~8%; MCP tools mostly don't declare output types, so its planner would run on made-up data)
+  - **Switchboard (~8%, the owner's choice).**
+- **Calibrated advisors never rated any single entry above about 10–11%** among 100–300 real submissions. Treat about 10% as a good outcome, not a failure.
+- **Why Switchboard won the tie:**
+  - its dependency data is real (parsed from code)
+  - the owner lives this problem daily (running many agents)
+  - it can coordinate its own build (dogfooding)
+  - it fits the PS5 track
+  - the owner can explain every design choice
+
+### 0.4 The problem, in plain English
+When several AI coding agents work on one codebase, they (a) forget everything when a session ends, (b) step on each other: one changes a function another agent's code depends on, and nothing warns them, and (c) can't explain *why* code looks the way it does. Today people work around this with separate git worktrees, notes files and a human relaying messages. Switchboard is the shared brain that fixes all three, with the code's real dependency graph at its centre.
+
+### 0.5 Competitors and our edge (details: research/SWITCHBOARD-COMPETITORS.md)
+- **Every piece exists somewhere; the combination doesn't.** No tool checks agents' claims against a parsed code dependency graph *and* keeps decisions, lessons and agent history in the same graph database.
+- **Closest threats:**
+  - **Nerveplane:** parallel batches plus a decision log, but with hand-declared scopes and SQLite.
+  - **wit:** warns about callers of a locked symbol, but advisory only, no memory, SQLite.
+  - **The bundle "Claude Code agent teams + Foremerge + a lock MCP":** the hardest judge question.
+  - **`graphmem`:** another Graph Hacks entrant doing FalkorDB shared memory for coding agents. We beat it on dependency-aware conflicts and scheduling.
+- **Others:** MCP Agent Mail, Befall, Junto, CoordMCP, Beads, claude-flow and Graphiti MCP are memory or locks without a dependency graph.
+- **Positioning line:** *Switchboard is the only tool that checks agents' edit claims against a parsed code dependency graph and keeps decisions, lessons and agent history in the same FalkorDB graph. It warns before a collision, computes which tasks can safely run together, and briefs a replacement agent on what happened and why.*
+
+### 0.6 Decisions already made (owner, Oct 13–14)
+| Topic | Decision |
+|---|---|
+| Idea | Switchboard |
+| Main track | Agent Memory and Coordination; second entry: Agents That Act on Connected Data |
+| Name | Switchboard |
+| Coding | Cursor agents via Paseo; Claude orchestrator plans, reviews, merges |
+| Video | Owner's voice |
+| Blog | Any public platform (dev.to or Hashnode proposed) |
+| Domain | Owner buys the .xyz subdomain Thursday evening |
+| AI inside the product | Decide Thursday; leaning towards a plain-English summary of the briefing (F20) |
+| Benchmark (with/without Switchboard) | Pending owner decision (§12 item 9) |
+
+### 0.7 Where everything lives
+| File | What |
+|---|---|
+| `docs/PLAN.md` | This plan |
+| `docs/HACKATHON.md` | Rules, dates, submission checklist, rules check, installs |
+| `docs/COUNCIL.md` | Every council and its scores, and why each idea lost |
+| `docs/research/SWITCHBOARD-COMPETITORS.md` | Competitor matrix |
+| `docs/research/IDEA-RESEARCH.md` | Past FalkorDB winners and what judges rewarded |
+| `docs/PASEO.md`, `docs/research/PASEO-DEEP.md` | How to run Cursor workers in Paseo, including the worker template and merge gate |
+| `docs/tasks/` | One brief per Cursor task (written by the orchestrator) |
+| `docs/DEVLOG.md` | Created in P0: every step, decision, failure and fix |
+
+### 0.8 Glossary
+- **Claim:** an agent declares "I'm about to edit X". Switchboard checks it against the graph.
+- **Dependency path:** the chain of imports or calls linking two files, e.g. `LoginForm.tsx → useAuth.ts → session.ts`.
+- **Blast radius:** everything that depends on a file, hop by hop.
+- **WCC (weakly connected components):** a graph algorithm that splits tasks into groups that don't touch each other. Each group can run in parallel safely.
+- **PageRank hubs:** heavily imported files (like `utils.ts`), excluded from multi-hop warnings so they don't trigger alarms everywhere.
+- **Briefing:** what a fresh agent receives when it starts or replaces a killed agent: relevant claims, decisions, lessons and recent edits, ranked by graph distance.
+- **Why-trace:** the path File → Edit Event → Task → Decision → Agent that explains a change.
+- **MCP:** Model Context Protocol, the standard way AI agents call external tools. **Hooks:** scripts the editor runs before or after an agent's edit (Claude Code `PreToolUse`, Cursor `afterFileEdit`).
+- **Worktree:** a separate checkout of the repo on its own branch, so parallel agents don't overwrite each other.
+- **Tag:** a named git snapshot at the end of each phase. Each one is submittable and is the rollback point.
 
 ---
 
@@ -517,7 +624,104 @@ Deterministic: `scripts/scenario.ts` replays beats 1–4 through the real MCP/co
 
 ---
 
-## 13. Sources
+---
+
+## 14. Workflows, step by step
+
+### 14.1 The build loop (repeat for every task)
+1. **Orchestrator picks the next tasks** from §6: the earliest phase first, only tasks whose dependencies are merged, and at most 3–4 at once, each touching different files.
+2. **It writes the brief** to `docs/tasks/<id>.md` from `docs/tasks/_template.md`:
+   - Goal (one sentence)
+   - Context: links to PLAN sections and files to read
+   - Files you may touch (and must not touch)
+   - Steps
+   - Acceptance criteria (runnable checks)
+   - Constraints: under 10 minutes, no new dependencies without saying so, never edit outside your paths
+   - Reply format: summary + `git diff --stat` + test output
+
+   It commits the brief to `main`.
+3. **Owner (or orchestrator) launches the worker:**
+   ```
+   paseo run -d --provider cursor/<model> --title <id> --new-workspace worktree --worktree-mode branch-off --new-branch hack/<id> --base origin/main "Execute docs/tasks/<id>.md exactly. Commit on your branch. Reply with summary, diff stat and test output."
+   ```
+   Use the second account with `--provider cursor-b/<model>` to spread load.
+4. **Watch:** `paseo ls`, `paseo logs <id> --tail 50`; approve prompts with `paseo permit allow <id>` (also possible from the phone).
+5. **Review/merge gate** (orchestrator):
+   1. Read the diff.
+   2. Check it touched only the allowed files.
+   3. Check out the branch and run `npm test` + `npm run typecheck` yourself; don't trust the worker's word.
+   4. Merge into `main` one branch at a time.
+   5. Rebase the others.
+   6. Re-run the tests on `main`.
+   7. Log the result in DEVLOG.
+6. **Stuck worker** (no progress for more than 10 minutes, or a turn dropped): `paseo send <id> "continue from where you stopped; summarise state first"`. If still stuck after 15 minutes: commit what exists, archive the workspace, and relaunch with a brief that includes "what was tried". For hard bugs, use `/paseo-committee`.
+7. **End of phase:** run the exit-criteria demo, then `git tag vX.Y-name`, push the tag, and hold the owner checkpoint (§10).
+
+### 14.2 Daily rhythm (Pacific time)
+| Time | What |
+|---|---|
+| Start of day | Orchestrator reads DEVLOG + `git log`, re-plans the day against §5, writes the first 3–4 briefs |
+| Every ~30–45 min | Merge finished workers, launch the next ones; keep 2–4 running |
+| Lunch / dinner | A checkpoint: is the phase on time? If not, apply the next cut line (§7) |
+| Before sleep | Everything merged or parked on a branch; `main` green; DEVLOG updated; tomorrow's first briefs written |
+
+### 14.3 Rules that keep it simple
+- **One source of truth:** `main` plus `docs/`. No work lives only in a chat.
+- **Small and file-disjoint:** two parallel tasks never touch the same file. Shared files (`index.ts` exports, package.json) are edited only by the orchestrator or one dedicated task.
+- **Tests first for queries:** every Cypher query has a test against a real FalkorDB with the planted demo repo (§4, testing layers in §12 item 9).
+- **Never in too deep:** if a feature isn't working within its time box, stop, cut or simplify it (§7), and go back to the last tag.
+- **The owner learns as it goes:** at every checkpoint the owner reads the five main queries in plain English and can explain them (rule 12).
+
+### 14.4 Testing that it works (for us and for the judges)
+1. **Query tests** against planted traps in the demo repo: a known 3-hop conflict, an unrelated file showing "no path", a hub file causing no false alarm, the expected WCC batches.
+2. **Scripted replay:** a deterministic scenario drives the real tools. It is used for the video and as the live site's fallback.
+3. **Real-agent run:** 2–3 real agents with overlapping tasks, plus dogfooding on our own build from Wednesday.
+4. **(If approved) the with/without benchmark:** the same task 10× without and 10× with Switchboard, counting broken builds, test failures and overwritten work.
+5. **`/judge` page:** three buttons (conflict, safe-parallel, why) that show the Cypher and the result.
+
+### 14.5 Deploy and submit (Fri–Sat)
+1. **Thursday evening:** the owner buys the .xyz subdomain and adds it to Cloudflare.
+2. **Friday 12–3 PM:** on the spare Mac, install OrbStack + cloudflared, `docker compose up -d` (FalkorDB with `restart: unless-stopped`), the server under `launchd`, then `cloudflared tunnel create switchboard` → route `switchboard.<domain>`. Add the static replay fallback.
+3. **Friday afternoon:** README (setup, graph model diagram, every query, algorithms, AI disclosure, "what the human did", competitors table).
+4. **Friday evening:** record the video (the owner's voice, the §8 script, the best of 3 takes) and draft the blog.
+5. **Saturday by 10:30 AM PT:**
+   1. Make the repo public.
+   2. Check every link from a phone on cellular.
+   3. Fill in the form (Aside can read the form fields at the start).
+   4. Name both tracks and submit.
+   5. Then publish the blog.
+
+---
+
+## 15. UI playbook: how SolveLab got its look, and how we repeat it
+
+SolveLab (the owner's other project) looks good because of a deliberate process, not a single skill. From `~/Projects/solvelab/docs/DESIGN.md`:
+- **A reference look first:** the owner pointed at sites they loved (TAGDA Timer, csTimer), and the UI was rebuilt towards that "immersive, not neutral" feel.
+- **Drafts and critique:** several full UI drafts in a separate folder (`~/Projects/solvelab-ui-drafts`, v6 "Studio", then v7 refined through council rounds) before touching the real app.
+- **Components from 21st.dev, sourced from their authors' open registries:**
+  - Aceternity **Glowing Effect** (glowing card borders)
+  - Magic UI **Border Beam**, **Magic Card**, **Confetti**
+  - **Tubelight Navbar** (sliding nav indicator, rebuilt with `motion`)
+  - **NumberFlow** (rolling numbers)
+  - **@paper-design/shaders** (animated WebGL swirl background)
+  - **shadcn/ui** as the base, **Lucide** icons
+- **A real design system:**
+  - theme tokens only (no hard-coded colours)
+  - a display serif for titles + a clean grotesk for UI + a tabular figures face
+  - outline "tiles" over an animated background, glass only for floating chrome
+  - motion that responds to input
+  - accessibility (focus rings, reduced motion)
+- **Skills and tools available here** for the same result: `design-taste-frontend` (anti-template design direction), `frontend` (UI implementation), `web-design-guidelines` (UI review against guidelines), `frontend-design` (used for the Glance UI), the **shadcn** and **magicui** MCP servers (component registries), and `dataviz` (for any charts).
+
+**For Switchboard (phase P3):**
+1. The owner picks a direction from 3 one-screen mockups (dark, graph-first, one accent colour is the default proposal).
+2. Build the canvas with Sigma.js plus our own theme tokens.
+3. Use Magic UI / Aceternity accents sparingly: border beam on a live conflict, glowing edges on the active path.
+4. NumberFlow for live counters.
+5. Run `web-design-guidelines` as a review pass before freeze.
+
+
+## 16. Sources
 
 - Cursor hooks reference (events, matchers `Shell|Read|Write`, `permission` allow/deny, `failClosed`, exit 2): https://cursor.com/docs/agent/hooks and https://cursor.com/docs/hooks
 - Cursor CLI hook gaps (staff replies Jan–Jun 2026): https://forum.cursor.com/t/cursor-cli-doesnt-send-all-events-defined-in-hooks/148316 ; https://forum.cursor.com/t/cursor-cli-omits-beforesubmitprompt-afteragentresponse-and-stop-hooks-loses-token-usage-and-emits-inconsistent-generation-id-values/169059

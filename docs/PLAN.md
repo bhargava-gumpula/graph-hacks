@@ -1,0 +1,535 @@
+# Switchboard: build plan (Graph Hacks, Oct 14–18 2026)
+
+Written 2026-10-13 (planning only; no product code before Tue 11:31 AM PT). Sources for every tooling claim are in §13. Labels: **VERIFIED** (read in official docs or local output today), **UNVERIFIED** (forum, inference, or not testable before the start). Anything UNVERIFIED that the plan depends on has a Day-0 test in §5 P0.
+
+Inputs: HACKATHON.md, COUNCIL.md (Council 3 "best version"), research/SWITCHBOARD-COMPETITORS.md, PASEO.md + research/PASEO-DEEP.md, research/IDEA-RESEARCH.md §1.
+
+> **Rules check (2026-10-13 evening, site + WeMakeDevs Discord):** the deadline is confirmed as Sat Oct 18, 11:29 AM PDT. Judged projects get a **public score and written feedback**, and the judges will be listed on the site. No rubric yet. The submission form opens at the start, so its fields and any video length limit are unknown: have Aside check it at 11:31 AM Tue. Details are in HACKATHON.md.
+
+---
+
+## 1. The product
+
+**One paragraph.** Switchboard is a shared brain for a team of AI coding agents working on one repository. It parses the code into a dependency graph in FalkorDB (files, symbols, imports, calls), and every agent, whether Cursor or Claude Code, checks in through MCP and editor hooks: it claims what it is about to edit, records decisions and lessons, and logs what it changed. Because claims live in the same graph as the code's dependencies, Switchboard warns an agent *before* it edits a file that another agent's in-flight change depends on (or that depends on another agent's change), and shows the exact dependency path. The same graph tells an orchestrator which tasks are safe to run in parallel (connected components over the interference graph), briefs a fresh agent that replaces a killed one, and answers "why does this code look like this?" with the path from the file back through the edit, the task, the decision and the agent that made it.
+
+**Tracks:** main = Agent Memory and Coordination (PS5). Second = Agents That Act on Connected Data (graph queries and algorithms are the agent's tools; the graph decides).
+
+**The one graph-native move (what the judges' recap writers look for):** a *claim* is checked by a path query against a *parsed* dependency graph, and "no path" is the proof that two agents cannot collide. A flat lock table cannot express that; Nerveplane hand-declares scopes; wit checks one hop.
+
+### Features
+
+| # | Feature | Tier | Notes |
+|---|---|---|---|
+| F1 | Parse a TS/JS repo into File nodes + IMPORTS edges (ts-morph) | **MVP** | Idempotent `UNWIND … MERGE` loader; re-parse on demand |
+| F2 | `claim(paths, task)` MCP tool: OK, or CONFLICT with the dependency path and the other agent | **MVP** | File-level claims, TTL, same-file + up to 3 import hops, both directions |
+| F3 | `release`, `register_agent`, `heartbeat` | **MVP** | Agent id defaults to the git branch of the cwd |
+| F4 | Live graph canvas: files, imports, agents, claims; conflict path lit in red | **MVP** | Sigma.js + graphology, SSE fed by polling Event.seq |
+| F5 | Event log (episodic memory): every tool call and edit is an Event node | **MVP** | Append-only, `seq` counter |
+| F6 | Demo repo: a small synthetic TS app (~35 files) with a planted 3-hop conflict | **MVP** | Public, our own data (rule: public/synthetic) |
+| F7 | `record_decision(text, why, affects)` + `SUPERSEDES` (semantic memory) | **Core** | |
+| F8 | `record_lesson(text, about)` (procedural memory) | **Core** | "run codegen before tsc" style |
+| F9 | `brief_me(area)` ranked by graph distance: claims, decisions, lessons, recent edits, open tasks, last handoff note | **Core** | The kill-and-resume moment |
+| F10 | `why(path)` trace: File → Event → Task → Decision → Agent, path returned and drawn | **Core** | |
+| F11 | Claude Code hooks: PreToolUse deny on conflicting Edit/Write (hard block), PostToolUse logs edits, SessionStart injects the briefing | **Core** | VERIFIED capability |
+| F12 | Cursor hooks: `afterFileEdit` logs edits (+ late-collision flag), `sessionStart` injects briefing; `preToolUse(Write)` deny if it works over ACP | **Core** (deny part: Stretch) | CLI/ACP support UNVERIFIED; Day-0 test |
+| F13 | Blast radius: dependents of a file by hop, "no dependents = provably safe" | **Core** | Hero of the Connected Data entry |
+| F14 | Parallel-safe scheduling: `INTERFERES` edges between tasks, then `algo.WCC` → batches | **Core** | Graph algorithm on screen |
+| F15 | Hub files via `algo.pageRank` on IMPORTS; hubs don't trigger multi-hop warnings | **Core** | Answers "every file imports utils" |
+| F16 | Symbol-level graph: Symbol nodes, DEFINES, CALLS (ts-morph references) and symbol claims | **Polish** | Cut first if parsing is flaky |
+| F17 | Cypher-on-screen panel: each warning shows the query that produced it | **Polish** | Rule 12 and judge trust |
+| F18 | Replay mode: a seeded scenario script drives the MCP tools; the UI animates it | **Polish** | Also the static fallback for the live site |
+| F19 | `handoff(task, note)` and `next_task()` for the orchestrator | **Polish** | |
+| F20 | Optional Claude Haiku prose summary of a briefing (the only LLM in the product; capped) | **Stretch** | $100 credits; off by default |
+| F21 | Multi-project tenancy: one FalkorDB graph per project (`sb_<slug>`), project switcher in UI | **Core** (model) / Polish (UI) | Multi-graph is native |
+| F22 | Second language (Python via tree-sitter) | **Stretch** | Not for this week |
+
+---
+
+## 2. Architecture
+
+```
+ Cursor worker (ACP via Paseo)      Claude Code agent            Orchestrator (Claude)
+ ┌───────────────────────────┐     ┌─────────────────────┐      ┌───────────────────┐
+ │ .cursor/mcp.json ──┐      │     │ .mcp.json ──┐       │      │ MCP + CLI         │
+ │ .cursor/hooks.json │      │     │ .claude/settings    │      └────────┬──────────┘
+ │  afterFileEdit     │      │     │  PreToolUse (deny)  │               │
+ │  sessionStart      │      │     │  PostToolUse, Start │               │
+ └──────┬─────────────┼──────┘     └──────┬──────┬───────┘               │
+        │ hook → `switchboard` CLI        │      │ stdio MCP             │
+        ▼                                 ▼      ▼                       ▼
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │  packages/core  (TypeScript): graph.ts (client, indexes), parser.ts (ts-morph)│
+ │  queries/*.ts (every Cypher string lives here, named, documented)             │
+ │  Surfaces: packages/mcp (stdio MCP, 10 tools)  ·  packages/cli (`switchboard`)│
+ └──────────────────────────────┬───────────────────────────────────────────────┘
+                                │ falkordb npm client (Redis protocol, :6379)
+                                ▼
+                     ┌──────────────────────┐   one graph per project: sb_<slug>
+                     │   FalkorDB (Docker)  │   Event.seq is the message bus
+                     └──────────┬───────────┘
+                                │ poll Event.seq > last (500 ms) + read queries
+                                ▼
+ ┌──────────────────────────────────────────────┐    ┌──────────────────────────┐
+ │ apps/server (Node/Hono): /api/*, /events SSE │───▶│ apps/web (Vite+React+    │
+ │ serves built UI; replay runner; rate limit   │    │ Sigma.js canvas, panels) │
+ └──────────────────────┬───────────────────────┘    └──────────────────────────┘
+                        │ cloudflared tunnel (demo Mac)        judges' browser
+                        ▼
+                 https://switchboard.<owner>.xyz
+```
+
+**Data flow.** An agent calls `claim` (MCP) or its hook runs `switchboard check <file>` (CLI). Both go through `core` → Cypher on FalkorDB. Every write also `CREATE`s an Event node with a monotonically increasing `seq`. The web server polls `MATCH (e:Event) WHERE e.seq > $last` twice a second and pushes new events over SSE; the UI mutates its graphology graph in place (no re-layout storms). There is no message broker and no second database: **the graph is the bus**. Remove FalkorDB and nothing works, not even the event feed.
+
+**Why no HTTP between MCP and FalkorDB?** One hop fewer, one process fewer per agent, and the agent's identity comes free from its cwd (branch name). The web server is the only long-running process besides FalkorDB.
+
+### Tech stack
+
+| Layer | Choice | One-line reason | Status |
+|---|---|---|---|
+| Language | TypeScript everywhere, Node 22, npm workspaces | One toolchain for Cursor workers; the parser needs TS anyway; `falkordb` requires Node ≥ 22 | VERIFIED (`npm view falkordb engines.node` = `>=22`) |
+| Graph DB | FalkorDB `falkordb/falkordb:latest` in Docker (OrbStack) | Required; multi-graph; `algo.WCC`, `algo.pageRank`, `algo.SPpaths`, `algo.bfs`, full-text | VERIFIED docs |
+| DB client | `falkordb` npm 6.8.0 (Aug 2026) | `FalkorDB.connect`, `selectGraph`, `query(cypher, {params})`, `db.list()`, built on node-redis | VERIFIED README |
+| MCP server | `@modelcontextprotocol/server` (SDK v2, stable since 2026-07-27), stdio transport, zod v4 schemas | v1 (`@modelcontextprotocol/sdk` 1.32.1) is in maintenance; v2's `registerTool` + `StdioServerTransport` is 20 lines | VERIFIED README |
+| Parser | `ts-morph` 28 (TypeScript compiler API) | Resolves relative/alias imports via tsconfig for free; `getImportDeclarations()` per file; `findReferences` for CALLS later. tree-sitter is faster and multi-language but syntax-only; one language this week | VERIFIED version; trade-off from sources |
+| Web server | Hono on Node (`@hono/node-server`) | Tiny, typed, SSE helper; also hosts the built UI as static files | known |
+| UI | Vite + React 18 + `sigma` 4.0.1 + `graphology` (+ `@react-sigma/core` 5) | WebGL, incremental add/remove without full re-layout, node/edge *reducers* make "light the path" one function; polished look achievable | VERIFIED versions |
+| UI fallback | `@falkordb/canvas` 0.3.3 (web component, FalkorDB's own) | `setData()` replaces the whole graph (no incremental updates documented); keep only if Sigma blocks a worker | VERIFIED docs |
+| Hooks | Claude Code hooks (JSON `permissionDecision: deny`), Cursor `.cursor/hooks.json` | See §2.1 | Claude: VERIFIED; Cursor over ACP: UNVERIFIED |
+| Deploy | cloudflared tunnel on the spare Mac; `launchd` plists; Docker restart policy | Already decided in HACKATHON.md | |
+| LLM | None on the critical path. Optional Haiku summaries (F20) behind a daily cap | Judges reward "LLM proposes, graph decides"; protects the $100 | |
+
+### 2.1 Hooks: what is actually supported (researched today)
+
+| Need | Claude Code | Cursor IDE | Cursor CLI / ACP (what Paseo runs) |
+|---|---|---|---|
+| Block an edit before it happens | `PreToolUse` matcher `Edit\|Write`, exit 2 or JSON `permissionDecision:"deny"` + reason. **VERIFIED** | `preToolUse` matcher `Write`, `{"permission":"deny","agent_message":…}`. Docs list `Write` as a matcher value; "ask" is not enforced. **VERIFIED for IDE** | Forum (Apr–Jun 2026, staff): CLI fires `beforeShellExecution`, `afterShellExecution`, `afterFileEdit`, `postToolUse`, `stop`, `sessionStart`; cloud agents fire `preToolUse`. **`preToolUse` in local CLI/ACP: UNVERIFIED** |
+| Log an edit after it happens | `PostToolUse` | `afterFileEdit` (`file_path`, `edits`) | `afterFileEdit` **works in CLI per staff (Apr 2026)**; ACP untested |
+| Inject a briefing at start | `SessionStart` → `additionalContext` (10k chars cap) **VERIFIED** | `sessionStart` → `additional_context` | CLI: works per staff; ACP untested |
+| Gate shell | `PreToolUse` Bash | `beforeShellExecution` allow/deny/ask | works in CLI |
+| Config location | `.claude/settings.json` (project) | `.cursor/hooks.json` (project) or `~/.cursor/hooks.json` | same files |
+| Failure mode | hook error → tool proceeds unless exit 2 | non-zero exit fails **open** unless `failClosed:true`; exit 2 blocks | same |
+
+**Decision for the MVP.** Enforcement has three layers so the product works with any agent:
+1. **The `claim` MCP tool is the contract.** Worker rules (`.cursor/rules`, `CLAUDE.md`) say: claim before editing; on CONFLICT, stop and pick another task or coordinate. This is advisory and vendor-neutral.
+2. **Claude Code gets the hard block** (PreToolUse deny with the path in the reason). This is the deterministic "gate" the judges praised in past winners and is the demo's enforcement shot.
+3. **Cursor gets logging + late-collision detection** (`afterFileEdit` → `switchboard edited <file>`; if that file is inside another agent's claim footprint, an `Event{kind:'collision'}` fires and the UI flashes it). If the Day-0 test shows `preToolUse` fires over ACP, enable the deny there too (F12 stretch).
+
+MCP in Cursor over ACP: docs say ACP loads project/user `.cursor/mcp.json` (**VERIFIED docs**); a March 2026 bug where ACP ignored MCP was reported fixed in April (**UNVERIFIED** that it stays fixed). Headless `-p` needed `--force/--yolo` for MCP tools (forum). **Fallback if MCP does not reach Cursor workers:** the `switchboard` CLI does everything the MCP does (`switchboard claim a.ts b.ts --task T3`), and the worker rules tell the agent to run it from the shell. Same core, two surfaces, so this costs one small task.
+
+---
+
+## 3. Graph data model
+
+One FalkorDB graph per project, keyed `sb_<slug>` (multi-graph tenancy; `GRAPH.QUERY sb_demo …`). Nothing is shared across graphs.
+
+### Nodes
+
+| Label | Properties | Notes |
+|---|---|---|
+| `File` | `path` (unique, repo-relative), `lang`, `loc`, `hash`, `hub:boolean`, `rank:float` | `hub` set by the PageRank job |
+| `Symbol` | `fqn` (unique `path#name`), `name`, `kind` (fn/class/const/type), `line` | Polish (F16) |
+| `Agent` | `id` (unique; default = branch name), `kind` (cursor/claude/human), `status` (active/idle/dead), `startedAt`, `lastSeen` | |
+| `Task` | `id` (unique), `title`, `status` (open/active/done/blocked), `branch`, `createdAt` | |
+| `Decision` | `id`, `text`, `why`, `at`, `status` (active/superseded) | Semantic memory |
+| `Lesson` | `id`, `text`, `at` | Procedural memory |
+| `Event` | `seq` (unique int, monotonic), `kind` (register/claim/conflict/release/edit/collision/decision/lesson/handoff/heartbeat), `at`, `payload` (JSON string) | Episodic memory; the bus |
+| `Meta` | `key='seq'`, `value` | Single counter node for `Event.seq` (one write query = atomic) |
+
+### Edges
+
+| Edge | From → To | Properties | Source |
+|---|---|---|---|
+| `IMPORTS` | File → File | `specifiers` (list) | parser |
+| `DEFINES` | File → Symbol | | parser (Polish) |
+| `CALLS` | Symbol → Symbol | `count` | parser (Polish) |
+| `CLAIMS` | Agent → File (or Symbol) | `since`, `until`, `taskId`, `intent` | `claim` tool |
+| `WORKS_ON` | Agent → Task | `since` | `register_agent` / `claim` |
+| `TOUCHES` | Task → File | planned footprint | orchestrator, `plan_task` |
+| `INTERFERES` | Task ↔ Task | `via` (file path), `hops` | materialised by the scheduler query, then WCC |
+| `EDITED` | Agent → File | `at`, `seq` | hooks |
+| `MADE` | Agent → Decision | | |
+| `AFFECTS` | Decision → File / Symbol | | |
+| `SUPERSEDES` | Decision → Decision | `at` | |
+| `ABOUT` | Lesson → File / Symbol | | |
+| `BY` | Event → Agent | | every write |
+| `ON` | Event → File / Task / Decision | | every write |
+| `UNDER` | Event → Task | | edits and claims carry their task |
+| `CAUSED_BY` | Task → Decision | | the why-trace link |
+| `HANDED_OFF` | Agent → Agent | `taskId`, `note`, `at` | `handoff` tool |
+| `BLOCKED_BY` | Task → Task | | Polish |
+
+### Indexes (created by `ensureSchema()` on first connect, idempotent)
+
+```
+CREATE INDEX FOR (f:File) ON (f.path)
+CREATE INDEX FOR (s:Symbol) ON (s.fqn)
+CREATE INDEX FOR (a:Agent) ON (a.id)
+CREATE INDEX FOR (t:Task) ON (t.id)
+CREATE INDEX FOR (e:Event) ON (e.seq)
+CREATE INDEX FOR (d:Decision) ON (d.id)
+CREATE INDEX FOR ()-[c:CLAIMS]-() ON (c.until)
+CALL db.idx.fulltext.createNodeIndex('Decision', 'text', 'why')
+CALL db.idx.fulltext.createNodeIndex('Lesson', 'text')
+```
+(Range index syntax and `db.idx.fulltext.createNodeIndex/queryNodes` VERIFIED in docs. Note the known limitation: `<>` filters do not use indexes; LIMIT does not constrain MERGE/CREATE.)
+
+### Memory types, mapped to the track text
+Episodic = `Event` (+`BY`,`ON`,`UNDER`). Semantic = `Decision`/`SUPERSEDES`/`AFFECTS`. Procedural = `Lesson`/`ABOUT`. Shared state and handoffs = `CLAIMS`, `WORKS_ON`, `HANDED_OFF`. Per-tenant = one graph per project. High-concurrency = FalkorDB serialises writes per graph (FIFO) and runs reads in parallel; every Switchboard write is a single atomic query (VERIFIED concurrency page).
+
+---
+
+## 4. Key Cypher queries (specs)
+
+All queries live in `packages/core/src/queries/*.ts`, each exported with a name, a doc comment and the exact string, so the README's "queries" section is generated from the source. Parameters use `$name` (FalkorDB caches plans per parameterised query). `K` (max hops) = 3 by default.
+
+### Q1 Dependency conflict (the hero)
+
+**Input:** `$agent`, `$paths` (list), `$now`, `$k`.
+**Spec:** For each requested file `f`, find every *active* claim `(o:Agent)-[c:CLAIMS]->(g:File)` by another agent (`o.id <> $agent AND c.until > $now`) where either
+- `g = f` (same file, hop 0), or
+- `f -[:IMPORTS*1..k]-> g` (I depend on what they're changing; type `UPSTREAM`), or
+- `g -[:IMPORTS*1..k]-> f` (they depend on what I'm about to change; type `DOWNSTREAM`),
+
+skipping paths that pass through a `hub` file (except hop 0), and return the shortest such path per (f, o): `shortestPath((f)-[:IMPORTS*..k]-(g))`, `nodes(p)`, `length(p)`, `o.id`, `c.taskId`, `c.intent`. Empty result = no conflict = claim granted in the same tool call (second write query: `MERGE (a)-[:CLAIMS {since,until,taskId}]->(f)` + Event). 
+**Why a graph:** the answer is a path of unknown length between two moving sets (my files, their claims). In SQL this is a recursive CTE per pair with no path object to show; here it is one pattern and the path is the evidence drawn on screen.
+**Guard:** `shortestPath` requires both ends bound and no property filters inside the pattern (VERIFIED), so bind `f` and `g` first with `MATCH`, then compute the path; cap `k` at 4; `timeout` 2000 ms per query.
+
+### Q2 Blast radius
+
+**Input:** `$path`, `$k`.
+**Spec:** `MATCH (f:File {path:$path}) OPTIONAL MATCH p=(d:File)-[:IMPORTS*1..k]->(f) WHERE NOT d.hub RETURN d.path, min(length(p)) AS hops ORDER BY hops, d.path`, plus a count per hop and the list of agents currently claiming any `d`. Zero rows = "no dependents, provably safe to change alone" (absence as evidence). Symbol variant (Polish): `(s2:Symbol)-[:CALLS*1..k]->(s:Symbol)`.
+**Why a graph:** transitive closure with per-hop grouping and a displayable path.
+
+### Q3 Parallel-safe tasks (WCC)
+
+**Step 1 (materialise interference):** for every pair of open tasks `t1 <> t2`, they interfere if their footprints meet within `k` hops:
+`MATCH (t1:Task {status:'open'})-[:TOUCHES]->(f1:File), (t2:Task {status:'open'})-[:TOUCHES]->(f2:File) WHERE id(t1) < id(t2) AND (f1 = f2 OR (f1)-[:IMPORTS*1..k]-(f2)) AND NOT f1.hub AND NOT f2.hub WITH t1, t2, f1.path AS via, … MERGE (t1)-[:INTERFERES {via, hops}]-(t2)`.
+**Step 2 (components):** `CALL algo.WCC({nodeLabels:['Task'], relationshipTypes:['INTERFERES']}) YIELD node, componentId RETURN componentId, collect(node.id) AS batch`.
+Each component is a group that must be serialised (or given to one agent); tasks from *different* components can run at the same time. `INTERFERES` edges are deleted and rebuilt on each call (cheap at task counts < 100).
+**Why a graph:** connected components is the definition of "cannot affect each other"; `algo.WCC` is built in (VERIFIED: `nodeLabels`/`relationshipTypes` config, yields `node, componentId`). Nerveplane does this from hand-declared scopes; ours is derived from the parsed code.
+
+### Q4 Briefing for a fresh or replacement agent
+
+**Input:** `$area` (a task id, or a list of paths / a directory prefix), `$limit`.
+**Spec:** resolve the area to a file set `F` (`Task-[:TOUCHES]->File` or `File.path STARTS WITH $prefix`); then in one query with `OPTIONAL MATCH`es collect, each with its hop distance from `F` (0 = direct, 1–2 via `IMPORTS`):
+- active claims on or near `F` (who, until, task),
+- decisions `(d:Decision {status:'active'})-[:AFFECTS]->(x)` where `x` within 2 hops of `F`,
+- lessons `-[:ABOUT]->` within 2 hops,
+- the last 20 `Event`s `-[:ON]->` files in `F` (by `seq` desc), including the dead agent's edits,
+- open tasks touching `F`, and the latest `HANDED_OFF` note for the task.
+Return ordered by hop distance then recency. Rendered as text for `additional_context` and as a highlighted subgraph in the UI.
+**Why a graph:** one query, ranked by structural distance rather than string similarity; the briefing *is* a neighbourhood.
+
+### Q5 Why-trace
+
+**Input:** `$path` (a file), optional `$seq`.
+**Spec:** `MATCH (f:File {path:$path})<-[:ON]-(e:Event {kind:'edit'})-[:BY]->(a:Agent), (e)-[:UNDER]->(t:Task) OPTIONAL MATCH (t)-[:CAUSED_BY]->(d:Decision)<-[:MADE]-(da:Agent) OPTIONAL MATCH (d)<-[:SUPERSEDES*0..3]-(latest:Decision) RETURN e, a, t, d, da, latest ORDER BY e.seq DESC LIMIT 5`, plus the path for the canvas: `shortestPath((f)-[:ON|BY|UNDER|CAUSED_BY|MADE|AFFECTS*..6]-(d))`.
+Also a decision-first variant: `CALL db.idx.fulltext.queryNodes('Decision', $q) YIELD node` → `AFFECTS` files → agents who edited them after `d.at`.
+**Why a graph:** provenance is a chain across five node types; the answer is the chain itself.
+
+### Q6 Hubs (PageRank) and the "utils problem"
+
+`CALL algo.pageRank('File', 'IMPORTS') YIELD node, score` → set `node.rank = score`, and `node.hub = true` for the top 3% by score (or in-degree > N, whichever is simpler to explain). Q1–Q4 skip multi-hop paths through hubs; hop-0 (same file) still warns. Re-run after every parse. (VERIFIED signature: `algo.pageRank(label, relationshipType) YIELD node, score`.)
+
+### Q7 Edits and collisions (hooks)
+
+`switchboard edited <file>`: `MATCH (a:Agent {id:$agent}), (f:File {path:$path}) MERGE (a)-[:EDITED {at:$now, seq:$seq}]->(f)` + Event. Then Q1 in reverse: if `f` sits in another active claim's footprint and `a` holds no claim on it, emit `Event{kind:'collision'}` (late detection for agents whose hooks can't block).
+
+### Q8 Event feed (the bus)
+
+`MATCH (e:Event) WHERE e.seq > $last OPTIONAL MATCH (e)-[:BY]->(a) OPTIONAL MATCH (e)-[:ON]->(x) RETURN e, a.id, labels(x)[0], coalesce(x.path, x.id) ORDER BY e.seq LIMIT 200` (read-only; `GRAPH.RO_QUERY`). Seq is allocated by `MATCH (m:Meta {key:'seq'}) SET m.value = m.value + 1 RETURN m.value` inside the same write query as the Event (atomic per query; writes to a graph are serialised FIFO, VERIFIED).
+
+### Algorithms reference (VERIFIED signatures)
+
+| Procedure | Signature | Used for |
+|---|---|---|
+| `algo.WCC` | `CALL algo.WCC({nodeLabels:[…], relationshipTypes:[…]}) YIELD node, componentId` | Q3 batches |
+| `algo.pageRank` | `CALL algo.pageRank(label, relType) YIELD node, score` | Q6 hubs |
+| `algo.bfs` | `CALL algo.bfs(startNode, maxDepth, relType) YIELD nodes, edges` | Q2 alternative; note it holds visited nodes in memory, keep depth ≤ 4 |
+| `algo.SPpaths` | `CALL algo.SPpaths({sourceNode, targetNode, relTypes, maxLen, relDirection, pathCount}) YIELD path, pathWeight` | Q1 when we want *all* shortest conflict paths (`pathCount:0`) for the UI |
+| `shortestPath()` / `allShortestPaths()` | Cypher functions (FalkorDB extension; both ends bound; no property filters in the pattern) | Q1, Q5 |
+| `db.idx.fulltext.queryNodes` | `CALL db.idx.fulltext.queryNodes('Decision', $q) YIELD node, score` | Q5 decision-first |
+
+---
+
+## 5. Phases and time boxes (Pacific time)
+
+Principle: **every tag is submittable.** Each phase ends with a tag, a one-line "what a judge would see", and a rollback point (the previous tag). Feature freeze: **Fri Oct 17, 12:00 PM**. Internal submission-ready: **Fri 11:00 PM**.
+
+| Phase | Window | Goal | Exit criteria (demoable) | Tag | Rollback |
+|---|---|---|---|---|---|
+| **P0 Setup** | Tue 11:31 AM – 2:00 PM | Repo, toolchain, FalkorDB up, Paseo workers proven, Day-0 hook/MCP tests | `npm test` green on an empty core; FalkorDB answers `RETURN 1`; one Cursor worker made a commit in a worktree; hook/MCP test results recorded in DEVLOG | `v0.0-setup` | n/a |
+| **P1 MVP** | Tue 2:00 PM – Wed 1:00 PM | Thinnest end-to-end slice | Parse demo repo → graph; agent A claims `auth/session.ts`; agent B `claim('ui/LoginForm.tsx')` → CONFLICT with a 3-hop path; canvas shows the path in red; event feed scrolls | `v0.1-mvp` | `v0.0` |
+| **P2 Core** | Wed 1:00 PM – Thu 2:00 PM | Memory + hooks + algorithms | Decisions, lessons, briefing, why-trace, Claude Code deny hook, Cursor afterFileEdit logging, WCC batches, PageRank hubs, replay script of the demo scenario | `v0.2-core` | `v0.1` |
+| **P3 Visual polish** | Thu 2:00 PM – Fri 10:00 AM | It has to look amazing | Dark premium theme, animated path highlight, agent presence panel, Cypher panel, replay controls, empty/error states, 60-second judge path | `v0.3-polish` | `v0.2` |
+| **P4 Ship** | Fri 10:00 AM – Fri 11:00 PM | Freeze at noon; deploy, README, video, blog | Live URL up through the tunnel with static fallback; README with model + queries + AI disclosure; video recorded; blog drafted; submission form filled but not sent | `v1.0` | `v0.3` |
+| **P5 Submit** | Sat 6:00 AM – 10:30 AM | Final cut, submit | Submitted with both tracks named; links checked from a phone on cellular | `v1.0.1` | `v1.0` |
+
+Owner sleep: Tue ~1 AM, Wed ~1 AM, Thu ~1 AM, Fri ~1 AM. Nothing on the critical path is scheduled while asleep; a 30-minute Paseo schedule may run read-only status agents only.
+
+### P0 Setup (Tue 11:31 AM – 2:00 PM) — owner + 2 workers
+
+Day-0 tests (results go into `docs/DEVLOG.md`; each changes a decision):
+1. **Cursor hooks over ACP:** add a `.cursor/hooks.json` with `afterFileEdit`, `sessionStart`, `preToolUse`(Write) and `beforeShellExecution`, each appending its event name to `/tmp/sb-hooks.log`; run a throwaway Paseo Cursor worker that edits a file and runs `ls`. Which lines appear decides F12 (deny vs log-only).
+2. **MCP over ACP:** `.cursor/mcp.json` with a stdio echo server (the MCP SDK's greet example); worker prompt "call the greet tool". If it cannot, workers use the CLI surface (same core).
+3. **Claude Code hook:** `PreToolUse` deny on `Edit` of `BLOCKED.md` in a throwaway session — expect "Blocked".
+4. **FalkorDB:** `docker run -p 6379:6379 -p 3000:3000 falkordb/falkordb:latest`; `GRAPH.QUERY t "CALL algo.WCC(null) YIELD node, componentId RETURN count(*)"` and `CALL algo.pageRank(null,null)`; record the server version.
+5. **Paseo:** `paseo.json` committed to main (npm ci, copy `.env`, unique ports); profiles Build/Review; second Cursor account if the owner set it up.
+
+### P1 MVP (Tue 2:00 PM – Wed 1:00 PM)
+
+Scope: F1–F6 only. Demo repo first (so the parser has a target), then core + MCP + server + UI in parallel lanes. End of Tuesday goal: Q1 returning a conflict path in a unit test against a live FalkorDB. Wednesday morning: the UI shows it.
+
+### P2 Core (Wed 1:00 PM – Thu 2:00 PM)
+
+Scope: F7–F15, F21 (model), replay script (F18 minimal: a Node script that calls the core, not the UI). Dogfooding switches on at the start of P2 (§11) in advisory mode.
+
+### P3 Visual polish (Thu 2:00 PM – Fri 10:00 AM)
+
+Dedicated. No new features. Design direction decided by the owner at the P2 checkpoint (§10) from three one-screen mockups a worker produces Thursday noon. Scope: theme tokens, typography, canvas styling (node size by `rank`, colour by label, claimed files with agent-coloured rings, conflict path pulse), side panels (agents, events, decisions), the Cypher drawer, replay transport (play/pause/step), responsive down to 1280 px, a `/judge` page (the 60-second path: three buttons that run Q1, Q3, Q5 on the seeded graph and show the query + result).
+
+### P4 Ship (Fri 10:00 AM – 11:00 PM)
+
+- 10:00–12:00 last fixes; **12:00 feature freeze** (`v0.3-polish` tagged; main is protected: only docs, deploy, and bug fixes with a failing test first).
+- 12:00–3:00 deploy on the spare Mac: Docker compose (FalkorDB with `--restart unless-stopped`, volume), `launchd` plist for the server, cloudflared named tunnel → `switchboard.<domain>`, static fallback page served by Cloudflare if origin is down (a Worker or a Pages fallback), rate limit on `/api` (10 req/s per IP, no LLM endpoint exposed unless F20 ships with a cap).
+- 3:00–6:00 README (setup, graph model with a diagram, every query from `queries/*.ts`, the WCC and PageRank sections, AI disclosure, "what the human did" section, ablation: "remove FalkorDB → these 8 things stop").
+- 6:00–9:00 demo rehearsal ×3 against the replay script, record the best; the one live moment recorded separately.
+- 9:00–11:00 blog draft (§8 has the outline), submission form filled.
+
+### P5 Submit (Sat 6:00–10:30 AM)
+
+Final cut (captions, 1080p), upload (YouTube unlisted + a copy in the repo release), check the live URL from a phone, submit by **10:30 AM** (59 minutes of buffer).
+
+---
+
+## 6. Task breakdown
+
+Rules for every task: one worktree, one branch `hack/<id>`, one brief in `docs/tasks/<id>.md` using the PASEO-DEEP template; touches only the listed paths; < 10 minutes of agent time; commits small; replies with diff stat + verify output. Orchestrator merges one branch at a time and reruns `npm test`. Parallel groups share no files; lanes that touch `packages/core/src/queries/` get one file each.
+
+Repo layout (fixed in P0 so tasks are file-disjoint):
+```
+packages/core/src/{graph.ts, schema.ts, parser.ts, events.ts, queries/{conflict,blast,schedule,brief,why,hubs,edits,feed}.ts, index.ts}
+packages/mcp/src/{server.ts, tools/*.ts}       packages/cli/src/{index.ts, commands/*.ts}
+packages/hooks/{claude/*.sh, cursor/*.sh, templates/*.json}
+apps/server/src/{index.ts, routes/*.ts, sse.ts, replay.ts}   apps/web/src/{App.tsx, graph/*, panels/*, theme/*}
+demo-repo/  (synthetic TS app)   scripts/{seed.ts, scenario.ts, parse.ts}   docs/
+```
+
+### P0 tasks (Tue 11:31 AM – 2:00 PM)
+
+| ID | Task | Touches | Parallel group | Who |
+|---|---|---|---|---|
+| S1 | Monorepo scaffold: npm workspaces, TS 5 config, vitest, eslint, `packages/*` + `apps/*` empty with `index.ts`, root scripts (`dev`, `test`, `build`) | root, all package.json | A | Cursor |
+| S2 | `docker-compose.yml` (FalkorDB 6379/3000, volume), `.env.example`, `paseo.json` (setup script), `.gitignore` | root files | A | Cursor |
+| S3 | Hook probes: `.cursor/hooks.json`, `.claude/settings.json`, `probe.sh` logging event names; MCP echo server `scripts/mcp-echo.ts` | `.cursor/`, `.claude/`, `scripts/` | A | Cursor |
+| S4 | Worker rules: `.cursor/rules/switchboard.mdc`, `CLAUDE.md`, `docs/tasks/_template.md`, `docs/DEVLOG.md` | docs, rules | A | Orchestrator |
+| S5 | Run Day-0 tests 1–4 and record outcomes | DEVLOG | after A | Owner + orchestrator |
+
+### P1 tasks (Tue 2:00 PM – Wed 1:00 PM)
+
+| ID | Task | Touches | Group | Depends on |
+|---|---|---|---|---|
+| M1 | Demo repo: synthetic TS app, ~35 files, 4 dirs (`ui/`, `api/`, `auth/`, `lib/`), a planted chain `ui/LoginForm.tsx → api/login.ts → auth/session.ts → lib/crypto.ts`, and a real hub `lib/utils.ts` imported by 20 files; `tsconfig` with a path alias | `demo-repo/` | B | S1 |
+| M2 | `core/graph.ts`: connect (env `FALKORDB_URL`, `SB_GRAPH`), `query/roQuery` wrappers with `timeout`, `ensureSchema()` (indexes above), `withEvent()` helper allocating `seq` | `core/graph.ts`, `core/schema.ts`, `core/events.ts` | B | S1 |
+| M3 | `core/parser.ts`: ts-morph project from a root + tsconfig; emit `{files:[{path,loc,hash}], imports:[{from,to,specifiers}]}`; resolve relative and alias imports; skip `node_modules` and type-only imports flag | `core/parser.ts` + test fixture | B | S1 |
+| M4 | `core/loader.ts`: idempotent `UNWIND $rows MERGE` for files and imports in batches of 500; deletes imports of re-parsed files | `core/loader.ts` | C | M2, M3 |
+| M5 | `queries/conflict.ts` (Q1) + unit test against live FalkorDB using the M1 fixture | `queries/conflict.ts`, test | C | M2, M4 |
+| M6 | `queries/feed.ts` (Q8), `queries/edits.ts` (Q7 write part only) | those files | C | M2 |
+| M7 | MCP server skeleton: `register_agent`, `claim`, `release`, `heartbeat`, `status`; agent id from branch; stdio; `.mcp.json` + `.cursor/mcp.json` templates | `packages/mcp/`, templates | D | M5 |
+| M8 | CLI: `switchboard parse <dir>`, `claim`, `release`, `check <file>` (exit 2 on conflict, prints path), `edited <file>` | `packages/cli/` | D | M5, M6 |
+| M9 | Server: Hono app, `/api/graph` (nodes+edges snapshot), `/api/events` SSE (poll seq), `/api/claims`, serves `apps/web/dist` | `apps/server/` | D | M6 |
+| M10 | Web: Vite+React+Sigma shell, load snapshot, apply SSE events to graphology, basic colours, path highlight reducer for `conflict` events | `apps/web/` | D | M9 contract (mock first) |
+| M11 | `scripts/scenario.ts` step 1–2: register A/B, A claims session.ts, B claims LoginForm.tsx → conflict | `scripts/` | E | M7 |
+| M12 | Tag `v0.1-mvp`; DEVLOG; screenshots | docs | E | all |
+
+Group B runs 3 workers in parallel (M1, M2, M3); C after; D in parallel (M7–M10 touch disjoint packages; M10 starts against a written JSON contract in `docs/api.md`).
+
+### P2 tasks (Wed 1:00 PM – Thu 2:00 PM)
+
+| ID | Task | Touches | Group |
+|---|---|---|---|
+| C1 | `queries/brief.ts` (Q4) + test | queries/brief.ts | F |
+| C2 | `queries/why.ts` (Q5) + test | queries/why.ts | F |
+| C3 | `queries/blast.ts` (Q2) + test | queries/blast.ts | F |
+| C4 | `queries/schedule.ts` (Q3: INTERFERES rebuild + WCC) + test with 5 tasks | queries/schedule.ts | F |
+| C5 | `queries/hubs.ts` (Q6 PageRank, sets `hub`), run after load | queries/hubs.ts, loader hook | F |
+| C6 | MCP tools: `record_decision`, `record_lesson`, `brief_me`, `why`, `blast_radius`, `plan_task`, `parallel_batches`, `handoff` | packages/mcp/tools/* (one file per tool) | G (after F) |
+| C7 | CLI mirrors of C6 (`decide`, `lesson`, `brief`, `why`, `batches`) | packages/cli/commands/* | G |
+| C8 | Claude Code hooks: `pre-edit.sh` (deny via JSON with path reason), `post-edit.sh` (edited), `session-start.sh` (brief → additionalContext); settings template | packages/hooks/claude | G |
+| C9 | Cursor hooks: `after-edit.sh`, `session-start.sh`, optional `pre-write.sh`; hooks.json template; `failClosed:false` | packages/hooks/cursor | G |
+| C10 | Server routes: `/api/brief`, `/api/why`, `/api/blast`, `/api/batches`, `/api/decisions`, `/api/replay/*` | apps/server/routes | G |
+| C11 | Web panels: Agents (presence, claims), Events feed, Decisions list; click a file → blast radius highlight; `why` drawer with path | apps/web/panels | H (after C10 contract) |
+| C12 | Web: batches view (components as colour groups) | apps/web/graph/batches.tsx | H |
+| C13 | `scripts/scenario.ts` full: steps 1–5 of the demo (§8) with timing; `scripts/seed.ts` to reset the graph | scripts/ | H |
+| C14 | Dogfood config: `.cursor/mcp.json`, `.mcp.json`, hooks pointing at `sb_switchboard`, `SWITCHBOARD_OFF` switch, worker rules updated | root config | H |
+| C15 | Cursor `preToolUse` deny, only if Day-0 test 1 passed | packages/hooks/cursor | H (stretch) |
+| C16 | Tag `v0.2-core`; DEVLOG; screenshots; owner checkpoint | docs | end |
+
+### P3 tasks (Thu 2:00 PM – Fri 10:00 AM)
+
+| ID | Task | Touches | Group |
+|---|---|---|---|
+| V0 | Three mockups (one screen each, HTML) for the owner to pick from, by Thu 1 PM | docs/mockups | before P3 |
+| V1 | Theme tokens, fonts, dark palette, layout grid; app shell | apps/web/theme, App.tsx | I |
+| V2 | Canvas styling: node size by rank, label colours, agent rings on claimed files, edge arrows, hover cards | apps/web/graph/style.ts | I |
+| V3 | Path animation: conflict/why paths pulse and the camera eases to fit them | apps/web/graph/animate.ts | I |
+| V4 | Agents panel redesign: avatars, status dots, current task, claim chips with TTL bars | apps/web/panels/Agents.tsx | J |
+| V5 | Event feed redesign: grouped by agent, icons per kind, collision toast | apps/web/panels/Events.tsx | J |
+| V6 | Cypher drawer: shows the named query and params behind the last answer, copy button | apps/web/panels/Cypher.tsx | J |
+| V7 | Replay transport: play/pause/step/speed, scrubber, "live" badge | apps/web/panels/Replay.tsx | J |
+| V8 | `/judge` page: three buttons (Conflict, Batches, Why) running on the seeded graph with query + result + path | apps/web/pages/Judge.tsx | K |
+| V9 | Empty, loading, error states; 1280 px layout; favicon; title; OG image | apps/web misc | K |
+| V10 | Screenshot pass and fixes (owner review) | — | end |
+
+### P4/P5 tasks (Fri 10:00 AM → Sat)
+
+| ID | Task | Touches |
+|---|---|---|
+| D1 | `deploy/`: compose file, launchd plist, cloudflared config, `deploy.md` runbook | deploy/ |
+| D2 | Static fallback page + Cloudflare rule when origin down; rate limit middleware | apps/server, deploy/ |
+| D3 | README: setup, model diagram (Mermaid), queries section generated from `queries/*.ts` (`scripts/gen-queries-doc.ts`), tracks, AI disclosure, human-direction section, ablation table | README.md, scripts |
+| D4 | `docs/QUERIES.md` (generated) and `docs/DEMO.md` (the shot list) | docs |
+| D5 | Blog post draft (dev.to), 900 words, 4 screenshots | docs/blog.md |
+| D6 | Rehearse and record (owner); edit (owner + a worker for captions file) | video/ |
+| D7 | Submission form; final checks from a phone | — |
+
+---
+
+## 7. Risk register
+
+| Risk | Likelihood | Impact | Early warning | Mitigation | Fallback |
+|---|---|---|---|---|---|
+| Cursor hooks don't fire over ACP (Paseo) | High | Med | Day-0 test 1 shows only shell hooks | Enforcement via the `claim` tool contract + Claude Code hard block | Cursor = log-only via `afterFileEdit`; if that also fails, `switchboard edited` is called by the worker rules after each file |
+| MCP tools don't reach Cursor workers over ACP | Med | Med | Day-0 test 2 fails | CLI surface mirrors every tool | Workers use `npx switchboard …` from the shell; the demo's "MCP" agent is Claude Code |
+| ts-morph alias/edge-case misses (re-exports, dynamic import, `index.ts` barrels) | Med | Med | Parser test on demo repo misses the planted chain | Demo repo uses plain relative + one alias; barrel files handled explicitly; unresolved imports dropped, never guessed | Hand-written `imports.json` for the demo repo loaded by M4 |
+| "Everything is one component" (hub files) | High | High (Q3 useless, Q1 noisy) | WCC returns one batch | PageRank/in-degree hubs excluded from multi-hop paths; k ≤ 3 | Static hub list in `switchboard.json` |
+| FalkorDB query cost on variable-length paths | Low (graph < 5k nodes) | Med | query > 500 ms | `timeout` 2000 ms, k capped at 4, indexes on `path`; `shortestPath` with bound ends | Drop to k = 2 |
+| FalkorDB write serialisation under 4 agents + hooks | Low | Low | Event lag > 2 s | Each write is one query; hooks are fire-and-forget with 1 s timeout | Batch edits per second |
+| Live multi-agent demo flakes | High | High | Rehearsal 1 fails | Scripted scenario drives 4 of 5 beats; only the "resume" beat is live, and it's recorded separately | Replay recording is the video; live site shows replay mode |
+| Cloudflare Tunnel / spare Mac down during judging | Med | High | Uptime ping fails | launchd + Docker restart; `caffeinate`; static fallback at the edge | Local setup instructions + the recorded video |
+| Worker merge conflicts | Med | Med | Two branches touch one file | File-disjoint briefs; one query file per task; `docs/api.md` contract before UI work | Orchestrator rebases and resolves; the later branch re-runs tests |
+| Cursor drops a > 10 min turn | High | Low | `[canceled] http/2 stream` in logs | Tasks ≤ 10 min; commit early; `paseo send "continue"` | Relaunch a fresh worker with "what was tried" |
+| Owner can't explain a query (rule 12) | Med | High (rejection) | Checkpoint quiz fails | §10 checkpoints; owner writes the README query section in their words | Simplify the query until the owner can draw it |
+| Running out of time | High | High | A phase slips > 3 h | Cut lines below; tags are always submittable | Submit `v0.2-core` with the P3 theme only |
+| graphmem or another entrant ships the same pitch | Med | Low | Discord/GitHub watch Thu | Lead with the parsed dependency path and WCC; show numbers | Position as "code-aware", theirs as "memory-only" |
+| $100 API spend | Low | Low | F20 cap log | F20 off by default; cap $5/day; no public LLM endpoint | Remove F20 |
+| Ambiguous `branch = agent id` when two agents share a branch | Low | Low | Duplicate agent | `SB_AGENT` env overrides | — |
+
+### Cut lines (in order, if behind schedule)
+
+1. F20 LLM summaries (never started unless everything else is done).
+2. F16 symbol-level CALLS and symbol claims (stay file-level; the demo's 3-hop path is file-level anyway).
+3. F12 Cursor `preToolUse` deny (keep afterFileEdit logging).
+4. F15 PageRank hubs → static hub list in config (keep the PageRank query in the README as "used for hub detection", only if it actually ran once on the demo graph).
+5. V7 replay transport (keep play-only), V8 judge page (fold into README).
+6. F14 WCC UI (keep the query + a CLI `switchboard batches` output in the README).
+7. F8 Lessons (fold into Decisions with `kind:'lesson'`).
+8. F19 handoff/next_task.
+9. Live deployment interactive → static replay only (still a URL).
+10. Blog post (side prize only).
+
+Never cut: parse → claim → conflict path → canvas; briefing; why-trace; README; video.
+
+---
+
+## 8. The demo (2-minute video, shot by shot)
+
+Deterministic: `scripts/scenario.ts` replays beats 1–4 through the real MCP/core against a seeded graph (`scripts/seed.ts` resets `sb_demo`). Beat 5 is the one live moment (a real Claude Code session on the subscription). Screen: UI full-screen on the left 70%, a terminal strip on the right 30% showing agent output. Voice-over recorded separately; captions burned in.
+
+| t | Shot | On screen | Voice-over |
+|---|---|---|---|
+| 0:00–0:10 | Title card → canvas fades in | The demo repo's graph: 35 files, import edges, hub `utils.ts` large in the centre | "Four AI coding agents on one repo. They forget, they collide, and nobody knows why code changed. Switchboard gives them one shared graph." |
+| 0:10–0:25 | Beat 1: agents register | Agents A (Cursor) and B (Claude Code) appear in the panel; A claims `auth/session.ts` (ring + chip). Cypher drawer flashes the `MERGE … CLAIMS` | "The code is parsed into FalkorDB. Agent A claims the session module." |
+| 0:25–0:50 | Beat 2: the conflict | B tries `ui/LoginForm.tsx`; the claim is refused; the 3-hop path LoginForm → login.ts → session.ts pulses red; terminal shows B's tool result "CONFLICT: A is changing auth/session.ts, which LoginForm.tsx depends on via api/login.ts"; drawer shows Q1 | "B wants the login form. A file lock would say it's free. The graph says no: three imports away, A is changing what it depends on. The path is the proof. B picks another task." |
+| 0:50–1:05 | Beat 3: parallel batches | Orchestrator calls `parallel_batches`; the canvas groups 5 open tasks into 3 colour clusters; drawer shows `CALL algo.WCC` | "Which tasks can run at the same time? Connected components over the interference graph. Three batches, no hand-declared scopes." |
+| 1:05–1:20 | Beat 4: a decision | A records "use argon2, not bcrypt; why: FIPS note"; the Decision node links to `lib/crypto.ts` and `auth/session.ts` | "Decisions live next to the code they affect." |
+| 1:20–1:45 | **Beat 5 (live):** kill and resume | Terminal: A is killed mid-task (status → dead, claims expire). A fresh Claude Code session starts; its SessionStart hook prints the briefing (claims, the argon2 decision, A's last 6 edits, the open task). It continues the task and its first edit passes the PreToolUse check | "A dies. A new agent starts cold. Its briefing comes from the graph: what was claimed, what was decided, what was edited. It picks up where A stopped, and the hook lets the edit through because the path is clear." |
+| 1:45–2:00 | Beat 6: why | Click `lib/crypto.ts` → "why?" → path lights: crypto.ts ← edit by A2 ← task T3 ← decision "argon2" ← made by A. Close on the README's query list | "Why does this code use argon2? The answer is a path. Switchboard: FalkorDB, MCP, hooks, open source. Link below." |
+
+**Backup plan.** Record beats 1–4 and 6 from replay (three takes, keep the best). Record beat 5 live up to five times Friday evening; if none is clean, use replay for beat 5 too (the scenario script can emit the briefing text). The video is edited from clips, so a failed take costs minutes, not the demo. Export 1080p, ≤ 2:10, plus a 30-second cut for the blog.
+
+---
+
+## 9. Judge Q&A
+
+1. **How is this different from Claude Code agent teams?** Agent teams share a task list and lock files by name inside one tool. Switchboard checks a claim against the parsed dependency graph (a 3-hop path, not a filename), works across Cursor and Claude Code, and keeps decisions and history so a replacement agent can be briefed. Their docs tell you to give teammates separate files; we tell you *which* files are separate.
+2. **vs Foremerge?** Foremerge has advisory leases on declared scopes; its author lists a tree-sitter code graph as roadmap. Ours is built on the parsed graph today, and adds briefings, why-trace and WCC scheduling in the same store.
+3. **vs MCP Agent Mail?** Mail is inboxes plus glob leases in SQLite; no code awareness, no dependency path. We don't do messaging; we do collision prediction and memory with evidence.
+4. **vs wit?** wit is the closest on one check: "intent targets a caller of a locked symbol", advisory, SQLite, no memory, dormant since March. We generalise to k hops both ways, add components scheduling, decisions and briefings, and make the path visible.
+5. **vs Nerveplane?** Nerveplane schedules batches by graph colouring over *hand-declared* YAML scopes and keeps a decision ledger in SQLite. Our interference graph is derived from parsed imports, so a transitive caller nobody declared is still caught; and the same graph answers why and briefs.
+6. **vs graphmem (same hackathon)?** graphmem is memory and trace (facts, decisions, tasks) on FalkorDB with no claims and no code parsing. We have the memory half and the code half in one graph, and the conflict path is the hero.
+7. **vs Graphiti?** A temporal-fact library (FalkorDB is a backend). We could store episodes in it, but our edges are structural (IMPORTS, CLAIMS, CAUSED_BY), not extracted text; no LLM is needed to build the graph.
+8. **vs git worktrees?** Worktrees isolate edits; they do not prevent semantic conflicts and only tell you at merge time. We warn *before* the edit, and the warning carries the dependency path.
+9. **Why a graph and not SQL?** Three queries are paths of unknown length between moving sets: conflict (my files ↔ their claims via imports), blast radius, why-trace. SQL needs recursive CTEs per pair and still has no path object to show; FalkorDB returns the path, and `algo.WCC` and `algo.pageRank` are one line. Remove FalkorDB and the event feed, claims, briefings and scheduling all stop (ablation table in the README).
+10. **What if an agent ignores the claim?** Claude Code can't: the PreToolUse hook denies the edit with the path as the reason. Cursor logs every edit via `afterFileEdit`, and an unclaimed edit inside another agent's footprint raises a collision event (late, but visible). For agents with no hooks, the claim tool is the contract, and the graph still records who collided.
+11. **Doesn't every file import utils, so it warns all the time?** Yes, which is why hubs are a first-class concept: PageRank on IMPORTS marks the top few percent as hubs, and multi-hop paths through a hub don't count (same-file still does). In the demo, `lib/utils.ts` is imported by 20 files and never causes a warning.
+12. **What did you build vs the AI?** The owner designed the graph model and the five queries (there is a dated decisions log), wrote the briefs for each task, reviewed and merged every branch, ran the Day-0 tests, and wrote the README query section by hand. Cursor agents wrote most of the TypeScript from those briefs. Disclosed in the README.
+13. **How does it scale?** The graph is files and symbols (thousands, not millions); queries are bounded (k ≤ 4, timeouts, hub exclusion). FalkorDB runs reads in parallel and serialises writes per graph, and each of our writes is one atomic query. Parsing is incremental per file hash. Multi-project is one graph per project.
+14. **Who would use this?** Anyone running 2–6 coding agents on one repo today: the owner does, with Cursor workers through Paseo and a Claude orchestrator, and this was built with itself from Wednesday on (the dogfood graph is in the repo).
+15. **What happens when the claim TTL expires mid-edit?** Heartbeats extend it; the briefing shows stale claims; an expired claim's files show as "recently edited by X" for an hour so a late collision is still flagged.
+16. **False positives?** Both directions can over-warn in a tightly coupled codebase. Hubs, k, and `intent` (read-only claims don't conflict) tune it. A warning is advisory for everyone but Claude Code's hook, and the hook's reason tells the agent exactly what to coordinate on.
+17. **Why file-level, not symbol-level?** Symbol-level is in the model (Symbol, DEFINES, CALLS) and in the Polish tier; file-level was enough for the demo path and is what the parser gets right reliably in four days.
+18. **Why TypeScript only?** One parser done well; the model is language-agnostic (File/IMPORTS); tree-sitter grammars are the obvious second step.
+19. **Where does the LLM sit?** Nowhere in the decision path. The agents are LLMs; Switchboard is the deterministic referee. Optional prose summaries of a briefing are the only API call, capped.
+20. **Is "no conflict" trustworthy?** It means no import path ≤ k hops between the sets, excluding hubs. We show that definition in the UI. It's the same "absence as evidence" the Hopper triage project was praised for; it's bounded, and the bound is on screen.
+
+---
+
+## 10. Owner learning checkpoints (rule 12)
+
+| When | 15-minute checkpoint | Owner produces |
+|---|---|---|
+| P0 end | Draw the graph model from memory on paper; name the 8 edge types that matter | Photo in `docs/decisions/` |
+| P1 mid (Tue ~8 PM) | Read `queries/conflict.ts`; run it in FalkorDB Browser (`:3000`) against the demo graph; change `k` and see the path change | A paragraph in DEVLOG explaining UPSTREAM vs DOWNSTREAM |
+| P1 end | Explain why `shortestPath` needs bound ends and why hubs exist | Q&A answers 9 and 11 in the owner's words |
+| P2 mid (Wed ~8 PM) | Run `CALL algo.WCC` and `algo.pageRank` by hand; read the INTERFERES rebuild | DEVLOG: "what WCC gives us that a loop would not" |
+| P2 end | Walk the why-trace path by hand in the Browser | README "Queries" section draft, hand-written |
+| P3 start | Pick the mockup; state the three visual priorities | docs/decisions/ui.md |
+| P4 | Record the voice-over unscripted first, then with the script | video |
+| Sat | Mock judge Q&A, 10 questions, timed | — |
+
+---
+
+## 11. Submission checklist and dogfooding
+
+**Checklist (from HACKATHON.md):** public repo · README with setup + graph model · the Cypher queries/algorithms (generated `docs/QUERIES.md` + README section) · demo video (YouTube unlisted + release asset) · live URL (tunnel) with local instructions as backup · tracks named (Agent Memory and Coordination; Agents That Act on Connected Data) · AI disclosure and "human direction" section · blog post link · node/edge counts of the demo graph and the dogfood graph in the README.
+
+**Dogfooding plan (from P2 start, Wed 1 PM).**
+- Graph `sb_switchboard` on the dev Mac's FalkorDB. `scripts/parse.ts` runs on `main` after every merge (orchestrator step).
+- Every worker brief from C1 onward adds: "Before editing, run `npx switchboard claim <files> --task <id>` (or the MCP `claim` tool). If CONFLICT, stop and report." Workers are file-disjoint by design, so a conflict is rare and real (an import path between two lanes).
+- Hooks in the repo (`.cursor/hooks.json`, `.claude/settings.json`) log edits to `sb_switchboard`; the orchestrator records decisions (`switchboard decide …`) at each merge.
+- **Safety:** advisory only for our build (no deny hooks on our own repo until Thursday); `SWITCHBOARD_OFF=1` in a worker's env disables hooks and the rules paragraph; hooks time out at 1 s and fail open; if FalkorDB is down, the CLI prints a warning and exits 0.
+- **Payoff:** real history for the README ("during the build, N claims, M conflicts caught, K decisions"), a screenshot of the real graph, and an honest answer to Q14.
+
+---
+
+## 12. Open questions for the owner
+
+1. Demo host domain: the exact `.xyz` subdomain, and is cloudflared already installed on the spare Mac?
+2. Second Cursor account: set up tonight (PASEO-DEEP §2) or run on one account?
+3. Agent identity: branch name by default (proposed) or always explicit `SB_AGENT`?
+4. Should Claude Code's deny hook be on for our own repo from Thursday (true dogfooding) or stay advisory until the demo?
+5. Visual direction: pick from three mockups Thursday noon, or decide now (dark, graph-first, one accent colour is the proposal)?
+6. Keep F20 (Haiku summaries) in at all, or ship with zero LLM in the product? (Proposal: zero; say so proudly.)
+7. Blog platform (dev.to proposed) and whether to publish before or after submission.
+8. Video: owner's voice, or captions only?
+9. Name check: "Switchboard" is generic; keep, or add a qualifier for search (e.g. "Switchboard for agents")?
+
+---
+
+## 13. Sources
+
+- Cursor hooks reference (events, matchers `Shell|Read|Write`, `permission` allow/deny, `failClosed`, exit 2): https://cursor.com/docs/agent/hooks and https://cursor.com/docs/hooks
+- Cursor CLI hook gaps (staff replies Jan–Jun 2026): https://forum.cursor.com/t/cursor-cli-doesnt-send-all-events-defined-in-hooks/148316 ; https://forum.cursor.com/t/cursor-cli-omits-beforesubmitprompt-afteragentresponse-and-stop-hooks-loses-token-usage-and-emits-inconsistent-generation-id-values/169059
+- Cursor ACP (MCP from `.cursor/mcp.json`, permissions, no mention of hooks): https://cursor.com/docs/cli/acp ; MCP-in-ACP bug and fix thread: https://forum.cursor.com/t/acp-agent-silently-ignores-mcpservers-in-session-new/153623 ; headless MCP injection (`--force`): https://forum.cursor.com/t/cursor-agent-p-mode-does-not-inject-mcp-server-tools-into-agent-context/155275
+- Cursor CLI MCP: https://cursor.com/docs/cli/mcp ; local CLI `agent --help` (2026.10.01) shows `--force`, `--approve-mcps`, `acp`
+- Claude Code hooks (PreToolUse `permissionDecision`, exit 2, SessionStart `additionalContext`, matchers): https://code.claude.com/docs/en/hooks
+- MCP TypeScript SDK v2 (`@modelcontextprotocol/server`, `registerTool`, stdio): https://github.com/modelcontextprotocol/typescript-sdk ; v1 `@modelcontextprotocol/sdk` 1.32.1 on npm
+- FalkorDB Node client (`FalkorDB.connect`, `selectGraph`, `query` with params, Node ≥ 22): https://github.com/FalkorDB/falkordb-ts ; npm `falkordb` 6.8.0
+- FalkorDB algorithms: https://docs.falkordb.com/algorithms/ (WCC, BFS, SPpaths, PageRank pages: /algorithms/wcc, /algorithms/bfs, /algorithms/sppath, /algorithms/pagerank)
+- FalkorDB Cypher functions (`shortestPath`, `allShortestPaths`, `nodes`, `relationships`, `toJSON`, `reduce`): https://docs.falkordb.com/cypher/functions ; known limitations: https://docs.falkordb.com/cypher/known-limitations ; indexes: https://docs.falkordb.com/cypher/indexing/range-index , https://docs.falkordb.com/cypher/indexing/fulltext-index ; concurrency: https://docs.falkordb.com/design/concurrency ; query timeout: https://docs.falkordb.com/commands/graph.query
+- FalkorDB Canvas (web component, `setData` replaces graph): https://docs.falkordb.com/browser/canvas ; npm `@falkordb/canvas` 0.3.3
+- Sigma.js 4.0.1, graphology, `@react-sigma/core` 5.0.6; Cytoscape 3.34.3; `@xyflow/react` 12.12 (npm, 2026-10-13)
+- ts-morph 28.0.0 (npm); tree-sitter 0.25.1 / web-tree-sitter 0.27.1 (npm); trade-off sources: https://aide.dev/blog/llm_lsp , https://www.npmjs.com/package/lineage-ts
+- Paseo workflow and failure modes: docs/PASEO.md, docs/research/PASEO-DEEP.md
+- What FalkorDB judges rewarded: docs/research/IDEA-RESEARCH.md §1 (FalkorDB recaps)

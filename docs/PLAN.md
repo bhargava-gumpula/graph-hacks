@@ -533,3 +533,12 @@ Deterministic: `scripts/scenario.ts` replays beats 1–4 through the real MCP/co
 - ts-morph 28.0.0 (npm); tree-sitter 0.25.1 / web-tree-sitter 0.27.1 (npm); trade-off sources: https://aide.dev/blog/llm_lsp , https://www.npmjs.com/package/lineage-ts
 - Paseo workflow and failure modes: docs/PASEO.md, docs/research/PASEO-DEEP.md
 - What FalkorDB judges rewarded: docs/research/IDEA-RESEARCH.md §1 (FalkorDB recaps)
+
+### Owner answers (2026-10-14)
+1. **Domain:** the owner has the subdomain lined up and will buy it when told. Buy it **Thu evening**, so DNS settles before the Fri 12–3 PM deploy.
+2. **Second Cursor account:** both accounts are already set up. Confirm the Paseo provider entry (`cursor-b`) in P0.
+3. **AI in the product:** decide **Thursday** at the P2 checkpoint.
+4. **Visual direction:** still open; mockups at the P2 checkpoint as planned.
+5. **Blog:** no platform is specified in any rule (overview: "Write a blog post about your project"). Any public platform works. Proposal: dev.to or Hashnode for reach, cross-posted, and linked from the README.
+6. **Video:** the owner's voice.
+7. **Name:** Switchboard, kept.

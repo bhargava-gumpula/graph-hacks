@@ -542,3 +542,5 @@ Deterministic: `scripts/scenario.ts` replays beats 1–4 through the real MCP/co
 5. **Blog:** no platform is specified in any rule (overview: "Write a blog post about your project"). Any public platform works. Proposal: dev.to or Hashnode for reach, cross-posted, and linked from the README.
 6. **Video:** the owner's voice.
 7. **Name:** Switchboard, kept.
+8. **Owner lean (2026-10-14, 12 AM):** the plain-English briefing summary (F20) is a good AI addition. Revisit later today.
+9. **Pending owner decision:** add a **with/without benchmark** as Core: the same multi-agent task run 10× without and 10× with Switchboard on the demo repo, counting broken builds, failing tests and overwritten work. The result goes in the README and video. Testing layers: (1) query tests against planted traps in the demo repo, (2) a deterministic scripted replay, (3) a live run with real agents plus dogfooding, (4) the benchmark, plus a `/judge` page with three query buttons.

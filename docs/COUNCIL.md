@@ -48,3 +48,23 @@ Ten Fable advisors, five per idea, each seeing only its own brief (brief-standar
 npm problems: a live "Blast Radius" web app already exists; the 2025 replay can't be reproduced from today's maintainer lists (7 of the 18 packages); in-graph reach undercounts by 10×; the seed list is led by devDependencies.
 Standards Brain problems: the mail archive is bot-blocked (use Datatracker ballots); the headline lookup risks looking like a dict (lead with fan-out, citation blast radius, PageRank, ballots); a strawman RAG baseline; the section mapping is unknowable.
 → Revised into docs/brief-standards-v2.md for a round 2.
+
+# Council 5, 2026-10-13: rfc-brain v2 (Fable, blind)
+| Advisor | Company Brain win % | Connected Data win % |
+|---|---|---|
+| Outsider | 8 | 10 |
+| Expansionist | 18–25 | n/a |
+| Contrarian | 5 | 7 |
+| First Principles | 10 | 15 |
+| Executor | 6–8 | 10–12 |
+| **Average** | **~10%** | **~11%** |
+Scores spread widely (graph 5–8, originality 5–8). No gain over v1 (10.6%): advisors' calibrated ceiling stays about 10–11%, the same as the cloud loop found.
+Consensus fixes for v3:
+- Make **Track 1 (Connected Data) the main track**; 4 of 5 advisors said the Company Brain fit is a stretch.
+- Add a scanner classifier, because **"obsolete ≠ wrong"**: version-pinned, historical by design, or truly stale. Example false positives: curl's `RFC822.SIZE` IMAP token, and RFC 5246 cited correctly in a TLS 1.2 table.
+- **Pre-measure demo repos.** curl has 148 RFCs and 98 lines in the obsolete family, per the Executor's local scan.
+- **"Who decided" on RFC 9110** (15 ballots with comments), not 2616 (it predates ballots).
+- **Cut embeddings to full-text** (current RFCs only, if at all).
+- **Open with the ecosystem stale-citation leaderboard**, the graph-only query.
+- **The action:** a draft PR on a fork, not just a report.
+- **Resolve citation aliases** (bcp/std) via `contains`, and load in UNWIND batches.

@@ -52,3 +52,13 @@ Open source, Cypher, fast traversals, many isolated graphs in one instance (one 
 - Host Mac setup: never sleep, auto-restart after a power failure, containers restart on boot, auto-updates off until judging ends.
 - Protect the $100 API credits: per-visitor rate limit, a hard daily spending cap, and a static fallback (pre-saved example answers and graph views) shown when the cap is hit or the host is down.
 - **Installed 2026-10-13 (dev Mac):** OrbStack (Docker 29.8.2; CLI at ~/.orbstack/bin/docker) and cloudflared 2026.10.0. The falkordb/falkordb:latest image is pulled, and a smoke test passed (create a graph plus a variable-length path query, both under 1 ms). The demo-host Mac still needs the same setup.
+
+## Rules check, 2026-10-13 evening (site + WeMakeDevs Discord via Aside; FalkorDB Discord not joined)
+- **The deadline is confirmed:** Oct 18, 11:59 PM IST = **Sat 11:29 AM PDT**. The site overview itself says "Oct 14, 11:31 AM to Oct 18, 11:29 AM PDT". Luma's 8 AM–8 PM is wrong; the site governs.
+- **The owner is registered** (site: "Registered"; Luma: "You're In").
+- **The submission form isn't open yet** (it opens at the start), so its fields and any video length limit are unknown.
+- **Judging:** no rubric is published. Oct 8 announcement (Kunal): every judged project gets **a public score and judge feedback, and the judges are listed publicly** on the hackathon site. No list is up yet.
+- **No kickoff time is published.** No rule changes in WeMakeDevs channels over the last two weeks.
+- **Blog prize:** AirPods 5 is on the overview only, with no criteria, platform or deadline stated.
+- **AI disclosure** is required, but how is unspecified. Plan: a README section listing the tools and what the owner did.
+- **Open:** join the FalkorDB Discord (owner's choice) to ask organisers about the video length, blog rules and judging.

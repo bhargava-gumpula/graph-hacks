@@ -51,3 +51,4 @@ Open source, Cypher, fast traversals, many isolated graphs in one instance (one 
 - Live demo host: the owner's **other Mac** (always on) running FalkorDB + the app, exposed with a **Cloudflare Tunnel** on the owner's free .xyz domain (to be confirmed). It must stay up until judging ends (a few weeks after Oct 18).
 - Host Mac setup: never sleep, auto-restart after a power failure, containers restart on boot, auto-updates off until judging ends.
 - Protect the $100 API credits: per-visitor rate limit, a hard daily spending cap, and a static fallback (pre-saved example answers and graph views) shown when the cap is hit or the host is down.
+- **Installed 2026-10-13 (dev Mac):** OrbStack (Docker 29.8.2; CLI at ~/.orbstack/bin/docker) and cloudflared 2026.10.0. The falkordb/falkordb:latest image is pulled, and a smoke test passed (create a graph plus a variable-length path query, both under 1 ms). The demo-host Mac still needs the same setup.

@@ -68,3 +68,13 @@ Consensus fixes for v3:
 - **Open with the ecosystem stale-citation leaderboard**, the graph-only query.
 - **The action:** a draft PR on a fork, not just a report.
 - **Resolve citation aliases** (bcp/std) via `contains`, and load in UNWIND batches.
+
+# Council 6, 2026-10-13: Tool Atlas (Opus, blind)
+Win % by advisor: Outsider 7, Contrarian 7, First Principles 8, Expansionist 8 (about 15 in its best form), Executor 8–12. **Average about 8%**, a tie with Switchboard (about 8%, Council 3).
+Fatal-ish problems:
+- **Types are invented.** Only 19% of tools declare an `outputSchema` (live probe: 32 of 168).
+- **Multi-input tools break `SPpaths`.**
+- **The context-bloat pitch is already shipped:** Anthropic Tool Search, Docker MCP Gateway, LiteLLM.
+Prior art: ControlLLM, Graph RAG-Tool Fusion, Unified-MCP-Tool-Graph.
+Live facts: the registry API works with no login (43k servers, metadata only). 20 of 49 remote servers list tools without credentials.
+→ **Owner leans Switchboard; the tiebreakers favour it** (real parsed data, the owner's own story, dogfooding, the PS5 track).

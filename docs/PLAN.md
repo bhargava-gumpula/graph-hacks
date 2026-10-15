@@ -630,7 +630,23 @@ Deterministic: `scripts/scenario.ts` replays beats 1–4 through the real MCP/co
 
 ## 14. Workflows, step by step
 
-### 14.1 The build loop (repeat for every task)
+
+### 14.0 Change (owner, Oct 14): use the Cursor desktop app, not Paseo
+The owner finds Paseo too much overhead, so **all coding runs in the Cursor desktop app**. The Paseo-specific parts of this plan (`paseo run`, the 10-minute task cap, ACP hook tests) no longer apply. Everything else stays: briefs in `docs/tasks/`, one branch per task, the orchestrator's review and merge gate.
+
+**Cursor-app loop:**
+1. **Orchestrator writes `docs/tasks/<id>.md`** and commits it to `main`. Tasks can now be larger, about 20–45 minutes each, since there's no 10-minute drop.
+2. **For a single task:** in Cursor, open `~/Projects/graph-hacks` and open a new Agent chat. The prompt is: *"Read docs/tasks/<id>.md and do it exactly. First run `git checkout -b hack/<id>` from an up-to-date main. Commit on that branch when done. Finish with: a summary, `git diff --stat main`, and the test output."*
+3. **For parallel tasks,** never two agents in the same folder: give each its own worktree, then open each folder in its own Cursor window. (Cursor's built-in parallel agents with worktrees also work.)
+   ```
+   git worktree add ../gh-<id> -b hack/<id> main
+   ```
+   Keep it to 2–3 at a time. Use the second Cursor account in a second window or profile when the first hits its limits.
+4. **When an agent finishes,** the owner tells the orchestrator "<id> done". The orchestrator reviews the branch (`git diff main...hack/<id>`), runs the tests itself, merges into `main`, and removes the worktree.
+5. **Model:** Cursor's Agent mode with a strong coding model (claude-sonnet-5-5 or composer-2.5); claude-opus-5-5 for hard design or debugging tasks.
+6. **Dogfooding later:** Switchboard's Cursor hooks (`.cursor/hooks.json`) run inside the Cursor app, which is the verified environment for hooks. This removes the "hooks over ACP" risk.
+
+### 14.1 The build loop (original Paseo version, kept for reference)
 1. **Orchestrator picks the next tasks** from §6: the earliest phase first, only tasks whose dependencies are merged, and at most 3–4 at once, each touching different files.
 2. **It writes the brief** to `docs/tasks/<id>.md` from `docs/tasks/_template.md`:
    - Goal (one sentence)

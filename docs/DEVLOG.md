@@ -76,3 +76,10 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **New deps:** `hono` + `@hono/node-server` (server); `react` 18, `sigma` 4, `graphology`, `vite` (web). No `@react-sigma/core` — Sigma is created in a ref.
 - **Live check:** `GET /api/graph` → 36 nodes (35 files + agent A). POST A claims `lib/crypto.ts`, POST B claims `ui/LoginForm.tsx` → `{ ok:false, conflicts:[{ type:UPSTREAM, hops:3, path:[LoginForm, login, session, crypto] }] }`.
 - **Tests:** 29/29; typecheck and lint clean; `vite build` succeeds.
+
+## 2026-10-15 10:50 PT: B6 MCP + CLI (branch `hack/B6`)
+- **What changed:** `queries/agents.ts` is `registerAgent`, `heartbeat` (one write each) and `status` (read-only). `agentId()` is `SB_AGENT` or the git branch. Stdio MCP (`packages/mcp`, tools register_agent / claim / release / heartbeat / status) and CLI `switchboard parse|claim|release|check|edited`. `check` does not write a claim: exit 2 + import path, or exit 0. `.cursor/mcp.json` and `.mcp.json` gained a `switchboard` server next to `sb-echo`.
+- **New deps:** `@modelcontextprotocol/server@^2.3.1` (SDK v2) and `zod@^4` (tool inputSchema). No CLI framework.
+- **Who:** Grok 4.7 in `../gh-B6`. Main chat rebased onto B7 (conflicts in `index.ts`, `package.json`, lockfile) and re-ran every check.
+- **Proof:** `check ui/LoginForm.tsx --agent B` after A claims `lib/crypto.ts` exits 2 with `CONFLICT UPSTREAM … LoginForm → login → session → crypto`. AboutPage and the same check after release exit 0.
+- **Tests:** 34/34; typecheck and lint clean.

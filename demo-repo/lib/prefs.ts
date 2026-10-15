@@ -1,5 +1,10 @@
 import { clamp } from "./utils";
 
+export interface Preferences {
+  theme: "light" | "dark";
+  pageSize: number;
+}
+
 export const DEFAULT_THEME = "light";
 export const MIN_PAGE_SIZE = 5;
 export const MAX_PAGE_SIZE = 50;

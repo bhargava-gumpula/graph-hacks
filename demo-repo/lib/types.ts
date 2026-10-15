@@ -13,9 +13,4 @@ export interface Note {
   authorId: string;
 }
 
-export interface Preferences {
-  theme: "light" | "dark";
-  pageSize: number;
-}
-
 export const NOTE_BODY_LIMIT = 2000;

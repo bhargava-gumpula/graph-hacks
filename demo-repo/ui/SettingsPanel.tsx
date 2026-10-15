@@ -1,4 +1,4 @@
-import type { Preferences } from "../lib/types";
+import type { Preferences } from "../lib/prefs";
 import { readSettings } from "../api/settings";
 import { slug } from "../lib/utils";
 

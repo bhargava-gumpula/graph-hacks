@@ -16,3 +16,30 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Problems:** the Grok subagent committed both steps, then was stopped by Cursor's loop detector before reporting back; its commits were reviewed by hand. The owner's weekday-fix commit had landed on `hack/B0` as well as `main`, so the branch was rebased onto `main` (git dropped the duplicate). The package tsconfigs excluded `*.test.ts`, so tests were never type-checked; the exclude was removed.
 - **Tests:** `npm test` 1/1 green; `npm run typecheck` and `npm run lint` clean; `npm run db:ping` → `RETURN 1` = 1 in 0.12 ms.
 - **Environment facts for M2:** FalkorDB graph module 6.0.2 (`ver 60002`) on Redis 8.10.2. Module defaults are `TIMEOUT 1000` ms, `MAX_QUEUED_QUERIES 25` and `RESULTSET_SIZE 10000`. `dbms.components()` doesn't exist, so read the version from `MODULE LIST`. The `falkordb-learn` playground container was removed.
+
+## 2026-10-15 00:10 PT: B1 Day-0 tests (branch `hack/B1`)
+- **What changed:** `scripts/probe.sh` is one hook script for both editors. It logs to `/tmp/sb-hooks.log`, allows everything, and denies edits of `probe/BLOCKED.md`. `scripts/mcp-echo.ts` is a zero-dependency stdio MCP server with one tool, `sb_echo`. Both are registered in `.cursor/hooks.json`, `.claude/settings.json`, `.cursor/mcp.json` and `.mcp.json`.
+- **Who:** the main chat (Opus 5.5) wrote the probes and ran the tests from the Cursor side and through headless Claude Code (`claude -p`, Haiku). The owner ran the fresh Cursor chat steps.
+
+| Check | Cursor IDE 2026.10 | Claude Code 2.1.300 | Evidence (`/tmp/sb-hooks.log`) |
+|---|---|---|---|
+| Hook fires before an edit | ✅ `preToolUse`; every edit tool reports `tool=Write` + `file_path` | ✅ `PreToolUse` (`Edit`) | `cursor preToolUse tool=Write file=…` / `claude PreToolUse tool=Edit …` |
+| **Hard-block an edit** | ✅ denied; the agent saw our reason text | ✅ denied; the agent reported the reason and didn't retry | `DENY cursor …/BLOCKED.md`, `DENY claude …/BLOCKED.md`; file unchanged |
+| Hook fires after an edit | ✅ `afterFileEdit` | ✅ `PostToolUse` | both lines present |
+| Shell hook | ✅ `beforeShellExecution` | not tested | |
+| Session-start hook runs | ✅ runs | ✅ runs | `cursor sessionStart` 00:04:39, `claude SessionStart` 00:02:30 |
+| Session-start **context injection** | ❌ the output is ignored; the canary never reached the agent | ✅ the agent quoted the canary word | owner's fresh-chat test; `claude -p` answer |
+| Project MCP tool callable | ✅ after enabling `sb-echo` in Settings → Tools & MCP | ✅ loaded from `.mcp.json`, headless, no prompt | `tools/call sb_echo text="hi"` (cursor-vscode), `text="hello from claude"` |
+| Subagents covered by project hooks | ✅ the B2/B3 workers' writes in `../gh-B2` and `../gh-B3` hit the hooks | n/a | `cursor preToolUse … gh-B3/…/schema.ts` |
+| FalkorDB `algo.WCC`, `algo.pageRank` | ✅ WCC → batches `[t1,t2]`, `[t3]`; PageRank ranks the most-imported file first | | graph module 6.0.2 |
+
+- **Surprises:**
+  1. Cursor also runs Claude Code's hooks from `.claude/settings.json`, so every Cursor edit and session start fired both configs at the same second. Both denied BLOCKED.md.
+  2. FalkorDB rejects `shortestPath` inside `MATCH` ("only supports shortestPaths in WITH or RETURN clauses"). `MATCH (a…),(b…) WITH shortestPath((a)-[:IMPORTS*..3]->(b)) AS p RETURN …` works, and returns `null` when there is no path.
+- **Decisions (the owner should confirm; PLAN not yet edited):**
+  - **F12 Cursor deny moves from Stretch to Core.** Both editors can hard-block a conflicting edit. The demo can show the block in Cursor as well as in Claude Code.
+  - **Workers use the MCP tools** (they work in both editors). The CLI stays as the surface the hooks call.
+  - **Briefing delivery:** Claude Code uses its `SessionStart` hook. Cursor ignores `sessionStart` output, so a Cursor rule says "call `brief_me` first" (the MCP tool). Don't rely on the hook there.
+  - **B11 must avoid running hooks twice in Cursor.** Planned approach: the Claude-side hook exits early when the input carries Cursor's `cursor_version` field (verify that field in B11). The alternative is to ship only one config per editor.
+  - **B5 (Q1):** compute `shortestPath` in `WITH`, not `MATCH`. Hand this note to the conflict-query brief.
+- **Tests:** `npm test` 1/1; lint clean.

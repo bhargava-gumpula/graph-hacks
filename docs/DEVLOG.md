@@ -63,3 +63,10 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Design note:** new File nodes get `hub=false, rank=0.0`. A missing `hub` would be null, `NOT null` filters the row out, and Q1/Q2 would silently drop every file.
 - **Who:** the main chat (Opus 5.5), with no subagent.
 - **Tests:** `npm test` 19/19 (6 parser tests against `expected.json`; 5 loader tests on a real FalkorDB: counts, the 3-hop path in Cypher, `NOT f.hub`, idempotent reload, a removed import is dropped). Typecheck and lint clean. Live: demo-repo parses and loads in ~0.33 s; our own repo gives 60 files and 81 imports.
+
+## 2026-10-15 10:30 PT: B5 Conflict query Q1 (branch `hack/B5`)
+- **What changed:** `queries/conflict.ts` is Q1: SAME / UPSTREAM / DOWNSTREAM, hubs skipped on multi-hop, shortest path per (file, other agent). `queries/claims.ts` is `claim` (check then write) and `release`. One write query for the claims + event; a conflict writes no CLAIMS edge and records a `conflict` event with the paths.
+- **Why not shortestPath():** B1 found FalkorDB only allows it in WITH/RETURN and it can't carry a hub filter. With k ≤ 4 we enumerate the paths and pick the shortest in TS. `k` is inlined (Cypher can't take a variable-length bound as a parameter) and validated to 1..4.
+- **The hero test:** A claims `lib/crypto.ts`, B claims `ui/LoginForm.tsx` → CONFLICT UPSTREAM, path `LoginForm → login → session → crypto` (3 hops). Unrelated files and the settings island return empty (provably safe). Same file is hop 0 even for the hub. Own claims and expired claims never conflict.
+- **Speed:** Q1 round-trip on `sb_demo`, 50 runs: median **0.44 ms**, p95 0.55 ms.
+- **Who:** main chat (Opus 5.5). **Tests:** 27/27; typecheck and lint clean.

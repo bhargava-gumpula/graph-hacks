@@ -391,11 +391,11 @@ Scope: F1–F6 only. Demo repo first (so the parser has a target), then core + M
 
 ### P2 Core (Wed 1:00 PM – Thu 2:00 PM)
 
-Scope: F7–F15, F21 (model), replay script (F18 minimal: a Node script that calls the core, not the UI). Dogfooding switches on at the start of P2 (§11) in advisory mode.
+Scope: F7–F15, F20 (AI summary, after F9), F21 (model), F23 benchmark harness + first run (Thu morning), replay script (F18 minimal: a Node script that calls the core, not the UI). Dogfooding switches on at the start of P2 (§11) in advisory mode.
 
 ### P3 Visual polish (Thu 2:00 PM – Fri 10:00 AM)
 
-Dedicated. No new features. Design direction decided by the owner at the P2 checkpoint (§10) from three one-screen mockups a worker produces Thursday noon. Scope: theme tokens, typography, canvas styling (node size by `rank`, colour by label, claimed files with agent-coloured rings, conflict path pulse), side panels (agents, events, decisions), the Cypher drawer, replay transport (play/pause/step), responsive down to 1280 px, a `/judge` page (the 60-second path: three buttons that run Q1, Q3, Q5 on the seeded graph and show the query + result).
+Dedicated. No new features except the F24 landing page (hero, demo embed, F23 benchmark results, how it works, competitor table). Design direction decided by the owner at the P2 checkpoint (§10) from three one-screen mockups a worker produces Thursday noon. Scope: theme tokens, typography, canvas styling (node size by `rank`, colour by label, claimed files with agent-coloured rings, conflict path pulse), side panels (agents, events, decisions), the Cypher drawer, replay transport (play/pause/step), responsive down to 1280 px, a `/judge` page (the 60-second path: three buttons that run Q1, Q3, Q5 on the seeded graph and show the query + result).
 
 ### P4 Ship (Fri 10:00 AM – 11:00 PM)
 

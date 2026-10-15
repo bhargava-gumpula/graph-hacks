@@ -7,7 +7,7 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | B0 Setup | S1,S2,S4 | Grok 4.7 (S1,S2) + Opus 5.5 (S4, review) | done | `hack/B0` → main | All exit checks green; merged Oct 14 23:2x |
 | B1 Day-0 tests | S3,S5 | Opus 5.5 | done | `hack/B1` → main | Both editors hard-block edits and call MCP; Cursor ignores sessionStart context; results in DEVLOG |
 | B2 Demo repo | M1 | Grok 4.7 | doing | `hack/B2` (worktree `../gh-B2`) | |
-| B3 Core graph | M2,M6 | Grok 4.7 | doing | `hack/B3` (worktree `../gh-B3`) | |
+| B3 Core graph | M2,M6 | Grok 4.7 | done | `hack/B3` → main | connect, schema, event bus (20 concurrent writes → seq 1..20), feed, edits; 8 tests |
 | B4 Parser+loader | M3,M4 | Opus 5.5 | todo | | |
 | B5 Conflict query | M5 | Opus 5.5 | todo | | |
 | B6 MCP+CLI | M7,M8 | Grok 4.7 | todo | | |
@@ -35,4 +35,5 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 |---|---|---|---|---|---|---|---|---|---|
 
 ## Later ideas (not in the current phase)
+- `npm run db:ping` fails inside a worktree (compose project name differs). Workaround: `COMPOSE_PROJECT_NAME=graph-hacks npm run db:ping`. Fix by adding a top-level `name:` to docker-compose.yml when nothing is running.
 

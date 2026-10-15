@@ -1,12 +1,14 @@
 # Switchboard: build plan (Graph Hacks, Oct 14–18 2026)
 
-Written 2026-10-13 (planning only; no product code before Tue 11:31 AM PT). Sources for every tooling claim are in §16. Labels: **VERIFIED** (read in official docs or local output today), **UNVERIFIED** (forum, inference, or not testable before the start). Anything UNVERIFIED that the plan depends on has a Day-0 test in §5 P0.
+Written 2026-10-13 (planning only; no product code before Tue 11:31 AM PT). Sources for every tooling claim are in §18. Labels: **VERIFIED** (read in official docs or local output today), **UNVERIFIED** (forum, inference, or not testable before the start). Anything UNVERIFIED that the plan depends on has a Day-0 test in §5 P0.
 
-Inputs: HACKATHON.md, COUNCIL.md (Council 3 "best version"), research/SWITCHBOARD-COMPETITORS.md, PASEO.md + research/PASEO-DEEP.md, research/IDEA-RESEARCH.md §1.
+Inputs: HACKATHON.md, COUNCIL.md (Council 3 "best version"), research/SWITCHBOARD-COMPETITORS.md, research/IDEA-RESEARCH.md §1.
 
 > **Rules check (2026-10-13 evening, site + WeMakeDevs Discord):** the deadline is confirmed as Sat Oct 18, 11:29 AM PDT. Judged projects get a **public score and written feedback**, and the judges will be listed on the site. No rubric yet. The submission form opens at the start, so its fields and any video length limit are unknown: have Aside check it at 11:31 AM Tue. Details are in HACKATHON.md.
 
 ---
+
+> **Cursor agents: start at §17 (execution manual, current state, models, worktrees, goal checks). Owner: start at §0.**
 
 ## 0. Start here: everything a newcomer needs to know
 
@@ -38,7 +40,7 @@ Read this section first. After it you should know as much as the owner and the o
 ### 0.2 Who is building, and with what
 - **One builder (the owner)**, directing AI agents. Roles:
   - **Orchestrator:** a Claude chat that plans, writes task briefs, reviews and merges. It doesn't write product code.
-  - **Workers:** **Cursor agents** (two Cursor accounts) launched through **Paseo**, a desktop app and CLI that runs coding agents in separate git worktrees.
+  - **Workers:** **Cursor agents in the Cursor desktop app** (two Cursor accounts). Paseo is **not used** (owner decision, Oct 14). Since Oct 14 the main Cursor chat (Claude Opus 5.5) also acts as orchestrator, following §17.
   - **Aside:** browser tasks such as dashboards, Discord and forms.
   - **Composio CLI:** app integrations (installed; GitHub, Gmail, Notion, Discord and others connected).
 - **Budget:** $100 of Claude API credits, for the product's runtime only. The coding agents run on the Cursor subscriptions.
@@ -82,7 +84,7 @@ When several AI coding agents work on one codebase, they (a) forget everything w
 | Idea | Switchboard |
 | Main track | Agent Memory and Coordination; second entry: Agents That Act on Connected Data |
 | Name | Switchboard |
-| Coding | Cursor agents via Paseo; Claude orchestrator plans, reviews, merges |
+| Coding | **Cursor desktop app only (no Paseo).** Main chat: Claude Opus 5.5 (orchestrator, review, merge). Subagents and small tasks: Grok 4.7. Big tasks: Opus 5.5. See §17 |
 | Video | Owner's voice |
 | Blog | Any public platform (dev.to or Hashnode proposed) |
 | Domain | Owner buys the .xyz subdomain Thursday evening |
@@ -97,7 +99,7 @@ When several AI coding agents work on one codebase, they (a) forget everything w
 | `docs/COUNCIL.md` | Every council and its scores, and why each idea lost |
 | `docs/research/SWITCHBOARD-COMPETITORS.md` | Competitor matrix |
 | `docs/research/IDEA-RESEARCH.md` | Past FalkorDB winners and what judges rewarded |
-| `docs/PASEO.md`, `docs/research/PASEO-DEEP.md` | How to run Cursor workers in Paseo, including the worker template and merge gate |
+| `docs/STATUS.md`, `docs/DEVLOG.md`, `docs/BLOG-LOG.md` | Live task tracker, engineering log, and blog material logged as we go (§17) |
 | `docs/tasks/` | One brief per Cursor task (written by the orchestrator) |
 | `docs/DEVLOG.md` | Created in P0: every step, decision, failure and fix |
 
@@ -157,7 +159,7 @@ When several AI coding agents work on one codebase, they (a) forget everything w
 ## 2. Architecture
 
 ```
- Cursor worker (ACP via Paseo)      Claude Code agent            Orchestrator (Claude)
+ Cursor agent (Cursor app)           Claude Code agent            Orchestrator (Claude)
  ┌───────────────────────────┐     ┌─────────────────────┐      ┌───────────────────┐
  │ .cursor/mcp.json ──┐      │     │ .mcp.json ──┐       │      │ MCP + CLI         │
  │ .cursor/hooks.json │      │     │ .claude/settings    │      └────────┬──────────┘
@@ -209,7 +211,7 @@ When several AI coding agents work on one codebase, they (a) forget everything w
 
 ### 2.1 Hooks: what is actually supported (researched today)
 
-| Need | Claude Code | Cursor IDE | Cursor CLI / ACP (what Paseo runs) |
+| Need | Claude Code | Cursor IDE | Cursor CLI / ACP (not used) |
 |---|---|---|---|
 | Block an edit before it happens | `PreToolUse` matcher `Edit\|Write`, exit 2 or JSON `permissionDecision:"deny"` + reason. **VERIFIED** | `preToolUse` matcher `Write`, `{"permission":"deny","agent_message":…}`. Docs list `Write` as a matcher value; "ask" is not enforced. **VERIFIED for IDE** | Forum (Apr–Jun 2026, staff): CLI fires `beforeShellExecution`, `afterShellExecution`, `afterFileEdit`, `postToolUse`, `stop`, `sessionStart`; cloud agents fire `preToolUse`. **`preToolUse` in local CLI/ACP: UNVERIFIED** |
 | Log an edit after it happens | `PostToolUse` | `afterFileEdit` (`file_path`, `edits`) | `afterFileEdit` **works in CLI per staff (Apr 2026)**; ACP untested |
@@ -367,23 +369,23 @@ Principle: **every tag is submittable.** Each phase ends with a tag, a one-line 
 
 | Phase | Window | Goal | Exit criteria (demoable) | Tag | Rollback |
 |---|---|---|---|---|---|
-| **P0 Setup** | Tue 11:31 AM – 2:00 PM | Repo, toolchain, FalkorDB up, Paseo workers proven, Day-0 hook/MCP tests | `npm test` green on an empty core; FalkorDB answers `RETURN 1`; one Cursor worker made a commit in a worktree; hook/MCP test results recorded in DEVLOG | `v0.0-setup` | n/a |
+| **P0 Setup** | Tue 11:31 AM – 2:00 PM | Repo, toolchain, FalkorDB up, Cursor workflow proven, Day-0 hook/MCP tests | `npm test` green on an empty core; FalkorDB answers `RETURN 1`; one Cursor agent made a commit on a branch; hook/MCP test results recorded in DEVLOG | `v0.0-setup` | n/a |
 | **P1 MVP** | Tue 2:00 PM – Wed 1:00 PM | Thinnest end-to-end slice | Parse demo repo → graph; agent A claims `auth/session.ts`; agent B `claim('ui/LoginForm.tsx')` → CONFLICT with a 3-hop path; canvas shows the path in red; event feed scrolls | `v0.1-mvp` | `v0.0` |
 | **P2 Core** | Wed 1:00 PM – Thu 2:00 PM | Memory + hooks + algorithms | Decisions, lessons, briefing, why-trace, Claude Code deny hook, Cursor afterFileEdit logging, WCC batches, PageRank hubs, replay script of the demo scenario | `v0.2-core` | `v0.1` |
 | **P3 Visual polish** | Thu 2:00 PM – Fri 10:00 AM | It has to look amazing | Dark premium theme, animated path highlight, agent presence panel, Cypher panel, replay controls, empty/error states, 60-second judge path | `v0.3-polish` | `v0.2` |
 | **P4 Ship** | Fri 10:00 AM – Fri 11:00 PM | Freeze at noon; deploy, README, video, blog | Live URL up through the tunnel with static fallback; README with model + queries + AI disclosure; video recorded; blog drafted; submission form filled but not sent | `v1.0` | `v0.3` |
 | **P5 Submit** | Sat 6:00 AM – 10:30 AM | Final cut, submit | Submitted with both tracks named; links checked from a phone on cellular | `v1.0.1` | `v1.0` |
 
-Owner sleep: Tue ~1 AM, Wed ~1 AM, Thu ~1 AM, Fri ~1 AM. Nothing on the critical path is scheduled while asleep; a 30-minute Paseo schedule may run read-only status agents only.
+Owner sleep: Tue ~1 AM, Wed ~1 AM, Thu ~1 AM, Fri ~1 AM. Nothing on the critical path is scheduled while asleep.
 
 ### P0 Setup (Tue 11:31 AM – 2:00 PM) — owner + 2 workers
 
 Day-0 tests (results go into `docs/DEVLOG.md`; each changes a decision):
-1. **Cursor hooks over ACP:** add a `.cursor/hooks.json` with `afterFileEdit`, `sessionStart`, `preToolUse`(Write) and `beforeShellExecution`, each appending its event name to `/tmp/sb-hooks.log`; run a throwaway Paseo Cursor worker that edits a file and runs `ls`. Which lines appear decides F12 (deny vs log-only).
+1. **Cursor hooks in the Cursor app:** add a `.cursor/hooks.json` with `afterFileEdit`, `sessionStart`, `preToolUse` (Write) and `beforeShellExecution`, each appending its event name to `/tmp/sb-hooks.log`; ask a Cursor Agent to edit a file and run `ls`. Which lines appear decides F12 (deny vs log-only).
 2. **MCP over ACP:** `.cursor/mcp.json` with a stdio echo server (the MCP SDK's greet example); worker prompt "call the greet tool". If it cannot, workers use the CLI surface (same core).
 3. **Claude Code hook:** `PreToolUse` deny on `Edit` of `BLOCKED.md` in a throwaway session — expect "Blocked".
 4. **FalkorDB:** `docker run -p 6379:6379 -p 3000:3000 falkordb/falkordb:latest`; `GRAPH.QUERY t "CALL algo.WCC(null) YIELD node, componentId RETURN count(*)"` and `CALL algo.pageRank(null,null)`; record the server version.
-5. **Paseo:** `paseo.json` committed to main (npm ci, copy `.env`, unique ports); profiles Build/Review; second Cursor account if the owner set it up.
+5. **Second Cursor account:** confirm it signs in (a second window or profile) so heavy tasks can be split across the two accounts.
 
 ### P1 MVP (Tue 2:00 PM – Wed 1:00 PM)
 
@@ -413,7 +415,7 @@ Final cut (captions, 1080p), upload (YouTube unlisted + a copy in the repo relea
 
 ## 6. Task breakdown
 
-Rules for every task: one worktree, one branch `hack/<id>`, one brief in `docs/tasks/<id>.md` using the PASEO-DEEP template; touches only the listed paths; < 10 minutes of agent time; commits small; replies with diff stat + verify output. Orchestrator merges one branch at a time and reruns `npm test`. Parallel groups share no files; lanes that touch `packages/core/src/queries/` get one file each.
+Rules for every task: one branch `hack/<id>` (its own git worktree when running in parallel, §17.4), one brief in `docs/tasks/<id>.md` from `docs/tasks/_template.md`; touches only the listed paths; commits small; ends with a summary + `git diff --stat main` + test output. Tasks in this table are small and can be **bundled** into one Cursor task of 20–45 minutes (§17.5 gives the bundles). Merge one branch at a time and rerun `npm test`. Parallel groups share no files; lanes that touch `packages/core/src/queries/` get one file each.
 
 Repo layout (fixed in P0 so tasks are file-disjoint):
 ```
@@ -429,7 +431,7 @@ demo-repo/  (synthetic TS app)   scripts/{seed.ts, scenario.ts, parse.ts}   docs
 | ID | Task | Touches | Parallel group | Who |
 |---|---|---|---|---|
 | S1 | Monorepo scaffold: npm workspaces, TS 5 config, vitest, eslint, `packages/*` + `apps/*` empty with `index.ts`, root scripts (`dev`, `test`, `build`) | root, all package.json | A | Cursor |
-| S2 | `docker-compose.yml` (FalkorDB 6379/3000, volume), `.env.example`, `paseo.json` (setup script), `.gitignore` | root files | A | Cursor |
+| S2 | `docker-compose.yml` (FalkorDB 6379/3000, volume), `.env.example`, `.gitignore`, `scripts/wt.sh` (worktree helper, §17.4) | root files | A | Cursor |
 | S3 | Hook probes: `.cursor/hooks.json`, `.claude/settings.json`, `probe.sh` logging event names; MCP echo server `scripts/mcp-echo.ts` | `.cursor/`, `.claude/`, `scripts/` | A | Cursor |
 | S4 | Worker rules: `.cursor/rules/switchboard.mdc`, `CLAUDE.md`, `docs/tasks/_template.md`, `docs/DEVLOG.md` | docs, rules | A | Orchestrator |
 | S5 | Run Day-0 tests 1–4 and record outcomes | DEVLOG | after A | Owner + orchestrator |
@@ -508,7 +510,7 @@ Group B runs 3 workers in parallel (M1, M2, M3); C after; D in parallel (M7–M1
 
 | Risk | Likelihood | Impact | Early warning | Mitigation | Fallback |
 |---|---|---|---|---|---|
-| Cursor hooks don't fire over ACP (Paseo) | High | Med | Day-0 test 1 shows only shell hooks | Enforcement via the `claim` tool contract + Claude Code hard block | Cursor = log-only via `afterFileEdit`; if that also fails, `switchboard edited` is called by the worker rules after each file |
+| Cursor hooks don't fire as documented | Med | Med | Day-0 test 1 shows only some events | Enforcement via the `claim` tool contract + `afterFileEdit` late-collision flag; Claude Code gets the hard block | Advisory mode for Cursor |
 | MCP tools don't reach Cursor workers over ACP | Med | Med | Day-0 test 2 fails | CLI surface mirrors every tool | Workers use `npx switchboard …` from the shell; the demo's "MCP" agent is Claude Code |
 | ts-morph alias/edge-case misses (re-exports, dynamic import, `index.ts` barrels) | Med | Med | Parser test on demo repo misses the planted chain | Demo repo uses plain relative + one alias; barrel files handled explicitly; unresolved imports dropped, never guessed | Hand-written `imports.json` for the demo repo loaded by M4 |
 | "Everything is one component" (hub files) | High | High (Q3 useless, Q1 noisy) | WCC returns one batch | PageRank/in-degree hubs excluded from multi-hop paths; k ≤ 3 | Static hub list in `switchboard.json` |
@@ -517,7 +519,7 @@ Group B runs 3 workers in parallel (M1, M2, M3); C after; D in parallel (M7–M1
 | Live multi-agent demo flakes | High | High | Rehearsal 1 fails | Scripted scenario drives 4 of 5 beats; only the "resume" beat is live, and it's recorded separately | Replay recording is the video; live site shows replay mode |
 | Cloudflare Tunnel / spare Mac down during judging | Med | High | Uptime ping fails | launchd + Docker restart; `caffeinate`; static fallback at the edge | Local setup instructions + the recorded video |
 | Worker merge conflicts | Med | Med | Two branches touch one file | File-disjoint briefs; one query file per task; `docs/api.md` contract before UI work | Orchestrator rebases and resolves; the later branch re-runs tests |
-| Cursor drops a > 10 min turn | High | Low | `[canceled] http/2 stream` in logs | Tasks ≤ 10 min; commit early; `paseo send "continue"` | Relaunch a fresh worker with "what was tried" |
+| A Cursor agent goes off-track on a long task | Med | Med | Edits outside its listed files; tests red | Briefs list exact files; review the diff before merge; split big tasks | Reset the branch, re-run with a tighter brief |
 | Owner can't explain a query (rule 12) | Med | High (rejection) | Checkpoint quiz fails | §10 checkpoints; owner writes the README query section in their words | Simplify the query until the owner can draw it |
 | Running out of time | High | High | A phase slips > 3 h | Cut lines below; tags are always submittable | Submit `v0.2-core` with the P3 theme only |
 | graphmem or another entrant ships the same pitch | Med | Low | Discord/GitHub watch Thu | Lead with the parsed dependency path and WCC; show numbers | Position as "code-aware", theirs as "memory-only" |
@@ -574,7 +576,7 @@ Deterministic: `scripts/scenario.ts` replays beats 1–4 through the real MCP/co
 11. **Doesn't every file import utils, so it warns all the time?** Yes, which is why hubs are a first-class concept: PageRank on IMPORTS marks the top few percent as hubs, and multi-hop paths through a hub don't count (same-file still does). In the demo, `lib/utils.ts` is imported by 20 files and never causes a warning.
 12. **What did you build vs the AI?** The owner designed the graph model and the five queries (there is a dated decisions log), wrote the briefs for each task, reviewed and merged every branch, ran the Day-0 tests, and wrote the README query section by hand. Cursor agents wrote most of the TypeScript from those briefs. Disclosed in the README.
 13. **How does it scale?** The graph is files and symbols (thousands, not millions); queries are bounded (k ≤ 4, timeouts, hub exclusion). FalkorDB runs reads in parallel and serialises writes per graph, and each of our writes is one atomic query. Parsing is incremental per file hash. Multi-project is one graph per project.
-14. **Who would use this?** Anyone running 2–6 coding agents on one repo today: the owner does, with Cursor workers through Paseo and a Claude orchestrator, and this was built with itself from Wednesday on (the dogfood graph is in the repo).
+14. **Who would use this?** Anyone running 2–6 coding agents on one repo today: the owner does, with several Cursor agents and a Claude orchestrator, and this was built with itself from Wednesday on (the dogfood graph is in the repo).
 15. **What happens when the claim TTL expires mid-edit?** Heartbeats extend it; the briefing shows stale claims; an expired claim's files show as "recently edited by X" for an hour so a late collision is still flagged.
 16. **False positives?** Both directions can over-warn in a tightly coupled codebase. Hubs, k, and `intent` (read-only claims don't conflict) tune it. A warning is advisory for everyone but Claude Code's hook, and the hook's reason tells the agent exactly what to coordinate on.
 17. **Why file-level, not symbol-level?** Symbol-level is in the model (Symbol, DEFINES, CALLS) and in the Polish tier; file-level was enough for the demo path and is what the parser gets right reliably in four days.
@@ -615,7 +617,7 @@ Deterministic: `scripts/scenario.ts` replays beats 1–4 through the real MCP/co
 ## 12. Open questions for the owner
 
 1. Demo host domain: the exact `.xyz` subdomain, and is cloudflared already installed on the spare Mac?
-2. Second Cursor account: set up tonight (PASEO-DEEP §2) or run on one account?
+2. Second Cursor account: already set up (owner, Oct 14).
 3. Agent identity: branch name by default (proposed) or always explicit `SB_AGENT`?
 4. Should Claude Code's deny hook be on for our own repo from Thursday (true dogfooding) or stay advisory until the demo?
 5. Visual direction: pick from three mockups Thursday noon, or decide now (dark, graph-first, one accent colour is the proposal)?
@@ -631,49 +633,8 @@ Deterministic: `scripts/scenario.ts` replays beats 1–4 through the real MCP/co
 ## 14. Workflows, step by step
 
 
-### 14.0 Change (owner, Oct 14): use the Cursor desktop app, not Paseo
-The owner finds Paseo too much overhead, so **all coding runs in the Cursor desktop app**. The Paseo-specific parts of this plan (`paseo run`, the 10-minute task cap, ACP hook tests) no longer apply. Everything else stays: briefs in `docs/tasks/`, one branch per task, the orchestrator's review and merge gate.
-
-**Cursor-app loop:**
-1. **Orchestrator writes `docs/tasks/<id>.md`** and commits it to `main`. Tasks can now be larger, about 20–45 minutes each, since there's no 10-minute drop.
-2. **For a single task:** in Cursor, open `~/Projects/graph-hacks` and open a new Agent chat. The prompt is: *"Read docs/tasks/<id>.md and do it exactly. First run `git checkout -b hack/<id>` from an up-to-date main. Commit on that branch when done. Finish with: a summary, `git diff --stat main`, and the test output."*
-3. **For parallel tasks,** never two agents in the same folder: give each its own worktree, then open each folder in its own Cursor window. (Cursor's built-in parallel agents with worktrees also work.)
-   ```
-   git worktree add ../gh-<id> -b hack/<id> main
-   ```
-   Keep it to 2–3 at a time. Use the second Cursor account in a second window or profile when the first hits its limits.
-4. **When an agent finishes,** the owner tells the orchestrator "<id> done". The orchestrator reviews the branch (`git diff main...hack/<id>`), runs the tests itself, merges into `main`, and removes the worktree.
-5. **Model:** Cursor's Agent mode with a strong coding model (claude-sonnet-5-5 or composer-2.5); claude-opus-5-5 for hard design or debugging tasks.
-6. **Dogfooding later:** Switchboard's Cursor hooks (`.cursor/hooks.json`) run inside the Cursor app, which is the verified environment for hooks. This removes the "hooks over ACP" risk.
-
-### 14.1 The build loop (original Paseo version, kept for reference)
-1. **Orchestrator picks the next tasks** from §6: the earliest phase first, only tasks whose dependencies are merged, and at most 3–4 at once, each touching different files.
-2. **It writes the brief** to `docs/tasks/<id>.md` from `docs/tasks/_template.md`:
-   - Goal (one sentence)
-   - Context: links to PLAN sections and files to read
-   - Files you may touch (and must not touch)
-   - Steps
-   - Acceptance criteria (runnable checks)
-   - Constraints: under 10 minutes, no new dependencies without saying so, never edit outside your paths
-   - Reply format: summary + `git diff --stat` + test output
-
-   It commits the brief to `main`.
-3. **Owner (or orchestrator) launches the worker:**
-   ```
-   paseo run -d --provider cursor/<model> --title <id> --new-workspace worktree --worktree-mode branch-off --new-branch hack/<id> --base origin/main "Execute docs/tasks/<id>.md exactly. Commit on your branch. Reply with summary, diff stat and test output."
-   ```
-   Use the second account with `--provider cursor-b/<model>` to spread load.
-4. **Watch:** `paseo ls`, `paseo logs <id> --tail 50`; approve prompts with `paseo permit allow <id>` (also possible from the phone).
-5. **Review/merge gate** (orchestrator):
-   1. Read the diff.
-   2. Check it touched only the allowed files.
-   3. Check out the branch and run `npm test` + `npm run typecheck` yourself; don't trust the worker's word.
-   4. Merge into `main` one branch at a time.
-   5. Rebase the others.
-   6. Re-run the tests on `main`.
-   7. Log the result in DEVLOG.
-6. **Stuck worker** (no progress for more than 10 minutes, or a turn dropped): `paseo send <id> "continue from where you stopped; summarise state first"`. If still stuck after 15 minutes: commit what exists, archive the workspace, and relaunch with a brief that includes "what was tried". For hard bugs, use `/paseo-committee`.
-7. **End of phase:** run the exit-criteria demo, then `git tag vX.Y-name`, push the tag, and hold the owner checkpoint (§10).
+### 14.0 / 14.1 The build loop
+The build loop is the Cursor workflow in **§17** (no Paseo). Short version: write the brief → a Cursor agent does it on its own branch or worktree → review the diff and run the tests → merge into main → update STATUS, DEVLOG and BLOG-LOG.
 
 ### 14.2 Daily rhythm (Pacific time)
 | Time | What |
@@ -739,7 +700,167 @@ SolveLab (the owner's other project) looks good because of a deliberate process,
 5. Run `web-design-guidelines` as a review pass before freeze.
 
 
-## 16. Sources
+---
+
+## 17. Cursor execution manual: pick up exactly where planning stopped
+
+This section is written **for the Cursor agent** (and the owner) who now runs the project. Nothing here needs the earlier Claude chat. If you are a Cursor agent starting fresh, do §17.1 first.
+
+### 17.1 Where we are right now (handoff state, 2026-10-14)
+- **Planning is finished.** The idea is locked (Switchboard), the plan is approved, and the decisions are in §0.6.
+- **No product code exists yet.** The repo has only `docs/`. The hackathon opens **Tue Oct 14, 11:31 AM PT**; product code may only be written after that.
+- **The dev Mac is ready:**
+  - OrbStack/Docker: the CLI is at `~/.orbstack/bin/docker` (add it to PATH if `docker` isn't found).
+  - FalkorDB image `falkordb/falkordb:latest` is pulled. A container named `falkordb-learn` may be running on 6379/3000 as a learning playground; stop it before P0 (`docker rm -f falkordb-learn`).
+  - `cloudflared` is installed.
+  - Composio CLI is installed (not needed for the build).
+- **The next action is P0** (§5, §6): bundle **B0** below.
+- **Approved but not yet built:**
+  - F20, the AI briefing summary (Core).
+  - F23, the with/without benchmark (Core).
+  - F24, the landing page showing the benchmark (Polish).
+- **Not used:** Paseo, the Cursor CLI and ACP. Everything runs in the **Cursor desktop app**.
+
+### 17.2 Read order for a fresh agent (about 20 minutes)
+1. **This section, §17.**
+2. **§0:** context, rules, decisions, glossary.
+3. **§1–§4:** the product, architecture, graph model and queries.
+4. **`docs/STATUS.md`:** what's done and what's next.
+5. **The latest entries in `docs/DEVLOG.md`.**
+6. **The brief of your task** in `docs/tasks/<id>.md`.
+
+### 17.3 Model policy (owner decision, Oct 14)
+| Role | Model in Cursor | Use for |
+|---|---|---|
+| **Main chat / orchestrator** | **Claude Opus 5.5** | Planning the day, writing briefs, reviewing diffs, merging, debugging, checkpoints, goal checks |
+| **Subagents and smaller tasks** | **Grok 4.7** | Well-specified tasks from §6: one query file, one MCP tool, one panel, tests, docs, scripts, mechanical edits |
+| **Big tasks** | **Claude Opus 5.5** | Parser and loader, the conflict query (Q1), hooks, the scheduler (WCC), the benchmark harness, the visual polish phase, anything that failed twice with Grok |
+
+**Rule of thumb:** start a task on Grok 4.7 when the brief fully specifies the files and the acceptance tests. Use Opus 5.5 when the task needs design judgement or touches more than 3 files. If Grok's first attempt fails the tests twice, reset the branch and redo it with Opus.
+
+**Subagents:** if your Cursor version supports custom subagents (`.cursor/agents/*.md` with a `model` field), define one called `worker` with model Grok 4.7 and the worker rules from §17.6. Otherwise open a **new Agent tab** and pick Grok 4.7 manually. Either way, each subagent gets exactly one brief.
+
+### 17.4 Worktree workflow (parallel tasks without collisions)
+- **One task means one branch:** `hack/<id>`. Never two agents in the same folder.
+- **Sequential task (the simplest case)**, in the main folder `~/Projects/graph-hacks`:
+  ```
+  git checkout main && git pull && git checkout -b hack/<id>
+  ```
+- **Parallel task:** create its own worktree and open it in its own Cursor window:
+  ```
+  git worktree add ../gh-<id> -b hack/<id> main
+  ```
+  In each worktree, run `npm install` once (after S1 exists), and copy `.env` from the main folder.
+- **Ports:** FalkorDB is shared (one container, 6379). Each worktree uses its **own graph name** (`SB_GRAPH=sb_<id>`) so tests don't collide. Dev servers use different ports: web `5173 + n`, server `8787 + n`.
+- **At most 3 parallel tasks.** If the first Cursor account hits its limits, run the extra window on the second account.
+- **After merge:**
+  ```
+  git worktree remove ../gh-<id> && git branch -d hack/<id>
+  ```
+- **Helper:** S2 creates `scripts/wt.sh new <id>` and `scripts/wt.sh rm <id>` wrapping the commands above.
+
+### 17.5 Task bundles (the order to execute)
+§6 has the small tasks. In Cursor, run them as these bundles. The model is in brackets; ∥ means the bundles can run in parallel worktrees.
+
+| Bundle | Contains (§6 IDs) | Model | Runs after | Exit check |
+|---|---|---|---|---|
+| **B0 Setup** | S1, S2, S4 (rules files already exist; just verify) | Grok 4.7 | the start (11:31 AM Tue) | `npm test` green on an empty core, `docker compose up -d`, FalkorDB `RETURN 1` |
+| **B1 Day-0 tests** | S3, S5 | Opus 5.5 | B0 | DEVLOG records which Cursor hooks fire and whether MCP tools are callable from Cursor and Claude Code |
+| **B2 Demo repo** ∥ | M1 | Grok 4.7 | B0 | ~35 files, planted 3-hop chain, hub `lib/utils.ts`, `tsc` passes |
+| **B3 Core graph** ∥ | M2 + M6 | Grok 4.7 | B0 | connect, schema, events, feed and edits tests green |
+| **B4 Parser + loader** | M3 + M4 | **Opus 5.5** | B2, B3 | parsing demo-repo gives the expected file and import counts; re-parse is idempotent |
+| **B5 Conflict query** | M5 | **Opus 5.5** | B4 | test: A claims session.ts, B claims LoginForm.tsx → CONFLICT with the 3-hop path; an unrelated file → OK |
+| **B6 MCP + CLI** ∥ | M7 + M8 | Grok 4.7 | B5 | MCP `claim` callable from Cursor; `switchboard check` exits 2 on conflict |
+| **B7 Server + web shell** ∥ | M9 + M10 | Opus 5.5 | B5 | canvas shows the graph, conflict path in red via SSE |
+| **B8 MVP tag** | M11, M12 | Opus 5.5 (main chat) | B6, B7 | scenario steps 1–2 run end to end → tag `v0.1-mvp` + **goal check** |
+| **B9 Queries** ∥ | C1–C5 (one file each; can be 2 worktrees) | Grok 4.7 (C4 schedule on Opus) | B8 | each query's test green against the demo repo |
+| **B10 Tools + CLI** ∥ | C6 + C7 | Grok 4.7 | B9 | every tool callable, CLI mirrors work |
+| **B11 Hooks** ∥ | C8 + C9 (+ C15 if Day-0 allows) | **Opus 5.5** | B9 | Claude Code deny works on a conflicting edit; Cursor afterFileEdit logs edits |
+| **B12 AI summary** | F20: `core/summarize.ts` using the Anthropic SDK with Haiku, capped (max tokens, per-day budget, cache by briefing hash), env `ANTHROPIC_API_KEY`, off if unset | Grok 4.7 | B9 (C1) | the briefing returns `summary` + graph evidence; with no key it degrades to no summary |
+| **B13 Server routes + panels** | C10, C11, C12 | Opus 5.5 | B10 | panels show agents, events, decisions; why drawer; batches |
+| **B14 Scenario + dogfood** | C13, C14 | Opus 5.5 | B11, B13 | full demo scenario replays; our own Cursor agents use Switchboard (advisory) |
+| **B15 Benchmark** | F23: `bench/` harness that runs the same multi-agent task N× without and N× with Switchboard on demo-repo, counting broken builds (`tsc`), failing tests, overwritten edits and time → `bench/results.json` + `bench/REPORT.md` | **Opus 5.5** | B14 | N=10 each (5 if late); numbers reproducible from the script |
+| **B16 Core tag** | C16 | Opus 5.5 (main chat) | B12–B15 | tag `v0.2-core` + **goal check** |
+| **B17 Mockups** | V0 | Opus 5.5 | before P3 | 3 one-screen HTML mockups; the owner picks one |
+| **B18 Visual polish** | V1–V7 (2–3 worktrees by panel) | **Opus 5.5** | B17 | §15 UI playbook applied; screenshots reviewed by the owner |
+| **B19 Landing + judge page** | F24 landing page (hero, demo embed, benchmark results from `bench/results.json`, how it works, competitor table, links) + V8 `/judge` + V9 | Opus 5.5 | B18, B15 | landing page live locally; numbers come from the file, not hard-coded |
+| **B20 Polish tag** | V10 | Opus 5.5 (main chat) | B19 | tag `v0.3-polish` + **goal check**; **feature freeze Fri 12:00 PM** |
+| **B21 Deploy** | D1, D2 | Opus 5.5 | freeze | live at `switchboard.<domain>` with the static fallback |
+| **B22 Docs** | D3, D4 | Grok 4.7 | freeze | README complete (setup, model, queries, algorithms, AI disclosure, human-direction section, competitors, benchmark) |
+| **B23 Blog** | D5, using `docs/BLOG-LOG.md` | Opus 5.5 | B22 | the blog draft in `docs/blog.md` |
+| **B24 Video + submit** | D6, D7 | owner + main chat | all | tag `v1.0`; submitted by **Sat 10:30 AM PT** |
+
+### 17.6 Rules every Cursor agent follows (also in `AGENTS.md` and `.cursor/rules/switchboard.mdc`)
+1. **Only touch the files your brief lists.** If you need another file, stop and say so.
+2. **Work on your branch only** (`hack/<id>`); never commit to `main` directly. Small commits with clear messages.
+3. **No secrets in the repo.** `.env` is git-ignored, and `.env.example` holds placeholders only.
+4. **FalkorDB is the only data store.** Don't add another database, because the graph must do the real work.
+5. **Every Cypher query lives in `packages/core/src/queries/*.ts`** as a named export, with a test against a real FalkorDB (the demo repo fixture).
+6. **No new dependency** without stating why in your final message.
+7. **Finish with:** a summary, `git diff --stat main`, the test output, and a short note for DEVLOG and, if interesting, for BLOG-LOG.
+8. **Hackathon rules:** public, synthetic or own data only. The owner must be able to explain what you built, so keep the code simple and commented where the logic is non-obvious.
+
+### 17.7 Review and merge gate (main chat, Opus 5.5)
+1. Run `git diff main...hack/<id>`: only the allowed files changed, no secrets, no stray dependencies.
+2. Run `npm test` and `npm run typecheck` **yourself**, on the branch.
+3. Merge (`git checkout main && git merge --no-ff hack/<id>`), rerun the tests on main, and push.
+4. Update `docs/STATUS.md`: mark the task done, with the merge commit.
+5. Add a dated entry to `docs/DEVLOG.md`: what changed, decisions, problems and fixes.
+6. If anything was worth telling the world, add a line to `docs/BLOG-LOG.md` (§17.9).
+
+### 17.8 Goal alignment: always build towards the goal, and check it at every checkpoint
+**The goal (memorise it):** *Win the Agent Memory and Coordination track (second entry: Agents That Act on Connected Data) with a product where FalkorDB visibly does the real work. That means agents' edit claims are checked against a parsed code dependency graph; decisions, lessons and history live in the same graph; it warns before collisions, schedules safe parallel work and briefs replacement agents. It must have a polished UI, a landing page with real benchmark numbers, and a demo that can't fail. The owner must be able to explain every part.*
+
+**Before starting any task,** ask: does this move us towards that goal, inside the current phase? If not, don't do it, or log it as a later idea in STATUS.
+
+**At every checkpoint** (end of each bundle tag: B8, B16, B20, and each evening), the main chat runs this check and writes the answers into DEVLOG:
+1. **Graph is essential:** if FalkorDB were removed, would the headline features stop working? (They must.)
+2. **Track fit:** does what we have demonstrate memory (episodic, semantic, procedural), coordination (claims, conflicts, handoff) and per-project tenancy?
+3. **Differentiation:** can we still say the positioning line (§0.5) truthfully? Have any competitor features or claims changed?
+4. **The demo:** does the current §8 script run end to end on the current build? What's missing?
+5. **Proof:** are the tests, the scenario replay and (after B15) the benchmark numbers real and reproducible?
+6. **Explainability:** can the owner explain the newest query or feature in two sentences? If not, explain it to the owner now (§10).
+7. **Schedule:** are we on time against §5? If not, apply the next cut line (§7) now; don't hope to catch up.
+8. **Drift:** did we build anything not in the plan? Keep it only if it serves the goal.
+
+If any answer is "no", fix that before starting the next bundle.
+
+### 17.9 Logging as we go (DEVLOG + BLOG-LOG)
+- **`docs/DEVLOG.md`, the engineering log.** One dated entry per merge or decision: what changed, why, problems, fixes, test results. It's the source for the README's "what the human did" section (rule 12) and the AI-disclosure section.
+- **`docs/BLOG-LOG.md`, raw material for the blog post** (AirPods prize). Add an entry whenever something blog-worthy happens:
+  - a design decision and why
+  - a surprising bug
+  - a "the graph caught it" moment
+  - a screenshot worth sharing (save it to `docs/blog-assets/`)
+  - benchmark numbers
+  - a lesson about coordinating AI agents
+
+  Format: `## <date time> — <title>` + 2–5 lines + the asset path. On Friday, B23 turns this log into the post.
+- **`docs/STATUS.md`, the live tracker** of every bundle and task with its state (todo, doing, done, cut), branch, model, and notes. Update it at every merge.
+
+### 17.10 The brief template (`docs/tasks/_template.md`)
+Every task brief has:
+- **Goal:** one sentence.
+- **Context:** which PLAN sections and files to read.
+- **Files you may touch / must not touch.**
+- **Steps.**
+- **Acceptance criteria:** runnable checks.
+- **Model:** Grok 4.7 or Opus 5.5.
+- **Branch:** `hack/<id>` (worktree yes or no).
+- **Report format:** as in §17.6 item 7.
+
+The main chat writes the brief, commits it to main, then starts the task.
+
+### 17.11 When things go wrong
+- **The agent is stuck or looping:** stop it. Commit what's useful, write a "what was tried" note into the brief, reset the branch and restart with a tighter brief (or switch Grok → Opus).
+- **Tests red on main after a merge:** revert the merge commit immediately (`git revert -m 1 <sha>`). Fix it on a branch, never on main.
+- **Behind schedule:** apply the cut lines in §7, in order. Never skip the goal check.
+- **Something is broken at the end of a phase:** go back to the last tag; it's always submittable.
+
+
+---
+
+## 18. Sources
 
 - Cursor hooks reference (events, matchers `Shell|Read|Write`, `permission` allow/deny, `failClosed`, exit 2): https://cursor.com/docs/agent/hooks and https://cursor.com/docs/hooks
 - Cursor CLI hook gaps (staff replies Jan–Jun 2026): https://forum.cursor.com/t/cursor-cli-doesnt-send-all-events-defined-in-hooks/148316 ; https://forum.cursor.com/t/cursor-cli-omits-beforesubmitprompt-afteragentresponse-and-stop-hooks-loses-token-usage-and-emits-inconsistent-generation-id-values/169059
@@ -753,12 +874,11 @@ SolveLab (the owner's other project) looks good because of a deliberate process,
 - FalkorDB Canvas (web component, `setData` replaces graph): https://docs.falkordb.com/browser/canvas ; npm `@falkordb/canvas` 0.3.3
 - Sigma.js 4.0.1, graphology, `@react-sigma/core` 5.0.6; Cytoscape 3.34.3; `@xyflow/react` 12.12 (npm, 2026-10-13)
 - ts-morph 28.0.0 (npm); tree-sitter 0.25.1 / web-tree-sitter 0.27.1 (npm); trade-off sources: https://aide.dev/blog/llm_lsp , https://www.npmjs.com/package/lineage-ts
-- Paseo workflow and failure modes: docs/PASEO.md, docs/research/PASEO-DEEP.md
 - What FalkorDB judges rewarded: docs/research/IDEA-RESEARCH.md §1 (FalkorDB recaps)
 
 ### Owner answers (2026-10-14)
 1. **Domain:** the owner has the subdomain lined up and will buy it when told. Buy it **Thu evening**, so DNS settles before the Fri 12–3 PM deploy.
-2. **Second Cursor account:** both accounts are already set up. Confirm the Paseo provider entry (`cursor-b`) in P0.
+2. **Second Cursor account:** both accounts are already set up. Use it in a second Cursor window when the first account hits limits.
 3. **AI in the product:** decide **Thursday** at the P2 checkpoint.
 4. **Visual direction:** still open; mockups at the P2 checkpoint as planned.
 5. **Blog:** no platform is specified in any rule (overview: "Write a blog post about your project"). Any public platform works. Proposal: dev.to or Hashnode for reach, cross-posted, and linked from the README.

@@ -1,0 +1,10 @@
+{
+  "files": 35,
+  "imports": 51,
+  "typeOnlyImports": 3,
+  "aliasImports": 4,
+  "hub": { "path": "lib/utils.ts", "importedBy": 20 },
+  "chain": ["ui/LoginForm.tsx", "api/login.ts", "auth/session.ts", "lib/crypto.ts"],
+  "island": ["ui/SettingsPanel.tsx", "api/settings.ts", "lib/prefs.ts"],
+  "noDependents": ["ui/AboutPage.tsx"]
+}

@@ -86,8 +86,8 @@ When several AI coding agents work on one codebase, they (a) forget everything w
 | Video | Owner's voice |
 | Blog | Any public platform (dev.to or Hashnode proposed) |
 | Domain | Owner buys the .xyz subdomain Thursday evening |
-| AI inside the product | Decide Thursday; leaning towards a plain-English summary of the briefing (F20) |
-| Benchmark (with/without Switchboard) | Pending owner decision (§12 item 9) |
+| AI inside the product | **Yes (owner, Oct 14):** F20, a plain-English Claude summary on top of the graph briefing (Haiku, capped, cached). The graph stays the source of truth. |
+| Benchmark (with/without Switchboard) | **Yes (owner, Oct 14):** Core feature F23. Same task 10× without vs 10× with (5× each if Thursday runs late). The results go on the **landing page** (F24), the README and the video. |
 
 ### 0.7 Where everything lives
 | File | What |
@@ -146,9 +146,11 @@ When several AI coding agents work on one codebase, they (a) forget everything w
 | F17 | Cypher-on-screen panel: each warning shows the query that produced it | **Polish** | Rule 12 and judge trust |
 | F18 | Replay mode: a seeded scenario script drives the MCP tools; the UI animates it | **Polish** | Also the static fallback for the live site |
 | F19 | `handoff(task, note)` and `next_task()` for the orchestrator | **Polish** | |
-| F20 | Optional Claude Haiku prose summary of a briefing (the only LLM in the product; capped) | **Stretch** | $100 credits; off by default |
+| F20 | Claude Haiku plain-English summary on top of each briefing (the only LLM in the product; capped and cached) | **Core** | Owner approved Oct 14. Built after F9 works; the graph result is shown underneath as evidence |
 | F21 | Multi-project tenancy: one FalkorDB graph per project (`sb_<slug>`), project switcher in UI | **Core** (model) / Polish (UI) | Multi-graph is native |
 | F22 | Second language (Python via tree-sitter) | **Stretch** | Not for this week |
+| F23 | **With/without benchmark:** a script runs the same multi-agent task N× without and N× with Switchboard on the demo repo, counting broken builds, failing tests, overwritten edits and time. Results go to `bench/results.json` | **Core** | Owner approved Oct 14. Runs Thu (P2 end / P3 start). N=10, or 5 if late |
+| F24 | **Landing page:** hero + one-line pitch, the live/replay demo embed, **benchmark results** (from F23), "how it works" with the graph model, competitor comparison, links (repo, video, blog) | **Polish** | Owner approved Oct 14. Built in P3 with the UI playbook (§15) |
 
 ---
 

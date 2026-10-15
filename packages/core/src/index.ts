@@ -24,3 +24,6 @@ export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.j
 
 export { claim, release, DEFAULT_TTL_MS } from "./queries/claims.js";
 export type { ClaimInput, ClaimResult } from "./queries/claims.js";
+
+export { graphSnapshot, listClaims } from "./queries/snapshot.js";
+export type { ActiveClaim, GraphEdge, GraphNode, GraphSnapshot } from "./queries/snapshot.js";

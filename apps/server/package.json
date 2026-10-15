@@ -5,6 +5,12 @@
   "main": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.17",
+    "@switchboard/core": "*",
+    "hono": "^4.13.13"
   }
 }

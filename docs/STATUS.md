@@ -10,8 +10,8 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | B3 Core graph | M2,M6 | Grok 4.7 | done | `hack/B3` → main | connect, schema, event bus (20 concurrent writes → seq 1..20), feed, edits; 8 tests |
 | B4 Parser+loader | M3,M4 | Opus 5.5 | done | `hack/B4` → main | demo-repo → 35 files, 51 imports, idempotent; `npm run parse -- <dir>` |
 | B5 Conflict query | M5 | Opus 5.5 | done | `hack/B5` → main | Q1: A claims crypto.ts, B claims LoginForm → CONFLICT 3-hop UPSTREAM; empty path = OK; Q1 median 0.44 ms |
-| B6 MCP+CLI | M7,M8 | Grok 4.7 | todo | | |
-| B7 Server+web shell | M9,M10 | Opus 5.5 | todo | | |
+| B6 MCP+CLI | M7,M8 | Grok 4.7 | doing | `hack/B6` (worktree `../gh-B6`) | |
+| B7 Server+web shell | M9,M10 | Opus 5.5 | done | `hack/B7` → main | `/api/graph` + SSE; canvas; POST claim LoginForm → 3-hop CONFLICT |
 | B8 MVP tag v0.1 + goal check | M11,M12 | Opus 5.5 | todo | | |
 | B9 Queries | C1–C5 | Grok 4.7 (C4 Opus) | todo | | |
 | B10 Tools+CLI | C6,C7 | Grok 4.7 | todo | | |

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sb-echo": {
+      "command": "node",
+      "args": ["${workspaceFolder}/scripts/mcp-echo.ts"]
+    }
+  }
+}

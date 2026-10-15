@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [{ "command": "scripts/probe.sh cursor sessionStart" }],
+    "preToolUse": [{ "command": "scripts/probe.sh cursor preToolUse", "matcher": "Write" }],
+    "beforeShellExecution": [{ "command": "scripts/probe.sh cursor beforeShellExecution" }],
+    "afterFileEdit": [{ "command": "scripts/probe.sh cursor afterFileEdit" }]
+  }
+}

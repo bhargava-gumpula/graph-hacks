@@ -5,9 +5,9 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | Bundle | Tasks | Model | State | Branch / merge | Notes |
 |---|---|---|---|---|---|
 | B0 Setup | S1,S2,S4 | Grok 4.7 (S1,S2) + Opus 5.5 (S4, review) | done | `hack/B0` → main | All exit checks green; merged Oct 14 23:2x |
-| B1 Day-0 tests | S3,S5 | Opus 5.5 | todo | | |
-| B2 Demo repo | M1 | Grok 4.7 | todo | | |
-| B3 Core graph | M2,M6 | Grok 4.7 | todo | | |
+| B1 Day-0 tests | S3,S5 | Opus 5.5 | done | `hack/B1` → main | Both editors hard-block edits and call MCP; Cursor ignores sessionStart context; results in DEVLOG |
+| B2 Demo repo | M1 | Grok 4.7 | doing | `hack/B2` (worktree `../gh-B2`) | |
+| B3 Core graph | M2,M6 | Grok 4.7 | doing | `hack/B3` (worktree `../gh-B3`) | |
 | B4 Parser+loader | M3,M4 | Opus 5.5 | todo | | |
 | B5 Conflict query | M5 | Opus 5.5 | todo | | |
 | B6 MCP+CLI | M7,M8 | Grok 4.7 | todo | | |

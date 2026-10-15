@@ -50,3 +50,9 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Proof the graph is the bus:** 20 concurrent `recordEvent` calls return seqs exactly 1..20, because FalkorDB serialises writes per graph and the bump and CREATE are one query.
 - **Deviation:** full-text indexes use `CREATE FULLTEXT INDEX FOR (d:Decision) ON (d.text, d.why)`, because FalkorDB 6.0.2 rejects the plan's `db.idx.fulltext.createNodeIndex(label, prop, prop)` ("expected at most 1 argument").
 - **Tests:** `npm test` 8/8 twice in a row; typecheck and lint clean.
+
+## 2026-10-15 00:35 PT: B2 Demo repo (branch `hack/B2`)
+- **What changed:** `demo-repo/` is a 35-file synthetic "team notes" TS app with no dependencies and no JSX. The planted traps: the chain `ui/LoginForm.tsx → api/login.ts → auth/session.ts → lib/crypto.ts`; the hub `lib/utils.ts`, imported by 20 files; 4 `@lib/` alias imports; 3 type-only imports; `ui/AboutPage.tsx` with no dependents; and an independent settings island (`ui/SettingsPanel.tsx → api/settings.ts → lib/prefs.ts`). The ground truth for the B4 parser test is in `demo-repo/expected.json` (35 files, 51 import edges).
+- **Who:** Grok 4.7 subagent in `../gh-B2`. It stalled once and was resumed. The main chat verified every count with an independent import resolver.
+- **Bug caught in review (it was in the brief):** the island reached the login chain in 2 hops through `lib/types.ts` (`SettingsPanel → types ← LoginForm`) via type-only imports. Q3's undirected interference check would have merged both tasks into one batch and broken the "safe to run in parallel" demo. Fix: `Preferences` moved into `lib/prefs.ts`. Now no island↔chain path of 3 hops or fewer exists without going through the hub.
+- **Tests:** `npx tsc -p demo-repo` exit 0; `npm test` and lint green.

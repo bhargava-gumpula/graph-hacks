@@ -7,3 +7,6 @@ We ran blind "councils" of five AI advisors (Contrarian, First Principles, Expan
 
 ## 2026-10-13 — The one query that justifies the graph
 `MATCH p=(f:File {path:$mine})-[:IMPORTS*1..3]->(t)<-[:CLAIMS]-(a:Agent) RETURN p`. If it returns a path, two agents are about to collide through a dependency chain that no file lock would catch. If it returns nothing, that empty result *is the proof* that they can safely run in parallel.
+
+## 2026-10-14 23:15 — The first worker agent got stuck, and git was our safety net
+The first Grok worker built the scaffold, committed it in two clean steps, then got caught in a loop and was stopped before it could report. Because the rule is "one branch per task, small commits", nothing was lost: the orchestrator read the commits, re-ran every check itself and fixed one gap (tests weren't type-checked). Lesson: never trust an agent's report. Trust the branch and re-run the checks.

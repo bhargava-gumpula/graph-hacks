@@ -4,7 +4,7 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 
 | Bundle | Tasks | Model | State | Branch / merge | Notes |
 |---|---|---|---|---|---|
-| B0 Setup | S1,S2,S4 | Grok 4.7 | todo | | |
+| B0 Setup | S1,S2,S4 | Grok 4.7 (S1,S2) + Opus 5.5 (S4, review) | done | `hack/B0` → main | All exit checks green; merged Oct 14 23:2x |
 | B1 Day-0 tests | S3,S5 | Opus 5.5 | todo | | |
 | B2 Demo repo | M1 | Grok 4.7 | todo | | |
 | B3 Core graph | M2,M6 | Grok 4.7 | todo | | |

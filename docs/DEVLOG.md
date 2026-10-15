@@ -70,3 +70,9 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **The hero test:** A claims `lib/crypto.ts`, B claims `ui/LoginForm.tsx` → CONFLICT UPSTREAM, path `LoginForm → login → session → crypto` (3 hops). Unrelated files and the settings island return empty (provably safe). Same file is hop 0 even for the hub. Own claims and expired claims never conflict.
 - **Speed:** Q1 round-trip on `sb_demo`, 50 runs: median **0.44 ms**, p95 0.55 ms.
 - **Who:** main chat (Opus 5.5). **Tests:** 27/27; typecheck and lint clean.
+
+## 2026-10-15 10:35 PT: B7 Server + web canvas (branch `hack/B7`)
+- **What changed:** `queries/snapshot.ts` reads files, IMPORTS, agents and active CLAIMS for the canvas. Hono server (`npm run server`, :8787) exposes `GET /api/graph`, `/api/claims`, `/api/events` (SSE, polls seq every 500 ms) and `POST /api/claims` so the demo can be driven without MCP. Vite+React+Sigma canvas (`npm run web`, :5173) loads the snapshot and lights `conflict` paths in red.
+- **New deps:** `hono` + `@hono/node-server` (server); `react` 18, `sigma` 4, `graphology`, `vite` (web). No `@react-sigma/core` — Sigma is created in a ref.
+- **Live check:** `GET /api/graph` → 36 nodes (35 files + agent A). POST A claims `lib/crypto.ts`, POST B claims `ui/LoginForm.tsx` → `{ ok:false, conflicts:[{ type:UPSTREAM, hops:3, path:[LoginForm, login, session, crypto] }] }`.
+- **Tests:** 29/29; typecheck and lint clean; `vite build` succeeds.

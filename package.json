@@ -17,7 +17,9 @@
     "lint": "eslint .",
     "db:up": "docker compose up -d",
     "db:ping": "docker compose exec falkordb redis-cli GRAPH.QUERY sb_ping \"RETURN 1\"",
-    "parse": "tsx scripts/parse.ts"
+    "parse": "tsx scripts/parse.ts",
+    "server": "tsx apps/server/src/index.ts",
+    "web": "npm run dev -w @switchboard/web"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

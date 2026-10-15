@@ -16,12 +16,14 @@
     "dev": "npm run dev --workspaces --if-present",
     "lint": "eslint .",
     "db:up": "docker compose up -d",
-    "db:ping": "docker compose exec falkordb redis-cli GRAPH.QUERY sb_ping \"RETURN 1\""
+    "db:ping": "docker compose exec falkordb redis-cli GRAPH.QUERY sb_ping \"RETURN 1\"",
+    "parse": "tsx scripts/parse.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
     "eslint": "^10.12.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.2",
     "vitest": "^5.0.4"

@@ -13,3 +13,6 @@ The first Grok worker built the scaffold, committed it in two clean steps, then 
 
 ## 2026-10-15 00:10 — One bash script hard-blocked two different AI editors
 A 40-line probe script told Cursor and Claude Code that `BLOCKED.md` was "claimed by another agent". Both editors refused the edit and passed our reason to the agent, which stopped and reported it instead of retrying. Two surprises: Cursor also runs Claude Code's hook config, so one edit was checked twice; and Cursor runs the session-start hook but drops what it returns, so briefings have to be pulled through an MCP call instead of pushed. Evidence: the `/tmp/sb-hooks.log` lines in DEVLOG (B1).
+
+## 2026-10-15 00:35 — The graph caught a bug in our own test data
+The demo repo has two "independent" features so the scheduler can show they're safe to run in parallel. Checking the import graph by hand found they weren't independent: both imported one shared types file, so they were 2 hops apart, and a connected-components pass would have put them in one batch. A file-lock tool would never notice. A dependency graph notices immediately. Fix: the settings types moved into the settings feature's own file.

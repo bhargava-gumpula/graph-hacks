@@ -56,3 +56,10 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Who:** Grok 4.7 subagent in `../gh-B2`. It stalled once and was resumed. The main chat verified every count with an independent import resolver.
 - **Bug caught in review (it was in the brief):** the island reached the login chain in 2 hops through `lib/types.ts` (`SettingsPanel → types ← LoginForm`) via type-only imports. Q3's undirected interference check would have merged both tasks into one batch and broken the "safe to run in parallel" demo. Fix: `Preferences` moved into `lib/prefs.ts`. Now no island↔chain path of 3 hops or fewer exists without going through the hub.
 - **Tests:** `npx tsc -p demo-repo` exit 0; `npm test` and lint green.
+
+## 2026-10-15 10:30 PT: B4 Parser + loader (branch `hack/B4`)
+- **What changed:** `core/parser.ts` (`parseRepo`) uses ts-morph to turn a repo into files (`path, lang, loc, sha1`) and file→file imports (`specifiers`, `typeOnly`). It loads the repo's tsconfig for aliases only and adds files by glob, so it also parses repos whose root tsconfig doesn't list every file. `core/queries/loader.ts` (`loadParse`) makes three batched `UNWIND … MERGE` passes (files; clear the outgoing imports of re-parsed files; imports) and then records a `parse` event. `scripts/parse.ts` gives `npm run parse -- <dir>`.
+- **New dependencies:** `ts-morph@^28` (the parser, as in PLAN §2) and `tsx` as a root dev dependency (it runs TS scripts whose imports use `.js` paths; Node's built-in type stripping can't, and the CLI and server need it in dev too).
+- **Design note:** new File nodes get `hub=false, rank=0.0`. A missing `hub` would be null, `NOT null` filters the row out, and Q1/Q2 would silently drop every file.
+- **Who:** the main chat (Opus 5.5), with no subagent.
+- **Tests:** `npm test` 19/19 (6 parser tests against `expected.json`; 5 loader tests on a real FalkorDB: counts, the 3-hop path in Cypher, `NOT f.hub`, idempotent reload, a removed import is dropped). Typecheck and lint clean. Live: demo-repo parses and loads in ~0.33 s; our own repo gives 60 files and 81 imports.

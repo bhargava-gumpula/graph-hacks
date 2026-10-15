@@ -11,7 +11,8 @@ export type EventKind =
   | "decision"
   | "lesson"
   | "handoff"
-  | "heartbeat";
+  | "heartbeat"
+  | "parse";
 
 export interface EventInput {
   kind: EventKind;

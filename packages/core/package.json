@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "falkordb": "^6.8.0"
+    "falkordb": "^6.8.0",
+    "ts-morph": "^28.0.0"
   }
 }

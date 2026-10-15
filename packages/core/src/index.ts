@@ -13,3 +13,8 @@ export type { FeedItem } from "./queries/feed.js";
 
 export { recordEdit } from "./queries/edits.js";
 export type { EditInput } from "./queries/edits.js";
+
+export { parseRepo } from "./parser.js";
+export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
+
+export { codeGraphCounts, loadParse } from "./queries/loader.js";

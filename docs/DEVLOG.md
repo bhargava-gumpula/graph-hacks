@@ -43,3 +43,10 @@ One dated entry per merge or decision. This is the source for the README's "what
   - **B11 must avoid running hooks twice in Cursor.** Planned approach: the Claude-side hook exits early when the input carries Cursor's `cursor_version` field (verify that field in B11). The alternative is to ship only one config per editor.
   - **B5 (Q1):** compute `shortestPath` in `WITH`, not `MATCH`. Hand this note to the conflict-query brief.
 - **Tests:** `npm test` 1/1; lint clean.
+
+## 2026-10-15 00:25 PT: B3 Core graph (branch `hack/B3`)
+- **What changed:** `core/graph.ts` connects to FalkorDB and has `query`/`roQuery` wrappers with a 2 s timeout and no Cypher of its own. `queries/schema.ts` creates the indexes and the `Meta` seq counter, and is idempotent. `queries/events.ts` holds `ALLOCATE_EVENT` + `recordEvent`, where one write query bumps the seq and creates the Event with its optional BY/ON/UNDER links. `queries/feed.ts` is Q8 (`feedSince`, `latestSeq`) and `queries/edits.ts` is the Q7 write half. New dependency: `falkordb@^6.8.0` (the official client).
+- **Who:** Grok 4.7 subagent in worktree `../gh-B3`. It stalled once (Grok-side, no stuck process) and was resumed. The main chat reviewed it, rebased it onto main and re-ran every check.
+- **Proof the graph is the bus:** 20 concurrent `recordEvent` calls return seqs exactly 1..20, because FalkorDB serialises writes per graph and the bump and CREATE are one query.
+- **Deviation:** full-text indexes use `CREATE FULLTEXT INDEX FOR (d:Decision) ON (d.text, d.why)`, because FalkorDB 6.0.2 rejects the plan's `db.idx.fulltext.createNodeIndex(label, prop, prop)` ("expected at most 1 argument").
+- **Tests:** `npm test` 8/8 twice in a row; typecheck and lint clean.

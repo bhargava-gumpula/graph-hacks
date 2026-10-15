@@ -27,3 +27,8 @@ export type { ClaimInput, ClaimResult } from "./queries/claims.js";
 
 export { graphSnapshot, listClaims } from "./queries/snapshot.js";
 export type { ActiveClaim, GraphEdge, GraphNode, GraphSnapshot } from "./queries/snapshot.js";
+
+export { agentId } from "./agent-id.js";
+
+export { heartbeat, registerAgent, status } from "./queries/agents.js";
+export type { AgentKind, AgentView, StatusClaim, StatusResult } from "./queries/agents.js";

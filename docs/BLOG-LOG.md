@@ -19,3 +19,6 @@ The demo repo has two "independent" features so the scheduler can show they're s
 
 ## 2026-10-15 10:30 — A file lock would have said yes. The graph said no, in 0.44 ms
 Agent A claims `lib/crypto.ts`. Agent B asks for `ui/LoginForm.tsx`, a different file. A lock table would grant it. Q1 walked three IMPORTS hops and returned the path `LoginForm → login → session → crypto` as the proof they would collide. Empty result is also a proof: the settings island and `AboutPage` came back with no path, so they are safe. Median round-trip on the demo graph: 0.44 ms. The same path now arrives over SSE and lights red on the canvas.
+
+## 2026-10-15 16:25 — One command is the whole MVP demo
+`npm run scenario`: parse 35 files, agent A (Cursor) claims `auth/session.ts`, agent B (Claude Code) asks for `ui/LoginForm.tsx`. A lock table would say yes. FalkorDB returns `LoginForm → login → session` and refuses the claim. That is beats 1–2 of the video, replayable, tagged `v0.1-mvp`.

@@ -25,12 +25,10 @@ export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.j
 export { claim, release, DEFAULT_TTL_MS } from "./queries/claims.js";
 export type { ClaimInput, ClaimResult } from "./queries/claims.js";
 
-<<<<<<< HEAD
 export { graphSnapshot, listClaims } from "./queries/snapshot.js";
 export type { ActiveClaim, GraphEdge, GraphNode, GraphSnapshot } from "./queries/snapshot.js";
-=======
+
 export { agentId } from "./agent-id.js";
 
 export { heartbeat, registerAgent, status } from "./queries/agents.js";
 export type { AgentKind, AgentView, StatusClaim, StatusResult } from "./queries/agents.js";
->>>>>>> 5a9df5c (B6: register, heartbeat, and status live in the graph)

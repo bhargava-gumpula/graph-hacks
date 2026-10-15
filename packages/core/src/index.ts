@@ -18,3 +18,9 @@ export { parseRepo } from "./parser.js";
 export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
 
 export { codeGraphCounts, loadParse } from "./queries/loader.js";
+
+export { findConflicts, conflictQuery } from "./queries/conflict.js";
+export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.js";
+
+export { claim, release, DEFAULT_TTL_MS } from "./queries/claims.js";
+export type { ClaimInput, ClaimResult } from "./queries/claims.js";

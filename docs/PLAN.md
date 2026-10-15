@@ -4,9 +4,25 @@ Written 2026-10-13 (planning only; no product code before Tue 11:31 AM PT). Sour
 
 Inputs: HACKATHON.md, COUNCIL.md (Council 3 "best version"), research/SWITCHBOARD-COMPETITORS.md, research/IDEA-RESEARCH.md §1.
 
-> **Rules check (2026-10-13 evening, site + WeMakeDevs Discord):** the deadline is confirmed as Sat Oct 18, 11:29 AM PDT. Judged projects get a **public score and written feedback**, and the judges will be listed on the site. No rubric yet. The submission form opens at the start, so its fields and any video length limit are unknown: have Aside check it at 11:31 AM Tue. Details are in HACKATHON.md.
+> **Rules check (2026-10-13 evening, site + WeMakeDevs Discord):** the deadline is confirmed as Sun Oct 18, 11:29 AM PDT. Judged projects get a **public score and written feedback**, and the judges will be listed on the site. No rubric yet. The submission form opens at the start, so its fields and any video length limit are unknown: have Aside check it at 11:31 AM Tue. Details are in HACKATHON.md.
 
 ---
+
+
+> ## ⚠️ CORRECTED SCHEDULE (2026-10-14, 11 PM PT): this overrides every day name below
+> The original plan mislabelled the weekdays. **Oct 14 is a Wednesday and the deadline, Oct 18, is a Sunday.** The hackathon has been open since **Wed Oct 14, 11:31 AM PT**, and **no code was written on day 1** (planning finished at about 11 PM). Use **this table**, not the day names in §5–§14:
+>
+> | Phase | New window (PT) | Exit / tag |
+> |---|---|---|
+> | P0 Setup (B0, B1) | Wed Oct 14 night (if awake) or **Thu Oct 15, 8–10 AM** | `v0.0-setup` |
+> | P1 MVP (B2–B8) | **Thu Oct 15, 10 AM → Fri Oct 16, 10 AM** | `v0.1-mvp` + goal check |
+> | P2 Core (B9–B16, incl. AI summary + benchmark) | **Fri Oct 16, 10 AM → Sat Oct 17, 10 AM** (benchmark runs Sat early morning) | `v0.2-core` + goal check |
+> | Mockups (B17) | Fri Oct 16 evening | owner picks one |
+> | P3 Visual polish + landing (B18–B20) | **Sat Oct 17, 10 AM → 9 PM** | `v0.3-polish` + goal check, **FEATURE FREEZE Sat 9 PM** |
+> | P4 Ship (B21–B23): deploy, README, blog, video | **Sat Oct 17, 9 PM → Sun Oct 18, 9 AM** | `v1.0` |
+> | P5 Submit (B24) | **Sun Oct 18, by 10:30 AM PT** (hard deadline 11:29 AM) | `v1.0.1` |
+>
+> **Domain:** buy it **Fri Oct 16 evening**. **Owner sleep:** about 1–8 AM each night. A missed day is recovered by compressing P1 (bundle in bigger Opus tasks) and applying the §7 cut lines early. Don't skip the goal checks.
 
 > **Cursor agents: start at §17 (execution manual, current state, models, worktrees, goal checks). Owner: start at §0.**
 
@@ -16,7 +32,7 @@ Read this section first. After it you should know as much as the owner and the o
 
 ### 0.1 The hackathon in 60 seconds
 - **Graph Hacks: Context for AI Agents**, run by **WeMakeDevs** (Kunal Kushwaha's developer community) and sponsored by **FalkorDB** (an open-source, in-memory graph database queried with Cypher). Online, free, about 3,000 registrants. The owner is registered.
-- **When:** starts **Tue Oct 14, 11:31 AM PT**; submissions close **Sat Oct 18, 11:29 AM PT** (11:59 PM IST, which is the official time). Luma's times are wrong; ignore them.
+- **When:** starts **Wed Oct 14, 11:31 AM PT**; submissions close **Sun Oct 18, 11:29 AM PT** (11:59 PM IST, which is the official time). Luma's times are wrong; ignore them.
 - **Prizes:** one per track:
   - Agents That Act on Connected Data: iPhone 18 Pro
   - **Agent Memory and Coordination: PS5 + GTA VI (our main track)**
@@ -365,7 +381,7 @@ Also a decision-first variant: `CALL db.idx.fulltext.queryNodes('Decision', $q) 
 
 ## 5. Phases and time boxes (Pacific time)
 
-Principle: **every tag is submittable.** Each phase ends with a tag, a one-line "what a judge would see", and a rollback point (the previous tag). Feature freeze: **Fri Oct 17, 12:00 PM**. Internal submission-ready: **Fri 11:00 PM**.
+Principle: **every tag is submittable.** Each phase ends with a tag, a one-line "what a judge would see", and a rollback point (the previous tag). Feature freeze: **Sat Oct 17, 12:00 PM**. Internal submission-ready: **Fri 11:00 PM**.
 
 | Phase | Window | Goal | Exit criteria (demoable) | Tag | Rollback |
 |---|---|---|---|---|---|
@@ -708,7 +724,7 @@ This section is written **for the Cursor agent** (and the owner) who now runs th
 
 ### 17.1 Where we are right now (handoff state, 2026-10-14)
 - **Planning is finished.** The idea is locked (Switchboard), the plan is approved, and the decisions are in §0.6.
-- **No product code exists yet.** The repo has only `docs/`. The hackathon opens **Tue Oct 14, 11:31 AM PT**; product code may only be written after that.
+- **No product code exists yet.** The repo has `docs/`, `AGENTS.md` and `.cursor/rules/`. The hackathon has been open since **Wed Oct 14, 11:31 AM PT**, so coding is allowed now. **Day 1 was spent planning, so follow the CORRECTED SCHEDULE at the top of this file.**
 - **The dev Mac is ready:**
   - OrbStack/Docker: the CLI is at `~/.orbstack/bin/docker` (add it to PATH if `docker` isn't found).
   - FalkorDB image `falkordb/falkordb:latest` is pulled. A container named `falkordb-learn` may be running on 6379/3000 as a learning playground; stop it before P0 (`docker rm -f falkordb-learn`).

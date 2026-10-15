@@ -9,10 +9,10 @@ Researched 2026-10-11 from the official pages. The official site wins over any l
 ## Dates (owner is on Pacific time)
 | | IST (official) | Pacific (PDT) |
 |---|---|---|
-| Hacking starts | Oct 15, 12:01 AM | **Tue Oct 14, 11:31 AM** |
-| Submissions close | Oct 18, 11:59 PM | **Sat Oct 18, 11:29 AM** |
+| Hacking starts | Oct 15, 12:01 AM | **Wed Oct 14, 11:31 AM** |
+| Submissions close | Oct 18, 11:59 PM | **Sun Oct 18, 11:29 AM** |
 
-Luma shows Oct 15 8 AM → Oct 18 8 PM PT. Ignore that and plan for the **Sat 11:29 AM PT** deadline. Our internal deadline is **Fri Oct 17, 11 PM PT**. No kickoff time has been published yet (the FAQ mentions a kickoff session).
+Luma shows Oct 15 8 AM → Oct 18 8 PM PT. Ignore that and plan for the **Sat 11:29 AM PT** deadline. Our internal deadline is **Sat Oct 17, 11 PM PT**. No kickoff time has been published yet (the FAQ mentions a kickoff session).
 
 ## Format
 Online, free, solo or a team of up to 4 (each person can be on one team only). Registered entrants: 3,000+ at last count.

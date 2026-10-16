@@ -20,6 +20,7 @@ import {
   recordEdit,
   recordLesson,
   release,
+  summarizeBrief,
   whyTrace,
   type Conflict,
 } from "@switchboard/core";
@@ -197,7 +198,9 @@ async function run(flags: Flags): Promise<number> {
 
     if (command === "brief") {
       if (!flags.task && !flags.prefix) throw new Error("brief needs --task or --prefix");
-      console.log(formatBrief(await brief(g, { taskId: flags.task, prefix: flags.prefix })));
+      const text = formatBrief(await brief(g, { taskId: flags.task, prefix: flags.prefix }));
+      const summary = await summarizeBrief(text);
+      console.log(summary ? `${text}\n\nSummary: ${summary}` : text);
       return 0;
     }
 

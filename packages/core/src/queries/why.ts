@@ -103,6 +103,32 @@ export async function recordDecision(
   return id;
 }
 
+export const LIST_DECISIONS = `
+MATCH (d:Decision)
+OPTIONAL MATCH (a:Agent)-[:MADE]->(d)
+RETURN d.id AS id, d.text AS text, d.why AS why, d.status AS status, a.id AS agent
+ORDER BY d.at DESC
+`;
+
+export interface DecisionRow {
+  id: string;
+  text: string;
+  why: string | null;
+  status: string | null;
+  agent: string | null;
+}
+
+export async function listDecisions(g: SbGraph): Promise<DecisionRow[]> {
+  const rows = await g.roQuery(LIST_DECISIONS);
+  return rows.map((row) => ({
+    id: String(row.id),
+    text: String(row.text),
+    why: typeof row.why === "string" ? row.why : null,
+    status: typeof row.status === "string" ? row.status : null,
+    agent: typeof row.agent === "string" ? row.agent : null,
+  }));
+}
+
 /** Why does this file look like this? Newest edits first. */
 export async function whyTrace(g: SbGraph, path: string): Promise<WhyHit[]> {
   const rows = await g.roQuery(WHY_TRACE, { path });

@@ -19,6 +19,8 @@ test("beats 1–2: A claims session.ts, B claims LoginForm.tsx → CONFLICT", as
     claimed: "auth/session.ts",
     path: ["ui/LoginForm.tsx", "api/login.ts", "auth/session.ts"],
   });
+  expect(result.batches).toHaveLength(3);
+  expect(result.why).toContain("use argon2, not bcrypt");
 });
 
 test("the scenario is re-runnable on the same graph", async () => {

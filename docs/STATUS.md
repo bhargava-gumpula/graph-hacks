@@ -15,10 +15,10 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | B8 MVP tag v0.1 + goal check | M11,M12 | Opus 5.5 | done | `hack/B8` → main; tag `v0.1-mvp` | `npm run scenario`: A claims session.ts, B LoginForm → CONFLICT 2-hop path |
 | B9 Queries | C1–C5 | Grok 4.7 | done | `hack/B9` → main | brief, why, blast, WCC batches, PageRank hub; 42 tests |
 | B10 Tools+CLI | C6,C7 | Grok 4.7 | done | `hack/B10` → main | MCP + CLI: decide, lesson, brief, why, blast, plan, batches, handoff |
-| B11 Hooks | C8,C9,(C15) | Opus 5.5 | todo | | |
-| B12 AI summary | F20 | Grok 4.7 | todo | | |
-| B13 Routes+panels | C10–C12 | Opus 5.5 | todo | | |
-| B14 Scenario+dogfood | C13,C14 | Opus 5.5 | todo | | |
+| B11 Hooks | C8,C9,(C15) | Grok 4.7 | done | `hack/B11` → main | pre-edit denies a conflicting file; post records the edit; SWITCHBOARD_OFF=1 disables |
+| B12 AI summary | F20 | Grok 4.7 | done | `hack/B11` → main | Haiku summary on brief only when ANTHROPIC_API_KEY is set; otherwise the graph text alone |
+| B13 Routes+panels | C10–C12 | Grok 4.7 | done | `hack/B11` → main | /api/brief, why, blast, batches, decisions; side panel; click a file for blast |
+| B14 Scenario+dogfood | C13,C14 | Grok 4.7 | done | `hack/B11` → main | scenario prints batches and the argon2 why-trace; rules say claim first |
 | B15 Benchmark | F23 | Opus 5.5 | todo | | |
 | B16 Core tag v0.2 + goal check | C16 | Opus 5.5 | todo | | |
 | B17 Mockups | V0 | Opus 5.5 | todo | | |

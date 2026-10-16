@@ -42,8 +42,10 @@ export type { BlastRadius, Dependent } from "./queries/blast.js";
 export { parallelBatches, planTask } from "./queries/schedule.js";
 export type { Batch } from "./queries/schedule.js";
 
-export { recordDecision, whyTrace } from "./queries/why.js";
-export type { WhyHit } from "./queries/why.js";
+export { listDecisions, recordDecision, whyTrace } from "./queries/why.js";
+export type { DecisionRow, WhyHit } from "./queries/why.js";
+
+export { summarizeBrief } from "./summarize.js";
 
 export { brief, formatBrief, handoff, recordLesson } from "./queries/brief.js";
 export type { Brief } from "./queries/brief.js";

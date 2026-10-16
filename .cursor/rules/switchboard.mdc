@@ -6,6 +6,7 @@ alwaysApply: true
 - Goal: win Agent Memory and Coordination (second: Connected Data) with a product where FalkorDB does the real work (claims checked against a parsed code dependency graph, decisions and history in the same graph), plus a polished UI, a landing page with real benchmark numbers, and a demo that can't fail. Check every change against this goal (PLAN §17.8).
 - Touch only the files your brief lists. Branch hack/<id>; parallel tasks in their own git worktree (PLAN §17.4). Never commit to main directly.
 - FalkorDB is the only store. Cypher lives in packages/core/src/queries/*.ts with tests against a real FalkorDB.
+- Claim a file before editing it (`claim` or `switchboard claim`). On CONFLICT, stop. `SWITCHBOARD_OFF=1` disables the editor hooks.
 - No secrets in git. No new dependency without saying why.
 - Model policy: main chat Claude Opus 5.5; subagents and small tasks Grok 4.7; big tasks Opus 5.5.
 - End with: summary, `git diff --stat main`, test output, a DEVLOG entry, and a BLOG-LOG entry if blog-worthy.

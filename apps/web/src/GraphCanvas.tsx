@@ -44,11 +44,21 @@ function placeFiles(files: GraphNode[]): Map<string, { x: number; y: number }> {
   return pos;
 }
 
-export function GraphCanvas({ data, hotPath }: { data: GraphSnapshot | null; hotPath: string[] }) {
+export function GraphCanvas({
+  data,
+  hotPath,
+  onSelect,
+}: {
+  data: GraphSnapshot | null;
+  hotPath: string[];
+  onSelect?: (id: string) => void;
+}) {
   const el = useRef<HTMLDivElement>(null);
   const sigma = useRef<Sigma | null>(null);
   const hot = useRef(hotPath);
+  const pick = useRef(onSelect);
   hot.current = hotPath;
+  pick.current = onSelect;
 
   useEffect(() => {
     if (!el.current || !data) return;
@@ -144,6 +154,9 @@ export function GraphCanvas({ data, hotPath }: { data: GraphSnapshot | null; hot
         );
         return { ...attrs, color: on ? COLOR.hot : COLOR.dimEdge, size: on ? 4 : 0.6 };
       },
+    });
+    s.on("clickNode", ({ node }: { node: string }) => {
+      if (!node.startsWith("dir:") && !node.startsWith("agent:")) pick.current?.(node);
     });
     sigma.current = s;
     void s.getCamera().reset();

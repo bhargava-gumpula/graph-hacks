@@ -8,9 +8,14 @@ import {
   connect,
   ensureSchema,
   loadParse,
+  parallelBatches,
   parseRepo,
+  planTask,
+  recordDecision,
+  recordEdit,
   registerAgent,
   release,
+  whyTrace,
   type ClaimResult,
   type SbGraph,
 } from "../packages/core/src/index.js";
@@ -26,6 +31,8 @@ export interface MvpScenarioResult {
   imports: number;
   a: Extract<ClaimResult, { ok: true }>;
   b: Extract<ClaimResult, { ok: false }>;
+  batches: string[][];
+  why: string[];
 }
 
 /**
@@ -52,7 +59,25 @@ export async function runMvpScenario(g: SbGraph, demoRoot: string): Promise<MvpS
     throw new Error(`unexpected path ${path.join(" → ")}; expected ${EXPECTED.join(" → ")}`);
   }
 
-  return { files: counts.files, imports: counts.imports, a, b };
+  await planTask(g, { id: "t-login", paths: [LOGIN] });
+  await planTask(g, { id: "t-session", paths: [SESSION] });
+  await planTask(g, { id: "t-settings", paths: ["ui/SettingsPanel.tsx"] });
+  await planTask(g, { id: "t-prefs", paths: ["lib/prefs.ts"] });
+  await planTask(g, { id: "t-about", paths: ["ui/AboutPage.tsx"] });
+  const batches = (await parallelBatches(g)).map((batch) => batch.tasks);
+
+  await recordDecision(g, {
+    agent: A,
+    text: "use argon2, not bcrypt",
+    why: "FIPS note",
+    paths: ["lib/crypto.ts"],
+    taskId: "T3",
+    id: "D-argon2",
+  });
+  await recordEdit(g, { agentId: A, path: "lib/crypto.ts", taskId: "T3" });
+  const why = (await whyTrace(g, "lib/crypto.ts"))[0]?.path ?? [];
+
+  return { files: counts.files, imports: counts.imports, a, b, batches, why };
 }
 
 function format(result: MvpScenarioResult): string {
@@ -62,6 +87,8 @@ function format(result: MvpScenarioResult): string {
     `A claimed ${SESSION} until ${new Date(result.a.until).toISOString()} seq=${result.a.seq}`,
     `B claimed ${LOGIN} → CONFLICT ${c.type} ${c.hops} hops`,
     `  ${c.path.join(" → ")} ← ${c.agent}`,
+    `batches: ${result.batches.map((batch) => batch.join("+")).join(" | ")}`,
+    `why: ${result.why.join(" → ")}`,
   ].join("\n");
 }
 

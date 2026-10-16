@@ -105,3 +105,11 @@ One dated entry per merge or decision. This is the source for the README's "what
 ## 2026-10-15 17:25 PT: B10 tools (branch `hack/B10`)
 - **What changed:** the B9 queries are callable. MCP tools: `record_decision`, `record_lesson`, `brief_me`, `why`, `blast_radius`, `plan_task`, `parallel_batches`, `handoff`. The CLI mirrors them: `decide`, `lesson`, `brief`, `why`, `blast`, `plan`, `batches`, `handoff`. A new decision supersedes an older active decision on the same file. `edited --task` links the edit to that task so `why` can follow it.
 - **Tests:** 43/43. CLI covers blast of `session.ts`, two tasks in different batches, and decide + edited + why for argon2.
+
+## 2026-10-15 19:20 PT: hooks, panels, longer scenario (branch `hack/B11`)
+- **Hooks:** `packages/hooks/hook.sh` is what Cursor and Claude Code run. Before an edit it runs `switchboard check` and denies on exit 2, with the import path as the reason. After an edit it records it. Claude's session start injects the briefing. Cursor still ignores that text (Day-0). Cursor also fires the Claude hook file, so the Claude script does nothing when the input has `cursor_version`. `SWITCHBOARD_OFF=1` allows every edit. Paths under `demo-repo/` are checked as the graph stores them. A live check denied `ui/LoginForm.tsx` while A held `auth/session.ts`.
+- **Panels:** the server adds `/api/brief`, `/api/why`, `/api/blast`, `/api/batches`, `/api/decisions`. The page has a side column for claims, batches, decisions, and events. Clicking a file highlights its blast radius.
+- **Scenario:** `npm run scenario` now also prints the three parallel batches and the why-trace `crypto.ts → A → T3 → use argon2, not bcrypt`.
+- **Summary:** `summarizeBrief` calls Haiku only when `ANTHROPIC_API_KEY` is set. With no key, brief stays the graph text. No new dependency; it uses `fetch`.
+- **Not built:** the with/without benchmark, the landing page, deploy, README, blog, and video. Those need a longer run or the owner.
+- **Tests:** 43/43. Typecheck and lint clean.

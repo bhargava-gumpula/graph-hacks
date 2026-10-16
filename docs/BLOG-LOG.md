@@ -22,3 +22,6 @@ Agent A claims `lib/crypto.ts`. Agent B asks for `ui/LoginForm.tsx`, a different
 
 ## 2026-10-15 16:25 — One command is the whole MVP demo
 `npm run scenario`: parse 35 files, agent A (Cursor) claims `auth/session.ts`, agent B (Claude Code) asks for `ui/LoginForm.tsx`. A lock table would say yes. FalkorDB returns `LoginForm → login → session` and refuses the claim. That is beats 1–2 of the video, replayable, tagged `v0.1-mvp`.
+
+## 2026-10-15 17:15 — Which tasks can run together is a graph algorithm
+Five open tasks. FalkorDB connects two when one's files can reach the other's through imports, skipping the hub everyone imports. Weakly connected components then returns three batches: the login chain together, the settings island together, and the about page alone. Nobody listed the batches. The import graph did.

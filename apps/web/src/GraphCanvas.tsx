@@ -126,7 +126,7 @@ export function GraphCanvas({ data, hotPath }: { data: GraphSnapshot | null; hot
           labelVisibility: "visible" as const,
           labelColor: node.startsWith("dir:") ? "#9aa0a6" : "#e8eaed",
           labelSize: node.startsWith("dir:") ? 16 : 13,
-          labelPosition: node.startsWith("lib/") ? "left" : "right",
+          labelPosition: (node.startsWith("lib/") ? "left" : "right") as "left" | "right",
         };
         const path = hot.current;
         if (node.startsWith("dir:") || path.length === 0 || !path.includes(node)) return labeled;

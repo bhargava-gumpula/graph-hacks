@@ -1,6 +1,7 @@
 import type { SbGraph } from "../graph.js";
 import type { ParseResult } from "../parser.js";
 import { recordEvent } from "./events.js";
+import { markHubs } from "./hubs.js";
 
 const BATCH = 500;
 
@@ -55,6 +56,7 @@ export async function loadParse(g: SbGraph, parsed: ParseResult): Promise<{ file
   for (const rows of batches(parsed.files)) await g.query(UPSERT_FILES, { rows });
   for (const rows of batches(parsed.files)) await g.query(CLEAR_IMPORTS, { paths: rows.map((f) => f.path) });
   for (const rows of batches(parsed.imports)) await g.query(UPSERT_IMPORTS, { rows });
+  await markHubs(g);
 
   const counts = { files: parsed.files.length, imports: parsed.imports.length };
   await recordEvent(g, { kind: "parse", payload: counts });

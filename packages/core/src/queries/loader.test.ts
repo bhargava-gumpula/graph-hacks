@@ -19,9 +19,9 @@ test("the 3-hop chain is a path in the graph", async () => {
   expect(Number(row?.n)).toBeGreaterThanOrEqual(1);
 });
 
-test("files start with hub=false so NOT f.hub filters work", async () => {
-  const [row] = await g().roQuery("MATCH (f:File) WHERE NOT f.hub RETURN count(f) AS n");
-  expect(Number(row?.n)).toBe(35);
+test("the planted hub is flagged and every other file is not", async () => {
+  const [hubs] = await g().roQuery("MATCH (f:File) WHERE f.hub RETURN collect(f.path) AS paths");
+  expect(hubs?.paths).toEqual(["lib/utils.ts"]);
 });
 
 test("loading twice is idempotent", async () => {

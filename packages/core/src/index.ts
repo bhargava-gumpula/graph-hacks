@@ -32,3 +32,18 @@ export { agentId } from "./agent-id.js";
 
 export { heartbeat, registerAgent, status } from "./queries/agents.js";
 export type { AgentKind, AgentView, StatusClaim, StatusResult } from "./queries/agents.js";
+
+export { markHubs, HUB_INDEGREE } from "./queries/hubs.js";
+export type { HubScore } from "./queries/hubs.js";
+
+export { blastRadius } from "./queries/blast.js";
+export type { BlastRadius, Dependent } from "./queries/blast.js";
+
+export { parallelBatches } from "./queries/schedule.js";
+export type { Batch } from "./queries/schedule.js";
+
+export { whyTrace } from "./queries/why.js";
+export type { WhyHit } from "./queries/why.js";
+
+export { brief, formatBrief } from "./queries/brief.js";
+export type { Brief } from "./queries/brief.js";

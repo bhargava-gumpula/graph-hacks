@@ -96,3 +96,8 @@ One dated entry per merge or decision. This is the source for the README's "what
   6. **Explainability:** Q1 in two sentences — for each requested file, find another agent's unexpired claim on that file or within k import hops either way, skipping hubs; empty result means the claim is safe and is written.
   7. **Schedule:** corrected P1 exit is Fri 10 AM; it is Thu 4 PM. Ahead. P2 (B9+) starts now.
   8. **Drift:** `POST /api/claims` (demo without MCP), `CREATE FULLTEXT INDEX` instead of the plan's procedure, path enumeration instead of `shortestPath`, `Preferences` moved into `lib/prefs.ts`. All serve the goal.
+
+## 2026-10-15 17:15 PT: B9 queries (branch `hack/B9`)
+- **What changed:** five Cypher modules. `hubs.ts` runs `algo.pageRank` and sets `hub` when a file is imported at least 10 times (`lib/utils.ts`, in-degree 20). `loadParse` calls it, so the flag is not set by hand anymore. `blast.ts` lists who imports a file, hop by hop. `schedule.ts` rebuilds `INTERFERES` (paths through hubs do not count) and splits open tasks with `algo.WCC`. `why.ts` walks edit → agent → task → decision. `brief.ts` collects claims, decisions, lessons, recent events, open tasks, and the latest handoff for a task or a directory.
+- **Proof:** blast of `session.ts` is `login.ts` (1) and `LoginForm.tsx` (2); `AboutPage.tsx` has no dependents. Five tasks become three batches: login+session, settings+prefs, about alone. `why(crypto.ts)` returns "use argon2, not bcrypt". A briefing for task T1 includes the claim, that decision, the lesson, and the handoff note.
+- **Tests:** 42/42. Typecheck and lint clean.

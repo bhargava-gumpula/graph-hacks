@@ -1,21 +1,47 @@
 import { DirectedGraph } from "graphology";
 import { useEffect, useRef } from "react";
-import Sigma from "sigma";
-import type { GraphSnapshot } from "./types.js";
+import Sigma, { DEFAULT_STYLES } from "sigma";
+import type { GraphNode, GraphSnapshot } from "./types.js";
 
 const COLOR = {
-  file: "#8ab4f8",
-  hub: "#fbbc04",
-  claimed: "#81c995",
-  agent: "#f28b82",
-  import: "#3c4454",
-  claims: "#81c995",
-  hot: "#ea4335",
+  file: "#9ec1ff",
+  hub: "#f5c451",
+  claimed: "#7dcea0",
+  agent: "#f0a39a",
+  import: "#4a5568",
+  claims: "#7dcea0",
+  hot: "#ff5a4f",
+  dim: "#242a36",
+  dimEdge: "#1a1f2a",
 };
 
-function layout(i: number, n: number, radius: number): { x: number; y: number } {
-  const angle = (2 * Math.PI * i) / Math.max(n, 1) - Math.PI / 2;
-  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+const COLUMN_ORDER = ["ui", "api", "auth", "lib"];
+
+/** One column per directory, files stacked so imports run left → right. */
+function placeFiles(files: GraphNode[]): Map<string, { x: number; y: number }> {
+  const groups = new Map<string, GraphNode[]>();
+  for (const file of files) {
+    const slash = file.id.indexOf("/");
+    const dir = slash >= 0 ? file.id.slice(0, slash) : ".";
+    const list = groups.get(dir) ?? [];
+    list.push(file);
+    groups.set(dir, list);
+  }
+  const dirs = [...groups.keys()].sort((a, b) => {
+    const ia = COLUMN_ORDER.indexOf(a);
+    const ib = COLUMN_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  });
+  const pos = new Map<string, { x: number; y: number }>();
+  const gap = 2.2;
+  dirs.forEach((dir, col) => {
+    const list = groups.get(dir)!.sort((a, b) => a.label.localeCompare(b.label));
+    const height = (list.length - 1) * gap;
+    list.forEach((node, row) => {
+      pos.set(node.id, { x: col * 5.5, y: row * gap - height / 2 });
+    });
+  });
+  return pos;
 }
 
 export function GraphCanvas({ data, hotPath }: { data: GraphSnapshot | null; hotPath: string[] }) {
@@ -30,48 +56,97 @@ export function GraphCanvas({ data, hotPath }: { data: GraphSnapshot | null; hot
     const graph = new DirectedGraph();
     const files = data.nodes.filter((n) => n.kind === "file");
     const agents = data.nodes.filter((n) => n.kind === "agent");
-    files.forEach((n, i) => {
-      const { x, y } = layout(i, files.length, 8);
-      const claimed = (n.claimedBy?.length ?? 0) > 0;
-      graph.addNode(n.id, {
-        label: n.label,
-        x,
-        y,
-        size: n.hub ? 8 : claimed ? 6 : 4,
-        color: n.hub ? COLOR.hub : claimed ? COLOR.claimed : COLOR.file,
-        kind: n.kind,
-      });
-    });
-    agents.forEach((n, i) => {
-      const { x, y } = layout(i, agents.length, 11);
-      graph.addNode(n.id, { label: n.label, x, y, size: 7, color: COLOR.agent, kind: n.kind });
-    });
-    for (const e of data.edges) {
-      if (!graph.hasNode(e.source) || !graph.hasNode(e.target) || graph.hasEdge(e.source, e.target)) continue;
-      graph.addEdge(e.source, e.target, {
-        kind: e.kind,
-        color: e.kind === "CLAIMS" ? COLOR.claims : COLOR.import,
-        size: e.kind === "CLAIMS" ? 2 : 1,
+    const placed = placeFiles(files);
+
+    for (const node of files) {
+      const at = placed.get(node.id) ?? { x: 0, y: 0 };
+      const claimed = (node.claimedBy?.length ?? 0) > 0;
+      graph.addNode(node.id, {
+        label: node.label,
+        labelColor: "#e8eaed",
+        labelVisibility: "visible",
+        labelSize: 13,
+        x: at.x,
+        y: at.y,
+        size: node.hub ? 9 : claimed ? 7 : 5,
+        color: node.hub ? COLOR.hub : claimed ? COLOR.claimed : COLOR.file,
       });
     }
+    agents.forEach((node, i) => {
+      graph.addNode(node.id, {
+        label: node.label,
+        x: -6,
+        y: (i - (agents.length - 1) / 2) * 3,
+        size: 10,
+        color: COLOR.agent,
+      });
+    });
+    const above = Math.max(...[...placed.values()].map((p) => p.y)) + 3.2;
+    COLUMN_ORDER.forEach((dir, col) => {
+      graph.addNode(`dir:${dir}`, {
+        label: dir,
+        x: col * 5.5,
+        y: above,
+        size: 2,
+        color: "#0e1116",
+      });
+    });
+
+    for (const edge of data.edges) {
+      if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue;
+      if (graph.hasDirectedEdge(edge.source, edge.target)) continue;
+      graph.addDirectedEdge(edge.source, edge.target, {
+        color: edge.kind === "CLAIMS" ? COLOR.claims : COLOR.import,
+        size: edge.kind === "CLAIMS" ? 2.5 : 1.2,
+      });
+    }
+
     const s = new Sigma(graph, el.current, {
-      settings: { renderEdgeLabels: false },
+      settings: {
+        renderEdgeLabels: false,
+        itemSizesReference: "screen",
+        labelDensity: 2,
+        labelRenderedSizeThreshold: 0,
+        labelGridCellSize: 1,
+        minEdgeThickness: 1,
+        stagePadding: 48,
+      },
+      styles: {
+        stage: { background: "#0e1116" },
+        nodes: {
+          ...DEFAULT_STYLES.nodes,
+          labelColor: "#e8eaed",
+          labelSize: 12,
+          labelVisibility: "visible",
+        },
+      },
       nodeReducer: (node, attrs) => {
+        const labeled = {
+          ...attrs,
+          labelVisibility: "visible" as const,
+          labelColor: node.startsWith("dir:") ? "#9aa0a6" : "#e8eaed",
+          labelSize: node.startsWith("dir:") ? 16 : 13,
+          labelPosition: node.startsWith("lib/") ? "left" : "right",
+        };
         const path = hot.current;
-        if (path.length === 0) return attrs;
-        const on = path.includes(node);
-        return { ...attrs, color: on ? COLOR.hot : "#2a3140", size: on ? 8 : 3 };
+        if (node.startsWith("dir:") || path.length === 0 || !path.includes(node)) return labeled;
+        return { ...labeled, color: COLOR.hot, size: 10 };
       },
       edgeReducer: (edge, attrs) => {
         const path = hot.current;
         if (path.length < 2) return attrs;
         const src = graph.source(edge);
         const tgt = graph.target(edge);
-        const on = path.some((p, i) => path[i + 1] && ((src === p && tgt === path[i + 1]) || (tgt === p && src === path[i + 1])));
-        return { ...attrs, color: on ? COLOR.hot : "#1b2030", size: on ? 3 : 0.5 };
+        const on = path.some(
+          (step, i) =>
+            path[i + 1] !== undefined &&
+            ((src === step && tgt === path[i + 1]) || (tgt === step && src === path[i + 1])),
+        );
+        return { ...attrs, color: on ? COLOR.hot : COLOR.dimEdge, size: on ? 4 : 0.6 };
       },
     });
     sigma.current = s;
+    void s.getCamera().reset();
     return () => {
       s.kill();
       sigma.current = null;
@@ -82,5 +157,5 @@ export function GraphCanvas({ data, hotPath }: { data: GraphSnapshot | null; hot
     sigma.current?.refresh();
   }, [hotPath]);
 
-  return <div ref={el} className="canvas" style={{ height: "100%" }} />;
+  return <div ref={el} className="canvas" />;
 }

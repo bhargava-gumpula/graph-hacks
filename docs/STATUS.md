@@ -12,7 +12,7 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | B5 Conflict query | M5 | Opus 5.5 | done | `hack/B5` → main | Q1: A claims crypto.ts, B claims LoginForm → CONFLICT 3-hop UPSTREAM; empty path = OK; Q1 median 0.44 ms |
 | B6 MCP+CLI | M7,M8 | Grok 4.7 | done | `hack/B6` → main | MCP `claim` + `switchboard check` exit 2 on 3-hop conflict; 34 tests |
 | B7 Server+web shell | M9,M10 | Opus 5.5 | done | `hack/B7` → main | `/api/graph` + SSE; canvas; POST claim LoginForm → 3-hop CONFLICT |
-| B8 MVP tag v0.1 + goal check | M11,M12 | Opus 5.5 | todo | | |
+| B8 MVP tag v0.1 + goal check | M11,M12 | Opus 5.5 | done | `hack/B8` → main; tag `v0.1-mvp` | `npm run scenario`: A claims session.ts, B LoginForm → CONFLICT 2-hop path |
 | B9 Queries | C1–C5 | Grok 4.7 (C4 Opus) | todo | | |
 | B10 Tools+CLI | C6,C7 | Grok 4.7 | todo | | |
 | B11 Hooks | C8,C9,(C15) | Opus 5.5 | todo | | |
@@ -33,6 +33,7 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 ## Goal checks (PLAN §17.8)
 | When | Graph essential | Track fit | Differentiation | Demo runs | Proof | Owner can explain | On schedule | Drift | Actions |
 |---|---|---|---|---|---|---|---|---|---|
+| B8 `v0.1-mvp` 2026-10-15 16:25 PT | yes | partial | yes | beats 1–2 | yes | yes | yes (ahead of Fri 10 AM) | small, goal-serving | P2 next: briefing, why, WCC, hubs, hooks |
 
 ## Later ideas (not in the current phase)
 - `npm run db:ping` fails inside a worktree (compose project name differs). Workaround: `COMPOSE_PROJECT_NAME=graph-hacks npm run db:ping`. Fix by adding a top-level `name:` to docker-compose.yml when nothing is running.

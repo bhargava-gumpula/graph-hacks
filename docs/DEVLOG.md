@@ -83,3 +83,16 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Who:** Grok 4.7 in `../gh-B6`. Main chat rebased onto B7 (conflicts in `index.ts`, `package.json`, lockfile) and re-ran every check.
 - **Proof:** `check ui/LoginForm.tsx --agent B` after A claims `lib/crypto.ts` exits 2 with `CONFLICT UPSTREAM … LoginForm → login → session → crypto`. AboutPage and the same check after release exit 0.
 - **Tests:** 34/34; typecheck and lint clean.
+
+## 2026-10-15 16:25 PT: B8 MVP scenario + tag v0.1-mvp (branch `hack/B8`)
+- **What changed:** `scripts/scenario.ts` / `npm run scenario` replays demo beats 1–2 against a live FalkorDB: parse demo-repo (35 files / 51 imports), mark `lib/utils.ts` hub, register A (cursor) and B (claude), A claims `auth/session.ts`, B claims `ui/LoginForm.tsx` → CONFLICT UPSTREAM, path `LoginForm → login → session`. Releases A/B first so it is re-runnable. Two tests on `sb_test_scenario`.
+- **Live run:** `npm run scenario` printed that path (seq 13 on `sb_demo`). `npm test` 36/36.
+- **Goal check (§17.8):**
+  1. **Graph essential:** yes. Claim, conflict path, event feed and canvas snapshot are FalkorDB queries. Remove the database and every headline feature stops.
+  2. **Track fit:** episodic memory (Event seq bus) and coordination (claims, conflicts, TTL) are in. Per-project tenancy is `SB_GRAPH`. Semantic (Decision), procedural (Lesson), handoff, WCC batches and briefing are not built yet (P2).
+  3. **Differentiation:** still true — a claim is checked against a *parsed* import graph, not a filename lock. The positioning line's "decisions, lessons and history in the same graph" is the model; only history (events) is populated so far.
+  4. **Demo:** beats 1–2 run end to end via the script (and the canvas can show the same POST). Beats 3–6 (WCC, decision, kill/resume, why) are missing.
+  5. **Proof:** 36 tests against a real FalkorDB; `npm run scenario` is the replay. No benchmark yet.
+  6. **Explainability:** Q1 in two sentences — for each requested file, find another agent's unexpired claim on that file or within k import hops either way, skipping hubs; empty result means the claim is safe and is written.
+  7. **Schedule:** corrected P1 exit is Fri 10 AM; it is Thu 4 PM. Ahead. P2 (B9+) starts now.
+  8. **Drift:** `POST /api/claims` (demo without MCP), `CREATE FULLTEXT INDEX` instead of the plan's procedure, path enumeration instead of `shortestPath`, `Preferences` moved into `lib/prefs.ts`. All serve the goal.

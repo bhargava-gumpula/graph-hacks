@@ -20,7 +20,8 @@
     "parse": "tsx scripts/parse.ts",
     "server": "tsx apps/server/src/index.ts",
     "web": "npm run dev -w @switchboard/web",
-    "switchboard": "tsx packages/cli/src/index.ts"
+    "switchboard": "tsx packages/cli/src/index.ts",
+    "scenario": "tsx scripts/scenario.ts"
   },
   "bin": {
     "switchboard": "packages/cli/src/index.ts"

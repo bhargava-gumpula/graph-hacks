@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   claim,
   connect,
+  findConflicts,
   ensureSchema,
   loadParse,
   parallelBatches,
@@ -34,6 +35,8 @@ export interface MvpScenarioResult {
   batches: string[][];
   why: string[];
   sentence: string;
+  /** How long the conflict check itself took, not the whole demo. */
+  checkMs: number;
 }
 
 /**
@@ -53,6 +56,9 @@ export async function runMvpScenario(g: SbGraph, demoRoot: string): Promise<MvpS
   const a = await claim(g, { agent: A, paths: [SESSION], taskId: "T1", intent: "session ttl" });
   if (!a.ok) throw new Error(`A was refused ${SESSION}: ${JSON.stringify(a.conflicts)}`);
 
+  const started = performance.now();
+  await findConflicts(g, { agent: B, paths: [LOGIN] });
+  const checkMs = Math.round((performance.now() - started) * 10) / 10;
   const b = await claim(g, { agent: B, paths: [LOGIN], taskId: "T2", intent: "login form" });
   if (b.ok) throw new Error(`B was granted ${LOGIN}; expected CONFLICT`);
   const path = b.conflicts[0]?.path ?? [];
@@ -83,7 +89,7 @@ export async function runMvpScenario(g: SbGraph, demoRoot: string): Promise<MvpS
     `Agent B cannot edit ${hit.file}. It reaches ${hit.claimed}, which agent ${hit.agent} is already changing, ` +
     `through ${hit.path.join(" → ")}. A file lock would have allowed the edit.`;
 
-  return { files: counts.files, imports: counts.imports, a, b, batches, why, sentence };
+  return { files: counts.files, imports: counts.imports, a, b, batches, why, sentence, checkMs };
 }
 
 function format(result: MvpScenarioResult): string {

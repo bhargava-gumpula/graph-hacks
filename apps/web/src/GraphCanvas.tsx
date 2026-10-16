@@ -152,7 +152,7 @@ export function GraphCanvas({
             path[i + 1] !== undefined &&
             ((src === step && tgt === path[i + 1]) || (tgt === step && src === path[i + 1])),
         );
-        return { ...attrs, color: on ? COLOR.hot : COLOR.dimEdge, size: on ? 4 : 0.6 };
+        return { ...attrs, color: on ? COLOR.hot : "#0e1116", size: on ? 4 : 0 };
       },
     });
     s.on("clickNode", ({ node }: { node: string }) => {

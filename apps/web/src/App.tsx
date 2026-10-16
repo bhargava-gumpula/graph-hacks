@@ -28,6 +28,7 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState("");
   const [playing, setPlaying] = useState(false);
+  const [story, setStory] = useState<{ sentence: string; checkMs: number; batches: string[][]; why: string[] } | null>(null);
 
   const refresh = () => {
     void fetch("/api/claims").then((r) => r.json()).then(setClaims);
@@ -50,13 +51,7 @@ export function App() {
           setEvents((prev) => [item, ...prev].slice(0, 8));
           if (item.kind === "conflict") {
             const hit = (item.payload as { conflicts?: Conflict[] })?.conflicts?.[0];
-            if (hit) {
-              setHotPath(hit.path);
-              const asker = item.agentId ?? "B";
-              setStatus(
-                `Agent ${asker} cannot edit ${hit.file}. It reaches ${hit.claimed}, which agent ${hit.agent} is already changing, through ${hit.path.join(" → ")}. A file lock would have allowed the edit.`,
-              );
-            }
+            if (hit) setHotPath(hit.path);
           }
           if (item.kind === "claim" || item.kind === "release" || item.kind === "conflict" || item.kind === "decision") {
             void load();
@@ -74,14 +69,16 @@ export function App() {
     try {
       const result = (await fetch("/api/demo", { method: "POST" }).then((r) => r.json())) as {
         sentence: string;
+        checkMs: number;
         path: string[];
         batches: string[][];
         why: string[];
       };
       setHotPath(result.path);
-      setDetail(`${result.sentence}\n\nBatches that can run together:\n${result.batches.map((b) => b.join(" + ")).join("\n")}\n\nWhy crypto.ts changed:\n${result.why.join(" → ")}`);
+      setStory(result);
+      setDetail(result.why.join(" → "));
       setSelected("lib/crypto.ts");
-      setStatus(result.sentence);
+      setStatus("Demo played");
       const snapshot = (await fetch("/api/graph").then((r) => r.json())) as GraphSnapshot;
       setGraph(snapshot);
       refresh();
@@ -119,15 +116,30 @@ export function App() {
     <div className="app">
       <header className="bar">
         <h1>SWITCHBOARD</h1>
-        <span className={hotPath.length ? "status conflict" : "status"}>{status}</span>
+        <span className="status">{status}</span>
         <button className="play" type="button" disabled={playing} onClick={() => void playDemo()}>
           {playing ? "Running…" : "Play the demo"}
         </button>
       </header>
+      <section className="story">
+        {story ? (
+          <>
+            <p className="sentence">{story.sentence}</p>
+            <p className="facts">
+              <span>Checked in {story.checkMs} ms</span>
+              <span>{story.batches.length} batches can run at once</span>
+              <span>Decision: use argon2, not bcrypt</span>
+            </p>
+          </>
+        ) : (
+          <p className="sentence quiet">
+            Switchboard checks an agent’s edit against the code’s import graph. A file lock only sees the filename.
+          </p>
+        )}
+      </section>
       <div className="main">
         <GraphCanvas data={graph} hotPath={hotPath} onSelect={(id) => void showBlast(id)} />
         <aside className="panel">
-          <p className="lead">Press Play the demo. Agent A claims session.ts. Agent B asks for the login form. The graph refuses, and draws the import path a file lock would miss.</p>
           <h2>Claims</h2>
           {claims.length === 0 && <p className="muted">No one has claimed a file yet.</p>}
           {claims.map((c) => (
@@ -149,7 +161,7 @@ export function App() {
             </p>
           ))}
           <h2>Events</h2>
-          {events.map((e) => (
+          {events.filter((e) => e.kind === "claim" || e.kind === "conflict" || e.kind === "decision" || e.kind === "edit").map((e) => (
             <p key={e.seq}>
               {e.kind} {e.onKey ?? ""}
             </p>

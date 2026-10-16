@@ -63,6 +63,7 @@ app.post("/api/demo", async (c) => {
   const result = await runMvpScenario(g, demo);
   return c.json({
     sentence: result.sentence,
+    checkMs: result.checkMs,
     path: result.b.conflicts[0]?.path ?? [],
     batches: result.batches,
     why: result.why,

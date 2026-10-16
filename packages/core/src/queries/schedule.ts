@@ -50,6 +50,16 @@ export interface Batch {
   tasks: string[];
 }
 
+/** Open a task and attach the files it plans to touch. */
+export async function planTask(
+  g: SbGraph,
+  input: { id: string; title?: string; paths: string[] },
+): Promise<void> {
+  for (const path of input.paths) {
+    await g.query(TOUCH_FILE, { id: input.id, title: input.title ?? input.id, path });
+  }
+}
+
 /** Rebuild INTERFERES from the code graph, then split open tasks with WCC. */
 export async function parallelBatches(g: SbGraph, k = 3): Promise<Batch[]> {
   await g.query(CLEAR_INTERFERES);

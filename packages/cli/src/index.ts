@@ -4,14 +4,23 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   agentId,
+  blastRadius,
+  brief,
   claim,
   connect,
   ensureSchema,
   findConflicts,
+  formatBrief,
+  handoff,
   loadParse,
+  parallelBatches,
   parseRepo,
+  planTask,
+  recordDecision,
   recordEdit,
+  recordLesson,
   release,
+  whyTrace,
   type Conflict,
 } from "@switchboard/core";
 
@@ -19,13 +28,28 @@ const USAGE = `switchboard parse [dir]
 switchboard claim <file...> [--task T] [--intent text] [--agent id]
 switchboard release [file...] [--agent id]
 switchboard check <file> [--agent id]
-switchboard edited <file> [--agent id]`;
+switchboard edited <file> [--agent id]
+switchboard decide <text> --why <why> --affects <file> [--task T] [--agent id]
+switchboard lesson <text> --about <file>
+switchboard brief (--task T | --prefix dir/)
+switchboard why <file>
+switchboard blast <file>
+switchboard plan <task> <file...> [--title text]
+switchboard batches
+switchboard handoff <task> --to <agent> --note <text> [--agent id]`;
 
 interface Flags {
   positional: string[];
   task?: string;
   intent?: string;
   agent?: string;
+  why?: string;
+  affects: string[];
+  about: string[];
+  prefix?: string;
+  to?: string;
+  note?: string;
+  title?: string;
 }
 
 /** One conflict, the line hooks and agents read. */
@@ -35,24 +59,37 @@ function conflictLine(c: Conflict): string {
 
 function parseArgs(argv: string[]): Flags {
   const positional: string[] = [];
+  const affects: string[] = [];
+  const about: string[] = [];
   let task: string | undefined;
   let intent: string | undefined;
   let agent: string | undefined;
+  let why: string | undefined;
+  let prefix: string | undefined;
+  let to: string | undefined;
+  let note: string | undefined;
+  let title: string | undefined;
+  const take = (flag: string, i: number) => {
+    const value = argv[i + 1];
+    if (value === undefined) throw new Error(`${flag} needs a value`);
+    return value;
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === "--task" || arg === "--intent" || arg === "--agent") {
-      const value = argv[++i];
-      if (value === undefined) throw new Error(`${arg} needs a value`);
-      if (arg === "--task") task = value;
-      else if (arg === "--intent") intent = value;
-      else agent = value;
-    } else if (arg.startsWith("--")) {
-      throw new Error(`unknown flag ${arg}`);
-    } else {
-      positional.push(arg);
-    }
+    if (arg === "--affects") affects.push(take(arg, i++));
+    else if (arg === "--about") about.push(take(arg, i++));
+    else if (arg === "--task") task = take(arg, i++);
+    else if (arg === "--intent") intent = take(arg, i++);
+    else if (arg === "--agent") agent = take(arg, i++);
+    else if (arg === "--why") why = take(arg, i++);
+    else if (arg === "--prefix") prefix = take(arg, i++);
+    else if (arg === "--to") to = take(arg, i++);
+    else if (arg === "--note") note = take(arg, i++);
+    else if (arg === "--title") title = take(arg, i++);
+    else if (arg.startsWith("--")) throw new Error(`unknown flag ${arg}`);
+    else positional.push(arg);
   }
-  return { positional, task, intent, agent };
+  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title };
 }
 
 function agentOf(flags: Flags): string {
@@ -63,7 +100,21 @@ function filesOf(flags: Flags): string[] {
   return flags.positional.slice(1);
 }
 
-const COMMANDS = new Set(["parse", "claim", "release", "check", "edited"]);
+const COMMANDS = new Set([
+  "parse",
+  "claim",
+  "release",
+  "check",
+  "edited",
+  "decide",
+  "lesson",
+  "brief",
+  "why",
+  "blast",
+  "plan",
+  "batches",
+  "handoff",
+]);
 
 async function run(flags: Flags): Promise<number> {
   const command = flags.positional[0];
@@ -115,8 +166,80 @@ async function run(flags: Flags): Promise<number> {
     if (command === "edited") {
       const file = files[0];
       if (!file || files.length !== 1) throw new Error("edited needs one file");
-      const seq = await recordEdit(g, { agentId: agent, path: file });
+      const seq = await recordEdit(g, { agentId: agent, path: file, taskId: flags.task });
       console.log(`edited ${file} seq=${seq}`);
+      return 0;
+    }
+
+    if (command === "decide") {
+      const decision = files[0];
+      if (!decision || !flags.why || flags.affects.length === 0) {
+        throw new Error("decide needs text, --why, and --affects");
+      }
+      const id = await recordDecision(g, {
+        agent,
+        text: decision,
+        why: flags.why,
+        paths: flags.affects,
+        taskId: flags.task,
+      });
+      console.log(`decision ${id}`);
+      return 0;
+    }
+
+    if (command === "lesson") {
+      const lesson = files[0];
+      if (!lesson || flags.about.length === 0) throw new Error("lesson needs text and --about");
+      const id = await recordLesson(g, { text: lesson, paths: flags.about, agent });
+      console.log(`lesson ${id}`);
+      return 0;
+    }
+
+    if (command === "brief") {
+      if (!flags.task && !flags.prefix) throw new Error("brief needs --task or --prefix");
+      console.log(formatBrief(await brief(g, { taskId: flags.task, prefix: flags.prefix })));
+      return 0;
+    }
+
+    if (command === "why") {
+      const file = files[0];
+      if (!file || files.length !== 1) throw new Error("why needs one file");
+      const hits = await whyTrace(g, file);
+      if (hits.length === 0) console.log(`no edits recorded for ${file}`);
+      else for (const hit of hits) console.log(hit.path.join(" → "));
+      return 0;
+    }
+
+    if (command === "blast") {
+      const file = files[0];
+      if (!file || files.length !== 1) throw new Error("blast needs one file");
+      const blast = await blastRadius(g, file);
+      if (blast.dependents.length === 0) console.log(`${file}: no dependents`);
+      else for (const dep of blast.dependents) console.log(`${dep.hops} ${dep.path}`);
+      return 0;
+    }
+
+    if (command === "plan") {
+      const id = files[0];
+      const paths = files.slice(1);
+      if (!id || paths.length === 0) throw new Error("plan needs a task id and at least one file");
+      await planTask(g, { id, title: flags.title, paths });
+      console.log(`planned ${id}`);
+      return 0;
+    }
+
+    if (command === "batches") {
+      const batches = await parallelBatches(g);
+      if (batches.length === 0) console.log("no open tasks");
+      else for (const batch of batches) console.log(batch.tasks.join(" "));
+      return 0;
+    }
+
+    if (command === "handoff") {
+      const taskId = files[0];
+      if (!taskId || !flags.to || !flags.note) throw new Error("handoff needs a task, --to, and --note");
+      await handoff(g, { from: agent, to: flags.to, taskId, note: flags.note });
+      console.log(`handed ${taskId} to ${flags.to}`);
       return 0;
     }
 

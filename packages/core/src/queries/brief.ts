@@ -1,4 +1,5 @@
 import type { SbGraph } from "../graph.js";
+import { recordEvent } from "./events.js";
 
 export interface BriefClaim {
   agent: string;
@@ -171,6 +172,40 @@ export async function brief(
     })),
     handoff,
   };
+}
+
+/** Record a lesson about one or more files. */
+export async function recordLesson(
+  g: SbGraph,
+  input: { text: string; paths: string[]; id?: string; now?: number; agent?: string },
+): Promise<string> {
+  const id = input.id ?? `l-${Date.now()}`;
+  const at = input.now ?? Date.now();
+  await g.query(LINK_LESSON, { id, text: input.text, at, paths: input.paths });
+  await recordEvent(g, {
+    kind: "lesson",
+    agentId: input.agent,
+    onPath: input.paths[0],
+    payload: { id, text: input.text, paths: input.paths },
+    now: at,
+  });
+  return id;
+}
+
+/** One agent hands a task to another, with a note the next briefing will show. */
+export async function handoff(
+  g: SbGraph,
+  input: { from: string; to: string; taskId: string; note: string; now?: number },
+): Promise<void> {
+  const at = input.now ?? Date.now();
+  await g.query(LINK_HANDOFF, { from: input.from, to: input.to, taskId: input.taskId, note: input.note, at });
+  await recordEvent(g, {
+    kind: "handoff",
+    agentId: input.from,
+    taskId: input.taskId,
+    payload: { to: input.to, note: input.note },
+    now: at,
+  });
 }
 
 /** Plain text for a session-start hook. The graph rows stay the evidence. */

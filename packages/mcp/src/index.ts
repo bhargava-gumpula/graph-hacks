@@ -4,13 +4,22 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import {
   agentId,
+  blastRadius,
+  brief,
   claim,
   connect,
   ensureSchema,
+  formatBrief,
+  handoff,
   heartbeat,
+  parallelBatches,
+  planTask,
+  recordDecision,
+  recordLesson,
   registerAgent,
   release,
   status,
+  whyTrace,
   type AgentKind,
   type Conflict,
   type SbGraph,
@@ -131,6 +140,127 @@ export function createServer(): McpServer {
         (c) => `${c.agent} ${c.path} until=${new Date(c.until).toISOString()} task=${c.taskId ?? "-"}`,
       );
       return text(`agents:\n${agents.join("\n") || "(none)"}\nclaims:\n${claims.join("\n") || "(none)"}`);
+    },
+  );
+
+  server.registerTool(
+    "record_decision",
+    {
+      description: "Record a decision and the files it affects. An older active decision on the same file is superseded.",
+      inputSchema: z.object({
+        text: z.string(),
+        why: z.string(),
+        affects: z.array(z.string()).min(1),
+        task: z.string().optional(),
+      }),
+    },
+    async ({ text: decision, why, affects, task }) => {
+      const id = await recordDecision(await graph(), {
+        agent: agentId(),
+        text: decision,
+        why,
+        paths: affects,
+        taskId: task,
+      });
+      return text(`decision ${id}`);
+    },
+  );
+
+  server.registerTool(
+    "record_lesson",
+    {
+      description: "Record a lesson about one or more files.",
+      inputSchema: z.object({
+        text: z.string(),
+        about: z.array(z.string()).min(1),
+      }),
+    },
+    async ({ text: lesson, about }) => {
+      const id = await recordLesson(await graph(), { text: lesson, paths: about, agent: agentId() });
+      return text(`lesson ${id}`);
+    },
+  );
+
+  server.registerTool(
+    "brief_me",
+    {
+      description: "Briefing for a task id or a directory prefix: claims, decisions, lessons, events, handoff.",
+      inputSchema: z.object({
+        task: z.string().optional(),
+        prefix: z.string().optional(),
+      }),
+    },
+    async ({ task, prefix }) => text(formatBrief(await brief(await graph(), { taskId: task, prefix }))),
+  );
+
+  server.registerTool(
+    "why",
+    {
+      description: "Why a file looks like this: edit, agent, task, decision.",
+      inputSchema: z.object({ path: z.string() }),
+    },
+    async ({ path }) => {
+      const hits = await whyTrace(await graph(), path);
+      if (hits.length === 0) return text(`no edits recorded for ${path}`);
+      return text(hits.map((h) => h.path.join(" → ")).join("\n"));
+    },
+  );
+
+  server.registerTool(
+    "blast_radius",
+    {
+      description: "Files that import this one, hop by hop. Empty means nothing depends on it.",
+      inputSchema: z.object({ path: z.string() }),
+    },
+    async ({ path }) => {
+      const blast = await blastRadius(await graph(), path);
+      if (blast.dependents.length === 0) return text(`${path}: no dependents`);
+      return text(blast.dependents.map((d) => `${d.hops} ${d.path}`).join("\n"));
+    },
+  );
+
+  server.registerTool(
+    "plan_task",
+    {
+      description: "Open a task and name the files it will touch.",
+      inputSchema: z.object({
+        id: z.string(),
+        title: z.string().optional(),
+        paths: z.array(z.string()).min(1),
+      }),
+    },
+    async ({ id, title, paths }) => {
+      await planTask(await graph(), { id, title, paths });
+      return text(`planned ${id}`);
+    },
+  );
+
+  server.registerTool(
+    "parallel_batches",
+    {
+      description: "Open tasks split into batches that can run at the same time.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const batches = await parallelBatches(await graph());
+      if (batches.length === 0) return text("no open tasks");
+      return text(batches.map((b) => b.tasks.join(" ")).join("\n"));
+    },
+  );
+
+  server.registerTool(
+    "handoff",
+    {
+      description: "Hand a task to another agent, with a note the next briefing shows.",
+      inputSchema: z.object({
+        task: z.string(),
+        to: z.string(),
+        note: z.string(),
+      }),
+    },
+    async ({ task, to, note }) => {
+      await handoff(await graph(), { from: agentId(), to, taskId: task, note });
+      return text(`handed ${task} to ${to}`);
     },
   );
 

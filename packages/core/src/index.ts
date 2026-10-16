@@ -39,11 +39,11 @@ export type { HubScore } from "./queries/hubs.js";
 export { blastRadius } from "./queries/blast.js";
 export type { BlastRadius, Dependent } from "./queries/blast.js";
 
-export { parallelBatches } from "./queries/schedule.js";
+export { parallelBatches, planTask } from "./queries/schedule.js";
 export type { Batch } from "./queries/schedule.js";
 
-export { whyTrace } from "./queries/why.js";
+export { recordDecision, whyTrace } from "./queries/why.js";
 export type { WhyHit } from "./queries/why.js";
 
-export { brief, formatBrief } from "./queries/brief.js";
+export { brief, formatBrief, handoff, recordLesson } from "./queries/brief.js";
 export type { Brief } from "./queries/brief.js";

@@ -6,6 +6,20 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
 .app { display: grid; grid-template-rows: auto 1fr; height: 100%; position: relative; }
+.main { display: grid; grid-template-columns: 1fr 280px; min-height: 0; }
+.panel {
+  overflow: auto; border-left: 1px solid #2a3140; padding: 0.75rem 1rem; font-size: 0.8rem;
+}
+.panel h2 { margin: 1rem 0 0.35rem; font-size: 0.7rem; letter-spacing: 0.08em; color: #9aa0a6; font-weight: 600; }
+.panel h2:first-child { margin-top: 0; }
+.panel p { margin: 0.2rem 0; }
+.panel button {
+  display: block; width: 100%; text-align: left; margin: 0.15rem 0;
+  background: transparent; color: inherit; border: 0; padding: 0.15rem 0; cursor: pointer;
+}
+.panel button:hover { color: #fff; }
+.panel pre { white-space: pre-wrap; color: #c4c7ce; font-size: 0.75rem; }
+.muted { color: #9aa0a6; }
 .bar {
   display: flex; align-items: baseline; gap: 1rem;
   padding: 0.75rem 1.25rem; border-bottom: 1px solid #2a3140;

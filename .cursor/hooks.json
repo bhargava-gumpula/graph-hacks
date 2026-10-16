@@ -1,9 +1,8 @@
 {
   "version": 1,
   "hooks": {
-    "sessionStart": [{ "command": "scripts/probe.sh cursor sessionStart" }],
-    "preToolUse": [{ "command": "scripts/probe.sh cursor preToolUse", "matcher": "Write" }],
-    "beforeShellExecution": [{ "command": "scripts/probe.sh cursor beforeShellExecution" }],
-    "afterFileEdit": [{ "command": "scripts/probe.sh cursor afterFileEdit" }]
+    "sessionStart": [{ "command": "packages/hooks/hook.sh cursor start" }],
+    "preToolUse": [{ "command": "packages/hooks/hook.sh cursor pre", "matcher": "Write" }],
+    "afterFileEdit": [{ "command": "packages/hooks/hook.sh cursor post" }]
   }
 }

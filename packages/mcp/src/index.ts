@@ -19,6 +19,7 @@ import {
   registerAgent,
   release,
   status,
+  summarizeBrief,
   whyTrace,
   type AgentKind,
   type Conflict,
@@ -190,7 +191,11 @@ export function createServer(): McpServer {
         prefix: z.string().optional(),
       }),
     },
-    async ({ task, prefix }) => text(formatBrief(await brief(await graph(), { taskId: task, prefix }))),
+    async ({ task, prefix }) => {
+      const body = formatBrief(await brief(await graph(), { taskId: task, prefix }));
+      const summary = await summarizeBrief(body);
+      return text(summary ? `${body}\n\nSummary: ${summary}` : body);
+    },
   );
 
   server.registerTool(

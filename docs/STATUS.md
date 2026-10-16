@@ -14,7 +14,7 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | B7 Server+web shell | M9,M10 | Opus 5.5 | done | `hack/B7` → main | `/api/graph` + SSE; canvas; POST claim LoginForm → 3-hop CONFLICT |
 | B8 MVP tag v0.1 + goal check | M11,M12 | Opus 5.5 | done | `hack/B8` → main; tag `v0.1-mvp` | `npm run scenario`: A claims session.ts, B LoginForm → CONFLICT 2-hop path |
 | B9 Queries | C1–C5 | Grok 4.7 | done | `hack/B9` → main | brief, why, blast, WCC batches, PageRank hub; 42 tests |
-| B10 Tools+CLI | C6,C7 | Grok 4.7 | todo | | |
+| B10 Tools+CLI | C6,C7 | Grok 4.7 | done | `hack/B10` → main | MCP + CLI: decide, lesson, brief, why, blast, plan, batches, handoff |
 | B11 Hooks | C8,C9,(C15) | Opus 5.5 | todo | | |
 | B12 AI summary | F20 | Grok 4.7 | todo | | |
 | B13 Routes+panels | C10–C12 | Opus 5.5 | todo | | |

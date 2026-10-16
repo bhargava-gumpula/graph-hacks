@@ -65,3 +65,36 @@ test("check exits 2 with the 3-hop path, and 0 once the claim is released", asyn
   expect(after.code, after.stderr).toBe(0);
   expect(after.stdout).toBe("");
 }, 60_000);
+
+test("blast, plan, batches, decide, and why", async () => {
+  expect((await run(["parse", "demo-repo"])).code).toBe(0);
+  const blast = await run(["blast", "auth/session.ts"]);
+  expect(blast.code, blast.stderr).toBe(0);
+  expect(blast.stdout).toContain("1 api/login.ts");
+  expect(blast.stdout).toContain("2 ui/LoginForm.tsx");
+
+  expect((await run(["plan", "t-about", "ui/AboutPage.tsx"])).code).toBe(0);
+  expect((await run(["plan", "t-login", "ui/LoginForm.tsx"])).code).toBe(0);
+  const batches = await run(["batches"]);
+  expect(batches.code, batches.stderr).toBe(0);
+  expect(batches.stdout).toContain("t-about");
+  expect(batches.stdout).toContain("t-login");
+  expect(batches.stdout).not.toMatch(/t-about t-login|t-login t-about/);
+
+  const decided = await run([
+    "decide",
+    "use argon2, not bcrypt",
+    "--why",
+    "FIPS note",
+    "--affects",
+    "lib/crypto.ts",
+    "--task",
+    "T3",
+    "--agent",
+    "A",
+  ]);
+  expect(decided.code, decided.stderr).toBe(0);
+  expect((await run(["edited", "lib/crypto.ts", "--task", "T3", "--agent", "A"])).code).toBe(0);
+  const why = await run(["why", "lib/crypto.ts"]);
+  expect(why.stdout).toContain("use argon2, not bcrypt");
+}, 60_000);

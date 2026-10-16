@@ -1,4 +1,5 @@
 import type { SbGraph } from "../graph.js";
+import { recordEvent } from "./events.js";
 
 /**
  * Q5. An edit of a file, the task it was under, and the decision that caused the task.
@@ -16,7 +17,38 @@ ORDER BY seq DESC
 LIMIT 5
 `;
 
-/** Arrange a decision for a test or, later, the record_decision tool. */
+/** Write the decision node, who made it, and the files it affects. */
+export const RECORD_DECISION = `
+MERGE (a:Agent {id: $agent})
+ON CREATE SET a.status = 'active'
+MERGE (d:Decision {id: $id})
+SET d.text = $text, d.why = $why, d.status = 'active', d.at = $at
+MERGE (a)-[:MADE]->(d)
+WITH d
+UNWIND $paths AS path
+MATCH (f:File {path: path})
+MERGE (d)-[:AFFECTS]->(f)
+`;
+
+/** A new decision replaces any other active decision on the same file. */
+export const SUPERSEDE_OLDER = `
+MATCH (d:Decision {id: $id})-[:AFFECTS]->(f)<-[:AFFECTS]-(old:Decision {status: 'active'})
+WHERE old.id <> d.id
+SET old.status = 'superseded'
+MERGE (d)-[s:SUPERSEDES]->(old)
+SET s.at = $at
+`;
+
+/** Attach an existing decision as the cause of a task. */
+export const CAUSE_TASK = `
+MERGE (t:Task {id: $taskId})
+ON CREATE SET t.status = 'open'
+WITH t
+MATCH (d:Decision {id: $id})
+MERGE (t)-[:CAUSED_BY]->(d)
+`;
+
+/** Arrange a decision for a test or the record_decision tool. */
 export const LINK_DECISION = `
 MATCH (t:Task {id: $taskId}), (a:Agent {id: $agent})
 MERGE (d:Decision {id: $decisionId})
@@ -41,6 +73,34 @@ export interface WhyHit {
   latestText: string | null;
   /** File, editing agent, task, decision. The chain a judge can read. */
   path: string[];
+}
+
+/** Record a decision and, when a task id is given, mark that task as caused by it. */
+export async function recordDecision(
+  g: SbGraph,
+  input: { agent: string; text: string; why: string; paths: string[]; taskId?: string; id?: string; now?: number },
+): Promise<string> {
+  const id = input.id ?? `d-${Date.now()}`;
+  const at = input.now ?? Date.now();
+  await g.query(RECORD_DECISION, {
+    agent: input.agent,
+    id,
+    text: input.text,
+    why: input.why,
+    at,
+    paths: input.paths,
+  });
+  await g.query(SUPERSEDE_OLDER, { id, at });
+  if (input.taskId) await g.query(CAUSE_TASK, { taskId: input.taskId, id });
+  await recordEvent(g, {
+    kind: "decision",
+    agentId: input.agent,
+    taskId: input.taskId,
+    onPath: input.paths[0],
+    payload: { id, text: input.text, why: input.why, paths: input.paths },
+    now: at,
+  });
+  return id;
 }
 
 /** Why does this file look like this? Newest edits first. */

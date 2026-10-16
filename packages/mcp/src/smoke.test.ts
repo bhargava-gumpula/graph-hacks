@@ -76,7 +76,23 @@ test("stdio server lists claim, and register then status shows the agent", async
     const listed = await call(2, "tools/list", {});
     expect(listed.error, stderr).toBeUndefined();
     const names = listed.result?.tools?.map((tool) => tool.name);
-    expect(names).toEqual(expect.arrayContaining(["register_agent", "claim", "release", "heartbeat", "status"]));
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "register_agent",
+        "claim",
+        "release",
+        "heartbeat",
+        "status",
+        "record_decision",
+        "record_lesson",
+        "brief_me",
+        "why",
+        "blast_radius",
+        "plan_task",
+        "parallel_batches",
+        "handoff",
+      ]),
+    );
 
     const registered = await call(3, "tools/call", {
       name: "register_agent",

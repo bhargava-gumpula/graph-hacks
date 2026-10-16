@@ -13,15 +13,15 @@ import {
   listDecisions,
   parallelBatches,
   RESET_DEMO_EXTRAS,
+  runMvpScenario,
   whyTrace,
   type SbGraph,
 } from "@switchboard/core";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { runMvpScenario } from "../../../scripts/scenario.ts";
 
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
 const POLL_MS = 500;
@@ -92,6 +92,7 @@ app.get("/api/events", (c) => {
 
 if (existsSync(webDist)) {
   app.use("/*", serveStatic({ root: webDist }));
+  app.get("*", (c) => c.html(readFileSync(join(webDist, "index.html"), "utf8")));
 }
 
 const server = serve({ fetch: app.fetch, port: PORT }, () => {

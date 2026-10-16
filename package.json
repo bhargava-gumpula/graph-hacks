@@ -21,7 +21,8 @@
     "server": "tsx apps/server/src/index.ts",
     "web": "npm run dev -w @switchboard/web",
     "switchboard": "tsx packages/cli/src/index.ts",
-    "scenario": "tsx scripts/scenario.ts"
+    "scenario": "tsx scripts/scenario.ts",
+    "bench": "tsx scripts/bench.ts"
   },
   "bin": {
     "switchboard": "packages/cli/src/index.ts"

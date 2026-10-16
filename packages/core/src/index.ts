@@ -45,6 +45,9 @@ export type { Batch } from "./queries/schedule.js";
 export { listDecisions, recordDecision, whyTrace } from "./queries/why.js";
 export type { DecisionRow, WhyHit } from "./queries/why.js";
 
+export { runMvpScenario } from "./demo.js";
+export type { MvpScenarioResult } from "./demo.js";
+
 export { summarizeBrief } from "./summarize.js";
 
 export { brief, formatBrief, handoff, recordLesson } from "./queries/brief.js";

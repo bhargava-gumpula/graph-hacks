@@ -1,0 +1,13 @@
+{
+  "n": 10,
+  "kind": "scripted agents, same edit, real tsc, real FalkorDB conflict check",
+  "without": {
+    "brokenBuilds": 10,
+    "editsApplied": 10
+  },
+  "with": {
+    "brokenBuilds": 0,
+    "blocked": 10
+  },
+  "checkMsMedian": 1
+}

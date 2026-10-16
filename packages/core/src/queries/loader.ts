@@ -63,6 +63,17 @@ export async function loadParse(g: SbGraph, parsed: ParseResult): Promise<{ file
   return counts;
 }
 
+/** Drop files and agents that are not part of the demo repo. Hook edits of this checkout must not appear on the demo canvas. */
+export const RESET_DEMO_EXTRAS = `
+MATCH (f:File)
+WHERE NOT (f.path STARTS WITH 'ui/' OR f.path STARTS WITH 'api/' OR f.path STARTS WITH 'auth/' OR f.path STARTS WITH 'lib/')
+DETACH DELETE f
+WITH 1 AS _
+MATCH (a:Agent)
+WHERE NOT a.id IN ['A', 'B']
+DETACH DELETE a
+`;
+
 /** Count File nodes and IMPORTS edges currently in the graph. */
 export async function codeGraphCounts(g: SbGraph): Promise<{ files: number; imports: number }> {
   const [row] = await g.roQuery(CODE_GRAPH_COUNTS);

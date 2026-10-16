@@ -27,6 +27,7 @@ export function App() {
   const [events, setEvents] = useState<FeedItem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState("");
+  const [playing, setPlaying] = useState(false);
 
   const refresh = () => {
     void fetch("/api/claims").then((r) => r.json()).then(setClaims);
@@ -48,9 +49,14 @@ export function App() {
           last = item.seq;
           setEvents((prev) => [item, ...prev].slice(0, 8));
           if (item.kind === "conflict") {
-            const conflicts = (item.payload as { conflicts?: Conflict[] })?.conflicts ?? [];
-            setHotPath(conflicts[0]?.path ?? []);
-            setStatus(`CONFLICT ${conflicts[0]?.path.join(" → ") ?? ""} ← ${conflicts[0]?.agent ?? item.agentId}`);
+            const hit = (item.payload as { conflicts?: Conflict[] })?.conflicts?.[0];
+            if (hit) {
+              setHotPath(hit.path);
+              const asker = item.agentId ?? "B";
+              setStatus(
+                `Agent ${asker} cannot edit ${hit.file}. It reaches ${hit.claimed}, which agent ${hit.agent} is already changing, through ${hit.path.join(" → ")}. A file lock would have allowed the edit.`,
+              );
+            }
           }
           if (item.kind === "claim" || item.kind === "release" || item.kind === "conflict" || item.kind === "decision") {
             void load();
@@ -61,6 +67,30 @@ export function App() {
       .catch(() => setStatus("server offline — start with npm run server"));
     return () => es?.close();
   }, []);
+
+  async function playDemo() {
+    setPlaying(true);
+    setStatus("Two agents are claiming files…");
+    try {
+      const result = (await fetch("/api/demo", { method: "POST" }).then((r) => r.json())) as {
+        sentence: string;
+        path: string[];
+        batches: string[][];
+        why: string[];
+      };
+      setHotPath(result.path);
+      setDetail(`${result.sentence}\n\nBatches that can run together:\n${result.batches.map((b) => b.join(" + ")).join("\n")}\n\nWhy crypto.ts changed:\n${result.why.join(" → ")}`);
+      setSelected("lib/crypto.ts");
+      setStatus(result.sentence);
+      const snapshot = (await fetch("/api/graph").then((r) => r.json())) as GraphSnapshot;
+      setGraph(snapshot);
+      refresh();
+    } catch {
+      setStatus("Demo failed. Is FalkorDB running? npm run db:up");
+    } finally {
+      setPlaying(false);
+    }
+  }
 
   async function showBlast(path: string) {
     setSelected(path);
@@ -90,12 +120,16 @@ export function App() {
       <header className="bar">
         <h1>SWITCHBOARD</h1>
         <span className={hotPath.length ? "status conflict" : "status"}>{status}</span>
+        <button className="play" type="button" disabled={playing} onClick={() => void playDemo()}>
+          {playing ? "Running…" : "Play the demo"}
+        </button>
       </header>
       <div className="main">
         <GraphCanvas data={graph} hotPath={hotPath} onSelect={(id) => void showBlast(id)} />
         <aside className="panel">
+          <p className="lead">Press Play the demo. Agent A claims session.ts. Agent B asks for the login form. The graph refuses, and draws the import path a file lock would miss.</p>
           <h2>Claims</h2>
-          {claims.length === 0 && <p className="muted">none</p>}
+          {claims.length === 0 && <p className="muted">No one has claimed a file yet.</p>}
           {claims.map((c) => (
             <button key={`${c.agent}:${c.path}`} type="button" onClick={() => void showBlast(c.path)}>
               {c.agent} · {c.path.split("/").pop()}

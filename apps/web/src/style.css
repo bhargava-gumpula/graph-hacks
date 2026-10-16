@@ -21,12 +21,18 @@ html, body, #root { margin: 0; height: 100%; }
 .panel pre { white-space: pre-wrap; color: #c4c7ce; font-size: 0.75rem; }
 .muted { color: #9aa0a6; }
 .bar {
-  display: flex; align-items: baseline; gap: 1rem;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
   padding: 0.75rem 1.25rem; border-bottom: 1px solid #2a3140;
 }
 .bar h1 { margin: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.04em; }
-.bar .status { color: #9aa0a6; font-size: 0.85rem; }
-.bar .status.conflict { color: #ea4335; }
+.bar .status { color: #9aa0a6; font-size: 0.85rem; flex: 1; min-width: 16rem; line-height: 1.35; }
+.bar .status.conflict { color: #ffb4a8; }
+.play {
+  margin-left: auto; background: #ea4335; color: #fff; border: 0; border-radius: 999px;
+  padding: 0.45rem 0.9rem; font-weight: 600; cursor: pointer;
+}
+.play:disabled { opacity: 0.6; cursor: wait; }
+.lead { color: #c4c7ce; line-height: 1.4; margin: 0 0 0.5rem; }
 .canvas { width: 100%; height: 100%; background: #0e1116; }
 .legend {
   position: absolute; left: 1rem; bottom: 1rem; font-size: 0.75rem; color: #9aa0a6;

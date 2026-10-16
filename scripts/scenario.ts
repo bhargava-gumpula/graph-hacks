@@ -33,6 +33,7 @@ export interface MvpScenarioResult {
   b: Extract<ClaimResult, { ok: false }>;
   batches: string[][];
   why: string[];
+  sentence: string;
 }
 
 /**
@@ -75,14 +76,20 @@ export async function runMvpScenario(g: SbGraph, demoRoot: string): Promise<MvpS
     id: "D-argon2",
   });
   await recordEdit(g, { agentId: A, path: "lib/crypto.ts", taskId: "T3" });
+  await g.query("MATCH (t:Task {id: 'T3'}) SET t.status = 'done'");
   const why = (await whyTrace(g, "lib/crypto.ts"))[0]?.path ?? [];
+  const hit = b.conflicts[0]!;
+  const sentence =
+    `Agent B cannot edit ${hit.file}. It reaches ${hit.claimed}, which agent ${hit.agent} is already changing, ` +
+    `through ${hit.path.join(" → ")}. A file lock would have allowed the edit.`;
 
-  return { files: counts.files, imports: counts.imports, a, b, batches, why };
+  return { files: counts.files, imports: counts.imports, a, b, batches, why, sentence };
 }
 
 function format(result: MvpScenarioResult): string {
   const c = result.b.conflicts[0]!;
   return [
+    result.sentence,
     `parsed ${result.files} files, ${result.imports} imports`,
     `A claimed ${SESSION} until ${new Date(result.a.until).toISOString()} seq=${result.a.seq}`,
     `B claimed ${LOGIN} → CONFLICT ${c.type} ${c.hops} hops`,

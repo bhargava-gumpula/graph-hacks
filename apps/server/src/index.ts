@@ -12,6 +12,7 @@ import {
   listClaims,
   listDecisions,
   parallelBatches,
+  RESET_DEMO_EXTRAS,
   whyTrace,
   type SbGraph,
 } from "@switchboard/core";
@@ -20,6 +21,7 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { runMvpScenario } from "../../../scripts/scenario.ts";
 
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
 const POLL_MS = 500;
@@ -52,6 +54,20 @@ app.get("/api/blast", async (c) => c.json(await blastRadius(g, c.req.query("path
 app.get("/api/batches", async (c) => c.json(await parallelBatches(g)));
 
 app.get("/api/decisions", async (c) => c.json(await listDecisions(g)));
+
+/** The two-minute story, driven from the page so a judge never needs a terminal. */
+app.post("/api/demo", async (c) => {
+  const demo = join(import.meta.dirname, "../../../demo-repo");
+  // Hook edits of this checkout must not sit in the demo graph.
+  await g.query(RESET_DEMO_EXTRAS);
+  const result = await runMvpScenario(g, demo);
+  return c.json({
+    sentence: result.sentence,
+    path: result.b.conflicts[0]?.path ?? [],
+    batches: result.batches,
+    why: result.why,
+  });
+});
 
 /** Demo helper: POST { agent, paths, task? } so the UI can be driven without MCP. */
 app.post("/api/claims", async (c) => {

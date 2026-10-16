@@ -31,10 +31,15 @@ fi
 file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.path // .file_path // ""' 2>/dev/null || true)
 rel="$file"
 [[ "$file" == "$root/"* ]] && rel="${file#"$root"/}"
-# The demo graph stores paths inside demo-repo/, not from the outer repo root.
+# Only files inside the parsed repo are checked or recorded. Anything else
+# (this checkout's own source) must not be written into the demo graph.
 prefix="${SB_PREFIX-demo-repo}"
-if [[ -n "$prefix" && "$rel" == "$prefix/"* ]]; then
-  rel="${rel#"$prefix"/}"
+if [[ -n "$prefix" ]]; then
+  if [[ "$rel" == "$prefix/"* ]]; then
+    rel="${rel#"$prefix"/}"
+  else
+    allow
+  fi
 fi
 
 if [[ "$event" == "start" ]]; then

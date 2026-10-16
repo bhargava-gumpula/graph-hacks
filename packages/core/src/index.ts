@@ -17,7 +17,7 @@ export type { EditInput } from "./queries/edits.js";
 export { parseRepo } from "./parser.js";
 export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
 
-export { codeGraphCounts, loadParse } from "./queries/loader.js";
+export { codeGraphCounts, loadParse, RESET_DEMO_EXTRAS } from "./queries/loader.js";
 
 export { findConflicts, conflictQuery } from "./queries/conflict.js";
 export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.js";

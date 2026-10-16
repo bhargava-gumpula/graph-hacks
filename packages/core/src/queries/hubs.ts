@@ -29,6 +29,11 @@ export interface HubScore {
   hub: boolean;
 }
 
+export const MARK_FILE_HUB = `
+MATCH (f:File {path: $path})
+SET f.hub = true
+`;
+
 /** Recompute rank and hub flags. Call after every parse. */
 export async function markHubs(g: SbGraph): Promise<HubScore[]> {
   const rows = await g.query(MARK_HUBS, { minDegree: HUB_INDEGREE });

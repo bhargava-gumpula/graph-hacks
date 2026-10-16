@@ -33,6 +33,22 @@ html, body, #root { margin: 0; height: 100%; }
   padding: 0.75rem 1.25rem; border-bottom: 1px solid #2a3140;
 }
 .bar h1 { margin: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.04em; }
+.bar a { color: inherit; text-decoration: none; }
+.bar nav { display: flex; gap: 1rem; }
+.bar nav a { color: #c4c7ce; font-size: 0.9rem; }
+.landing main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+.kicker { color: #9aa0a6; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.75rem; }
+.landing h1 { font-size: 2.4rem; line-height: 1.15; margin: 0.4rem 0 1rem; }
+.lede { font-size: 1.15rem; line-height: 1.5; color: #c4c7ce; }
+.cta { display: flex; gap: 0.6rem; align-items: center; }
+.cta .play { text-decoration: none; display: inline-block; }
+.play.secondary { background: transparent; color: #e8eaed; border: 1px solid #3c4454; }
+.numbers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 2rem 0; }
+.numbers strong { display: block; font-size: 1.8rem; }
+.numbers span { color: #9aa0a6; font-size: 0.85rem; }
+.landing table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.landing th, .landing td { text-align: left; padding: 0.55rem 0.4rem; border-bottom: 1px solid #2a3140; vertical-align: top; }
+.judge-out { background: #141820; padding: 1rem; overflow: auto; max-height: 22rem; }
 .bar .status { color: #9aa0a6; font-size: 0.85rem; flex: 1; min-width: 16rem; line-height: 1.35; }
 .bar .status.conflict { color: #ffb4a8; }
 .play {

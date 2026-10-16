@@ -115,7 +115,7 @@ export function App() {
   return (
     <div className="app">
       <header className="bar">
-        <h1>SWITCHBOARD</h1>
+        <h1><a href="/">SWITCHBOARD</a></h1>
         <span className="status">{status}</span>
         <button className="play" type="button" disabled={playing} onClick={() => void playDemo()}>
           {playing ? "Running…" : "Play the demo"}

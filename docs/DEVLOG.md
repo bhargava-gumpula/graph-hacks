@@ -113,3 +113,11 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Summary:** `summarizeBrief` calls Haiku only when `ANTHROPIC_API_KEY` is set. With no key, brief stays the graph text. No new dependency; it uses `fetch`.
 - **Not built:** the with/without benchmark, the landing page, deploy, README, blog, and video. Those need a longer run or the owner.
 - **Tests:** 43/43. Typecheck and lint clean.
+
+## 2026-10-16 11:15 PT: benchmark, landing page, judge page, README (branch `hack/ship`)
+- **Benchmark:** `npm run bench` runs the same edit 10 times. Agent A has claimed `auth/session.ts`. Agent B's edit deletes an import and leaves the call, so `tsc` fails if it lands. Without Switchboard: **10/10 builds broke**. With Switchboard: the check blocked the edit **10/10** times and **0/10** builds broke. Median check **1 ms**. Scripted agents, not live model sessions. The only difference is whether the edit obeys FalkorDB. Numbers are in `bench/results.json`. The landing page reads that file.
+- **Pages:** `/` explains the product and shows those numbers. `/app` is the graph. `/judge` has three buttons: Conflict, Batches, Why.
+- **Docs:** README (setup, model, queries, ablation, AI disclosure, what the owner directed). `docs/DEMO.md` is the shot list. `docs/blog.md` is the draft. `deploy/RUNBOOK.md` is how to serve the built app and open a tunnel. No public URL was started.
+- **Not done:** the owner's voice on the video, publishing the blog, and submitting the form.
+- **Goal check:** the conflict, the batches, the why-trace, and the briefing are FalkorDB queries. Memory is events, decisions, and lessons in that graph. Coordination is claims and conflicts. The demo plays from one button. The benchmark is reproducible from `npm run bench`. The owner can say: a path means two agents will collide; no path means they will not. We are inside the Friday window. The landing page and the benchmark were in the plan. The three mockups were cut because the demo was already on this layout.
+- **Tests:** 43/43. Typecheck and lint clean.

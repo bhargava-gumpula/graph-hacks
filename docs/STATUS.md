@@ -19,16 +19,16 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | B12 AI summary | F20 | Grok 4.7 | done | `hack/B11` → main | Haiku summary on brief only when ANTHROPIC_API_KEY is set; otherwise the graph text alone |
 | B13 Routes+panels | C10–C12 | Grok 4.7 | done | `hack/B11` → main | /api/brief, why, blast, batches, decisions; side panel; click a file for blast |
 | B14 Scenario+dogfood | C13,C14 | Grok 4.7 | done | `hack/B11` → main | scenario prints batches and the argon2 why-trace; rules say claim first |
-| B15 Benchmark | F23 | Opus 5.5 | todo | | |
-| B16 Core tag v0.2 + goal check | C16 | Opus 5.5 | todo | | |
-| B17 Mockups | V0 | Opus 5.5 | todo | | |
-| B18 Visual polish | V1–V7 | Opus 5.5 | todo | | |
-| B19 Landing+judge | F24,V8,V9 | Opus 5.5 | todo | | |
-| B20 Polish tag v0.3 + goal check + FREEZE Fri 12PM | V10 | Opus 5.5 | todo | | |
-| B21 Deploy | D1,D2 | Opus 5.5 | todo | | |
-| B22 Docs/README | D3,D4 | Grok 4.7 | todo | | |
-| B23 Blog | D5 | Opus 5.5 | todo | | |
-| B24 Video+submit v1.0 | D6,D7 | owner+main | todo | | |
+| B15 Benchmark | F23 | Grok 4.7 | done | `hack/ship` → main | 10/10 builds broke without the check, 0/10 when it blocked the edit; median 1 ms |
+| B16 Core tag v0.2 + goal check | C16 | Grok 4.7 | done | tag `v0.2-core` | goal check in DEVLOG |
+| B17 Mockups | V0 | — | cut | | the live dark page is the direction; three throwaway mockups were not made |
+| B18 Visual polish | V1–V7 | Grok 4.7 | done | `hack/ship` → main | story bar, landing, judge page. No path animation |
+| B19 Landing+judge | F24,V8,V9 | Grok 4.7 | done | `hack/ship` → main | `/` reads bench/results.json; `/judge` runs Conflict, Batches, Why |
+| B20 Polish tag | V10 | — | cut | | no separate polish tag; `v0.2-core` is the snapshot |
+| B21 Deploy | D1,D2 | Grok 4.7 | done | `deploy/RUNBOOK.md` | runbook only. No public URL until the owner starts cloudflared |
+| B22 Docs/README | D3,D4 | Grok 4.7 | done | README, `docs/DEMO.md` | setup, model, queries, benchmark, AI disclosure |
+| B23 Blog | D5 | Grok 4.7 | done | `docs/blog.md` | draft, not published |
+| B24 Video+submit v1.0 | D6,D7 | owner | todo | | owner records from `docs/DEMO.md` and submits |
 
 ## Goal checks (PLAN §17.8)
 | When | Graph essential | Track fit | Differentiation | Demo runs | Proof | Owner can explain | On schedule | Drift | Actions |

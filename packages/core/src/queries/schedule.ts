@@ -2,6 +2,11 @@ import type { SbGraph } from "../graph.js";
 
 const MAX_K = 4;
 
+export const SET_TASK_STATUS = `
+MATCH (t:Task {id: $id})
+SET t.status = $status
+`;
+
 /** Give an open task one file in its footprint. */
 export const TOUCH_FILE = `
 MERGE (t:Task {id: $id})

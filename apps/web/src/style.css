@@ -5,7 +5,15 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
-.app { display: grid; grid-template-rows: auto 1fr; height: 100%; position: relative; }
+.app { display: grid; grid-template-rows: auto auto 1fr; height: 100%; position: relative; }
+.story { padding: 0.85rem 1.25rem 1rem; border-bottom: 1px solid #2a3140; }
+.sentence { margin: 0; font-size: 1.15rem; line-height: 1.45; max-width: 58rem; }
+.sentence.quiet { color: #c4c7ce; font-size: 1rem; }
+.facts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.7rem 0 0; }
+.facts span {
+  background: #1a2030; border: 1px solid #2a3140; border-radius: 999px;
+  padding: 0.2rem 0.65rem; font-size: 0.78rem; color: #c4c7ce;
+}
 .main { display: grid; grid-template-columns: 1fr 280px; min-height: 0; }
 .panel {
   overflow: auto; border-left: 1px solid #2a3140; padding: 0.75rem 1rem; font-size: 0.8rem;

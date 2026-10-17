@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   agentId,
@@ -10,6 +11,7 @@ import {
   status,
   brief,
   claim,
+  codeGraphCounts,
   connect,
   ensureSchema,
   findConflicts,
@@ -29,6 +31,7 @@ import {
   type AgentKind,
   type Conflict,
 } from "@switchboard/core";
+import { applyInit, lineDiff, planInit, SWITCHBOARD_ROOT } from "./init.js";
 
 const USAGE = `switchboard: coordinate AI coding agents through a shared FalkorDB graph.
 
@@ -55,6 +58,11 @@ Memory
   why <file>                                edit -> agent -> task -> decision trace
   handoff <task> --to <agent> --note <text>
 
+Setup
+  init [repoDir] [--dry-run]                wire Switchboard into another repo: hooks in .claude/settings.json
+                                            and .cursor/hooks.json, the MCP server in .mcp.json, then parse it
+                                            into its own graph sb_<repo name>. Merges; --dry-run prints the diff.
+
 Planning
   parse [dir]                               load a repo's import graph (default demo-repo)
   blast <file>                              files that import <file>, hop by hop
@@ -78,6 +86,7 @@ interface Flags {
   note?: string;
   title?: string;
   kind?: string;
+  dryRun: boolean;
   help: boolean;
 }
 
@@ -107,6 +116,7 @@ function parseArgs(argv: string[]): Flags {
   let title: string | undefined;
   let kind: string | undefined;
   let help = false;
+  let dryRun = false;
   const take = (flag: string, i: number) => {
     const value = argv[i + 1];
     if (value === undefined) throw new Error(`${flag} needs a value`);
@@ -126,10 +136,11 @@ function parseArgs(argv: string[]): Flags {
     else if (arg === "--title") title = take(arg, i++);
     else if (arg === "--kind") kind = take(arg, i++);
     else if (arg === "--help" || arg === "-h") help = true;
+    else if (arg === "--dry-run") dryRun = true;
     else if (arg.startsWith("--")) throw new Error(`unknown flag ${arg}`);
     else positional.push(arg);
   }
-  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, help };
+  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, dryRun, help };
 }
 
 function agentOf(flags: Flags): string {
@@ -143,6 +154,7 @@ function filesOf(flags: Flags): string[] {
 const KINDS: readonly AgentKind[] = ["cursor", "claude", "human"];
 
 const COMMANDS = new Set([
+  "init",
   "register",
   "heartbeat",
   "status",
@@ -161,6 +173,57 @@ const COMMANDS = new Set([
   "handoff",
 ]);
 
+/** `init`: write the merged configs, parse the repo into its graph, print what to do next. */
+async function init(flags: Flags): Promise<number> {
+  if (flags.positional.length > 2) throw new Error("init takes one directory");
+  const plan = planInit(flags.positional[1] ?? ".");
+  const shown = (path: string) => relative(plan.repo, path);
+  if (flags.dryRun) {
+    if (plan.changes.length === 0) console.log(`${plan.repo} is already wired to Switchboard. Nothing to change.`);
+    for (const c of plan.changes) {
+      console.log(`--- ${shown(c.path)}${c.before === null ? " (new file)" : ""}\n${lineDiff(c.before ?? "", c.after)}\n`);
+    }
+    console.log(`Would parse ${plan.repo} into graph ${plan.graph}. Nothing was written (--dry-run).`);
+    return 0;
+  }
+  applyInit(plan);
+  for (const c of plan.changes) {
+    console.log(`${c.before === null ? "created" : "updated"} ${shown(c.path)}${c.before === null ? "" : ` (original kept in ${shown(c.path)}.bak)`}`);
+  }
+  if (plan.changes.length === 0) console.log("configs already wired, nothing changed");
+
+  const parseCmd = `SB_GRAPH=${plan.graph} npm run switchboard -- parse ${plan.repo}`;
+  const g = await connect({ graph: plan.graph }).catch((err: unknown) => {
+    throw new Error(`${err instanceof Error ? err.message : err}\nThe configs are written. Once FalkorDB is up, run: ${parseCmd}`);
+  });
+  try {
+    await ensureSchema(g);
+    const parsed = parseRepo(plan.repo);
+    await loadParse(g, parsed);
+    const counts = await codeGraphCounts(g);
+    console.log(`parsed ${plan.repo} into graph ${plan.graph}: ${counts.files} files, ${counts.imports} imports`);
+  } finally {
+    await g.close();
+  }
+
+  const steps = [
+    `cd ${SWITCHBOARD_ROOT}`,
+    ...(existsSync(join(SWITCHBOARD_ROOT, "apps/web/dist/index.html")) ? [] : ["npm run build -w @switchboard/web"]),
+    `SB_GRAPH=${plan.graph} npm run server`,
+  ];
+  console.log(`
+Next steps:
+  1. Start the server on this repo's graph (one server serves one graph, so stop the demo server first):
+       ${steps.join(" && ")}
+  2. Open http://localhost:8787/app to watch claims and conflicts.
+  3. Run claude or cursor in ${plan.repo}. Approve the switchboard MCP server when asked.
+     Re-parse after big changes: ${parseCmd}`);
+  if (spawnSync("jq", ["--version"]).status !== 0) {
+    console.log("\nWarning: jq is not installed, so the hooks let every edit through. Install it (brew install jq).");
+  }
+  return 0;
+}
+
 async function run(flags: Flags): Promise<number> {
   const command = flags.positional[0];
   if (flags.help || command === "help") {
@@ -171,6 +234,7 @@ async function run(flags: Flags): Promise<number> {
     console.error(command ? `unknown command ${command}\n\n${USAGE}` : USAGE);
     return 1;
   }
+  if (command === "init") return init(flags);
   if (flags.kind !== undefined && !(KINDS as readonly string[]).includes(flags.kind)) {
     throw new Error(`--kind must be one of ${KINDS.join(", ")}`);
   }

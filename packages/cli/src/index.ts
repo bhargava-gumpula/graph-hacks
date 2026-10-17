@@ -36,7 +36,7 @@ import {
   type FileUpdate,
   type SbGraph,
 } from "@switchboard/core";
-import { applyInit, lineDiff, planInit, SWITCHBOARD_ROOT } from "./init.js";
+import { applyInit, keepsBackup, lineDiff, planInit, SWITCHBOARD_ROOT } from "./init.js";
 
 const USAGE = `switchboard: coordinate AI coding agents through a shared FalkorDB graph.
 
@@ -241,7 +241,7 @@ async function init(flags: Flags): Promise<number> {
   }
   applyInit(plan);
   for (const c of plan.changes) {
-    console.log(`${c.before === null ? "created" : "updated"} ${shown(c.path)}${c.before === null ? "" : ` (original kept in ${shown(c.path)}.bak)`}`);
+    console.log(`${c.before === null ? "created" : "updated"} ${shown(c.path)}${keepsBackup(c) ? ` (original kept in ${shown(c.path)}.bak)` : ""}`);
   }
   if (plan.changes.length === 0) console.log("configs already wired, nothing changed");
 

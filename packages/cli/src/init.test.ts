@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test } from "vitest";
-import { applyInit, graphName, lineDiff, planInit, serverPort, SWITCHBOARD_ROOT } from "./init.js";
+import { applyInit, graphName, keepsBackup, lineDiff, planInit, serverPort, SWITCHBOARD_ROOT } from "./init.js";
 
 const ROOT = "/opt/switchboard";
 const HOOK = `${ROOT}/packages/hooks/hook.sh`;
@@ -125,7 +125,7 @@ test("a git repo resolves paths from its own top level, so worktrees work", () =
 });
 
 test("existing settings are merged, the original is kept once in .bak, and a second run changes nothing", () => {
-  const repo = tempRepo("shop");
+  const repo = tempRepo("shop", true);
   mkdirSync(join(repo, ".claude"));
   const original = JSON.stringify({
     permissions: { allow: ["Bash(ls:*)"] },
@@ -140,8 +140,14 @@ test("existing settings are merged, the original is kept once in .bak, and a sec
   });
   writeFileSync(join(repo, ".claude/settings.json"), original);
   writeFileSync(join(repo, ".mcp.json"), JSON.stringify({ mcpServers: { other: { command: "other-mcp" } } }));
+  writeFileSync(join(repo, ".gitignore"), "node_modules\n");
 
-  applyInit(planInit(repo, ROOT));
+  const plan = planInit(repo, ROOT);
+  const backups = Object.fromEntries(plan.changes.map((c) => [c.path.slice(repo.length + 1), keepsBackup(c)]));
+  expect(backups).toMatchObject({ ".claude/settings.json": true, ".mcp.json": true, ".gitignore": false });
+  applyInit(plan);
+  // .gitignore only gains a line: no backup, and init's output says none.
+  expect(existsSync(join(repo, ".gitignore.bak"))).toBe(false);
   const claude = json(repo, ".claude/settings.json");
   expect(claude.permissions).toEqual({ allow: ["Bash(ls:*)"] });
   expect(claude.hooks.Stop).toEqual([{ hooks: [{ type: "command", command: "say done" }] }]);

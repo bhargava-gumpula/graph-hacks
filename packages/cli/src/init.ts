@@ -216,12 +216,14 @@ function gitignoreChange(repo: string): FileChange | null {
   return { path, before, after: `${base}${base && !base.endsWith("\n") ? "\n" : ""}${LOCAL_SETTINGS}\n` };
 }
 
+/** Does applying this change keep the original in <file>.bak? .gitignore only gains a line, so it needs none. */
+export const keepsBackup = (c: FileChange): boolean => c.before !== null && !c.path.endsWith(".gitignore");
+
 /** Write the plan. An existing file is copied to <file>.bak once, before its first change. */
 export function applyInit(plan: InitPlan): void {
   for (const c of plan.changes) {
     mkdirSync(dirname(c.path), { recursive: true });
-    // .gitignore only gains a line, so it needs no backup.
-    if (c.before !== null && !c.path.endsWith(".gitignore") && !existsSync(`${c.path}.bak`)) copyFileSync(c.path, `${c.path}.bak`);
+    if (keepsBackup(c) && !existsSync(`${c.path}.bak`)) copyFileSync(c.path, `${c.path}.bak`);
     writeFileSync(c.path, c.after);
   }
 }

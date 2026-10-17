@@ -7,6 +7,8 @@ export interface GraphNode {
   hub?: boolean;
   status?: string;
   claimedBy?: string[];
+  /** Agents only: the tool it runs in (cursor, claude, human), as registerAgent stored it. */
+  agentKind?: string;
 }
 
 export interface GraphEdge {
@@ -44,7 +46,7 @@ RETURN DISTINCT a.path AS source, b.path AS target
 
 export const SNAPSHOT_AGENTS = `
 MATCH (a:Agent)
-RETURN a.id AS id, a.status AS status
+RETURN a.id AS id, a.status AS status, a.kind AS kind
 ORDER BY a.id
 `;
 
@@ -85,7 +87,9 @@ export async function graphSnapshot(g: SbGraph, now = Date.now()): Promise<Graph
   }
   for (const row of agents) {
     const id = String(row.id);
-    nodes.push({ id: `agent:${id}`, label: id, kind: "agent", status: String(row.status ?? "active") });
+    const node: GraphNode = { id: `agent:${id}`, label: id, kind: "agent", status: String(row.status ?? "active") };
+    if (typeof row.kind === "string") node.agentKind = row.kind;
+    nodes.push(node);
   }
 
   return { nodes, edges };

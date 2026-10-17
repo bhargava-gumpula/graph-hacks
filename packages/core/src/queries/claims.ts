@@ -1,7 +1,9 @@
 import type { SbGraph } from "../graph.js";
+import { normPath } from "../paths.js";
 import { releaseStaleAgents } from "./agents.js";
 import { type Conflict, conflictGuard, findConflicts } from "./conflict.js";
 import { ALLOCATE_EVENT, readSeq, recordEvent } from "./events.js";
+import { latestSeq } from "./feed.js";
 
 /** Default claim lifetime. An agent that dies stops blocking others after this. */
 export const DEFAULT_TTL_MS = 30 * 60 * 1000;
@@ -19,9 +21,27 @@ export interface ClaimInput {
   now?: number;
 }
 
+/**
+ * `unknown`: requested paths with no File node. They are neither checked nor claimed
+ * (no ghost File is created), so callers must warn that nothing was checked.
+ */
 export type ClaimResult =
-  | { ok: true; until: number; seq: number }
-  | { ok: false; conflicts: Conflict[]; seq: number };
+  | { ok: true; until: number; seq: number; unknown?: string[] }
+  | { ok: false; conflicts: Conflict[]; seq: number; unknown?: string[] };
+
+/** Which of `$paths` are File nodes in the parsed graph. */
+export const KNOWN_FILES = `
+MATCH (f:File)
+WHERE f.path IN $paths
+RETURN f.path AS path
+`;
+
+/** The requested paths (normalised) that are not in the parsed graph. */
+export async function unknownPaths(g: SbGraph, paths: string[]): Promise<string[]> {
+  const want = [...new Set(paths.map(normPath))];
+  const known = new Set((await g.roQuery(KNOWN_FILES, { paths: want })).map((row) => String(row.path)));
+  return want.filter((p) => !known.has(p));
+}
 
 /**
  * Write the claims and their `claim` event (one seq).
@@ -82,15 +102,20 @@ RETURN m.value AS seq, size(claims) AS released
  * claim on, or linked through the import graph to, any of these files; the
  * check and the write are one query, so two racing claims on linked files
  * cannot both win. A denied claim writes nothing but a `conflict` event that
- * carries the paths.
+ * carries the paths. Paths are normalised first (see paths.ts); unknown ones are
+ * returned in `unknown` and skipped.
  */
 export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult> {
-  const paths = [...new Set(input.paths)];
-  if (paths.length === 0) throw new Error("claim needs at least one path");
+  const requested = [...new Set(input.paths.map(normPath))];
+  if (requested.length === 0) throw new Error("claim needs at least one path");
   const now = input.now ?? Date.now();
   const k = input.k ?? 3;
   const ttl = input.ttlMs ?? DEFAULT_TTL_MS;
   const until = now + ttl;
+  const unknown = await unknownPaths(g, requested);
+  const paths = requested.filter((p) => !unknown.includes(p));
+  // Nothing in the graph: nothing to check or claim. Not a silent OK: `unknown` says so.
+  if (paths.length === 0) return { ok: true, until, seq: await latestSeq(g), unknown };
   // A crashed agent with a long TTL must not block this claim.
   await releaseStaleAgents(g, { now });
 
@@ -107,7 +132,7 @@ export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult>
       taskId: input.taskId ?? null,
       intent: input.intent ?? null,
     });
-    if (rows.length > 0) return { ok: true, until, seq: readSeq(rows, "claim") };
+    if (rows.length > 0) return { ok: true, until, seq: readSeq(rows, "claim"), unknown };
 
     // Denied. Read the paths for the caller. If the blocking claim was released
     // in between, the list is empty and the claim is simply tried again.
@@ -121,7 +146,7 @@ export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult>
         payload: { requested: paths, conflicts },
         now,
       });
-      return { ok: false, conflicts, seq };
+      return { ok: false, conflicts, seq, unknown };
     }
   }
 }
@@ -131,12 +156,13 @@ export async function release(
   g: SbGraph,
   input: { agent: string; paths?: string[]; now?: number },
 ): Promise<{ released: number; seq: number }> {
+  const paths = input.paths ? input.paths.map(normPath) : null;
   const rows = await g.query(RELEASE_CLAIMS, {
     kind: "release",
     at: input.now ?? Date.now(),
-    payload: JSON.stringify({ paths: input.paths ?? null }),
+    payload: JSON.stringify({ paths }),
     agent: input.agent,
-    paths: input.paths ?? null,
+    paths,
   });
   return { released: Number(rows[0]?.released ?? 0), seq: readSeq(rows, "release") };
 }

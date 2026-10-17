@@ -25,8 +25,18 @@ beforeAll(async () => {
 });
 
 test("five tasks fall into three batches: login chain, settings island, about", async () => {
+  // t-about and t-prefs both import the hub lib/utils.ts; no path runs through it.
   const batches = await parallelBatches(g());
   expect(batches.map((b) => b.tasks)).toEqual([["t-about"], ["t-login", "t-session"], ["t-prefs", "t-settings"]]);
+});
+
+test("each batch carries its files, the union of its tasks' footprints", async () => {
+  const batches = await parallelBatches(g());
+  expect(batches.map((b) => b.paths)).toEqual([
+    ["ui/AboutPage.tsx"],
+    ["auth/session.ts", "ui/LoginForm.tsx"],
+    ["lib/prefs.ts", "ui/SettingsPanel.tsx"],
+  ]);
 });
 
 test("each INTERFERES edge names the closest file and its hops", async () => {
@@ -48,15 +58,19 @@ test("k=1 splits the 2-hop login chain but not the 1-hop settings pair", async (
   expect(batches).toEqual([["t-about"], ["t-login"], ["t-prefs", "t-settings"], ["t-session"]]);
 });
 
-test("two tasks on files that only share the hub can run together", async () => {
-  // Both import lib/utils.ts, which must not connect them.
-  await planTask(g(), { id: "t-x", paths: ["ui/AboutPage.tsx"] });
-  await planTask(g(), { id: "t-y", paths: ["lib/utils.ts"] });
-  await planTask(g(), { id: "t-z", paths: ["lib/utils.ts"] });
-  const batches = (await parallelBatches(g())).map((b) => b.tasks);
-  expect(batches).toContainEqual(["t-y", "t-z"]); // same file, even a hub, is hop 0
-  expect(batches).toContainEqual(["t-about", "t-x"]);
-  for (const id of ["t-x", "t-y", "t-z"]) await g().query(SET_TASK_STATUS, { id, status: "done" });
+test("a task on the hub interferes with the hub's importers; a hub inside a path links nothing", async () => {
+  await planTask(g(), { id: "t-hub", paths: ["lib/utils.ts"] });
+  // Make lib/errors.ts a hub for this test: api/audit.ts reaches utils.ts only through it.
+  await planTask(g(), { id: "t-audit", paths: ["api/audit.ts"] });
+  await g().query("MATCH (f:File {path: 'lib/errors.ts'}) SET f.hub = true");
+  try {
+    const batches = (await parallelBatches(g())).map((b) => b.tasks);
+    expect(batches).toContainEqual(["t-about", "t-hub", "t-login", "t-prefs", "t-session", "t-settings"]);
+    expect(batches).toContainEqual(["t-audit"]);
+  } finally {
+    await g().query("MATCH (f:File {path: 'lib/errors.ts'}) SET f.hub = false");
+    for (const id of ["t-hub", "t-audit"]) await g().query(SET_TASK_STATUS, { id, status: "done" });
+  }
 });
 
 test("a claimed file counts like a planned one; done tasks drop out", async () => {

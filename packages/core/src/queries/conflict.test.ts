@@ -86,9 +86,29 @@ describe("Q1 filters", () => {
     expect(await conflictsFor(["x", "z"])).toEqual([]);
   });
 
-  test("a claimed hub conflicts only on the hub itself", async () => {
+  test("a claimed hub conflicts with its importers and imports: hubs are skipped only inside a path", async () => {
     await theyClaim(["hub"]);
-    expect(await summary(["x", "y", "z", "hub"])).toEqual([["hub", "SAME", 0, "hub"]]);
+    expect(await summary(["x", "y", "z", "hub"])).toEqual([
+      ["hub", "SAME", 0, "hub"],
+      ["x", "UPSTREAM", 1, "x>hub"],
+      ["y", "DOWNSTREAM", 1, "hub>y"],
+      ["z", "UPSTREAM", 1, "z>hub"],
+    ]);
+  });
+
+  test("conflicts with a hub at either end carry hub: true; others have no hub field", async () => {
+    await theyClaim(["hub", "c4"]);
+    const [x] = await conflictsFor(["x"]);
+    expect(x).toMatchObject({ type: "UPSTREAM", claimed: "hub", hub: true });
+    const [c3] = await conflictsFor(["c3"]);
+    expect(c3).not.toHaveProperty("hub");
+  });
+
+  test("nodes(p)[1..-1] is the interior: both ends dropped, middle kept", async () => {
+    const [row] = await g().roQuery(
+      "MATCH p = (:File {path:'c0'})-[:IMPORTS*3]->(:File {path:'c3'}) RETURN [n IN nodes(p)[1..-1] | n.path] AS mid",
+    );
+    expect(row?.mid).toEqual(["c1", "c2"]);
   });
 
   test("an expired claim is ignored", async () => {
@@ -116,6 +136,14 @@ describe("claim() uses the same rules", () => {
     const denied = await claim(g(), { agent: ME, paths: ["c2"], now: NOW });
     expect(denied.ok).toBe(false);
     if (!denied.ok) expect(denied.conflicts.map((c) => c.type)).toEqual(["UPSTREAM"]);
+    expect((await claim(g(), { agent: ME, paths: ["x"], now: NOW })).ok).toBe(true);
+  });
+
+  test("the claim guard uses the same hub rule: blocked by a claimed hub, not through one", async () => {
+    await theyClaim(["hub"]);
+    expect((await claim(g(), { agent: ME, paths: ["x"], now: NOW })).ok).toBe(false);
+    await g().query("MATCH ()-[c:CLAIMS]->() DELETE c");
+    await theyClaim(["y"]);
     expect((await claim(g(), { agent: ME, paths: ["x"], now: NOW })).ok).toBe(true);
   });
 });

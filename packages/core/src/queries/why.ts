@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { SbGraph } from "../graph.js";
+import { normPath } from "../paths.js";
 import { recordEvent } from "./events.js";
 
 /**
@@ -38,10 +39,16 @@ RETURN d.id AS id, count(f) AS affected
 `;
 
 /**
- * Q5. Why does this file look like this? Each edit of the file, newest first, with
- * the agent who made it, the task it was under, the decision that caused the task
- * and who made that decision. `latest` is the active decision that replaced it,
- * following SUPERSEDES up to 5 steps. Edits with no task still show who edited.
+ * Q5. Why does this file look like this? One row per chain (editing agent, task,
+ * decision): its newest edit seq and how many edits it covers, the decision that
+ * caused the task, who made it, and `latest`, the active decision that replaced
+ * it (following SUPERSEDES up to 5 steps). Edits with no task still show who edited.
+ * `nodes` are the chain's real graph nodes in order: File, Agent, Task, Decision.
+ * The second arm answers for a file an active decision governs but no tracked
+ * edit touched (the caller drops it when an edit chain already names that decision).
+ * Each arm is ordered and limited on its own; the caller merges them.
+ * All matches come before the aggregation: in FalkorDB an OPTIONAL MATCH with a
+ * property filter right after it found nothing (falkordb:latest, Oct 2026).
  */
 export const WHY_TRACE = `
 MATCH (f:File {path: $path})<-[:ON]-(e:Event {kind: 'edit'})
@@ -50,10 +57,23 @@ OPTIONAL MATCH (e)-[:UNDER]->(t:Task)
 OPTIONAL MATCH (t)-[:CAUSED_BY]->(d:Decision)
 OPTIONAL MATCH (da:Agent)-[:MADE]->(d)
 OPTIONAL MATCH (d)<-[:SUPERSEDES*1..5]-(newer:Decision {status: 'active'})
-RETURN e.seq AS seq, a.id AS agent, t.id AS task,
+WITH f, a, t, d, da, collect(DISTINCT newer)[0] AS newer, max(e.seq) AS seq, count(DISTINCT e) AS edits
+RETURN seq, edits, a.id AS agent, t.id AS task,
        d.id AS decisionId, d.text AS decision, d.why AS why, da.id AS decidedBy,
-       newer.id AS latestId, newer.text AS latestText
+       newer.id AS latestId, newer.text AS latestText,
+       [x IN [f, a, t, d] WHERE x IS NOT NULL | {label: labels(x)[0], id: coalesce(x.path, x.id)}] AS nodes
 ORDER BY seq DESC, decisionId
+LIMIT $limit
+UNION ALL
+MATCH (d:Decision {status: 'active'})-[:AFFECTS]->(f:File {path: $path})
+OPTIONAL MATCH (da:Agent)-[:MADE]->(d)
+OPTIONAL MATCH (t:Task)-[:CAUSED_BY]->(d)
+WITH f, d, da, collect(t)[0] AS t
+RETURN 0 AS seq, 0 AS edits, null AS agent, t.id AS task,
+       d.id AS decisionId, d.text AS decision, d.why AS why, da.id AS decidedBy,
+       null AS latestId, null AS latestText,
+       [x IN [f, t, d] WHERE x IS NOT NULL | {label: labels(x)[0], id: coalesce(x.path, x.id)}] AS nodes
+ORDER BY d.at DESC, decisionId
 LIMIT $limit
 `;
 
@@ -73,7 +93,10 @@ export interface DecisionRow {
 }
 
 export interface WhyHit {
+  /** Newest edit in this chain; 0 for a decision with no tracked edit. */
   seq: number;
+  /** How many edits this chain covers. */
+  edits: number;
   agent: string;
   task: string;
   decisionId: string | null;
@@ -84,6 +107,8 @@ export interface WhyHit {
   latestText: string | null;
   /** File, editing agent, task, decision. The chain a judge can read. */
   path: string[];
+  /** The same chain as real graph nodes (missing links left out). */
+  nodes: { label: string; id: string }[];
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
@@ -142,15 +167,21 @@ export async function listDecisions(g: SbGraph): Promise<DecisionRow[]> {
   }));
 }
 
-/** Why does this file look like this? Newest edits first; empty when no edit is recorded. */
-export async function whyTrace(g: SbGraph, path: string, limit = 5): Promise<WhyHit[]> {
+/**
+ * Why does this file look like this? Edit chains newest first, then active
+ * decisions on the file that no edit chain reached. Empty when neither exists.
+ */
+export async function whyTrace(g: SbGraph, file: string, limit = 5): Promise<WhyHit[]> {
+  const path = normPath(file);
   const rows = await g.roQuery(WHY_TRACE, { path, limit });
-  return rows.map((row) => {
-    const agent = str(row.agent) ?? "(unknown agent)";
+  const hits = rows.map((row): WhyHit => {
+    const edited = Number(row.edits) > 0;
+    const agent = str(row.agent) ?? (edited ? "(unknown agent)" : "(no tracked edit)");
     const task = str(row.task) ?? "(no task)";
     const decision = str(row.decision);
     return {
       seq: Number(row.seq),
+      edits: Number(row.edits),
       agent,
       task,
       decisionId: str(row.decisionId),
@@ -160,6 +191,9 @@ export async function whyTrace(g: SbGraph, path: string, limit = 5): Promise<Why
       latestId: str(row.latestId),
       latestText: str(row.latestText),
       path: [path, agent, task, decision ?? "(no decision)"],
+      nodes: (row.nodes as { label: unknown; id: unknown }[]).map((n) => ({ label: String(n.label), id: String(n.id) })),
     };
   });
+  const traced = new Set(hits.filter((h) => h.edits > 0).map((h) => h.decisionId));
+  return hits.filter((h) => h.edits > 0 || !traced.has(h.decisionId)).slice(0, limit);
 }

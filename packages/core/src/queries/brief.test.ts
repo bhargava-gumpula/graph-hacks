@@ -42,6 +42,7 @@ test("a replacement agent briefed on a claim-only task hears everything, nearest
   ]);
   expect(b.decisions.map((d) => [d.id, d.hops])).toEqual([
     ["D0", 0],
+    ["D-hub", 1], // session.ts imports the hub directly
     ["D1", 1],
   ]);
   expect(b.lessons.map((l) => [l.text, l.path, l.hops])).toEqual([["run codegen before tsc", "api/login.ts", 1]]);
@@ -51,10 +52,36 @@ test("a replacement agent briefed on a claim-only task hears everything, nearest
   expect(b.handoff).toEqual({ note: "session claim is mine, finish the TTL", from: "A", to: "B" });
 });
 
-test("decisions on the hub never reach a briefing through it", async () => {
-  const b = await brief(g(), { prefix: "api/", now: NOW });
-  expect(b.decisions.map((d) => d.id)).not.toContain("D-hub");
-  expect((await brief(g(), { paths: ["lib/utils.ts"], now: NOW })).decisions.map((d) => d.id)).toEqual(["D-hub"]);
+test("a hub is a neighbour like any file, but a briefing never reaches past it", async () => {
+  // session.ts imports utils.ts (1 hop); AboutPage.tsx is reachable from session.ts only through utils.ts.
+  await recordDecision(g(), { agent: "A", text: "about is static", why: "SEO", paths: ["ui/AboutPage.tsx"], id: "D-about", now: 1_450 });
+  const ids = (await brief(g(), { taskId: "T1", now: NOW })).decisions.map((d) => d.id);
+  expect(ids).toContain("D-hub");
+  expect(ids).not.toContain("D-about");
+  expect((await brief(g(), { paths: ["lib/utils.ts"], now: NOW })).decisions[0]).toMatchObject({ id: "D-hub", hops: 0 });
+});
+
+test("prefix '' briefs the whole repo; the file list is capped", async () => {
+  const b = await brief(g(), { prefix: "", now: NOW });
+  expect(b.files).toHaveLength(35);
+  expect(formatBrief(b).split("\n")[0]).toMatch(/^Files: (\S+, ){7}\S+ \(\+27 more\)$/);
+});
+
+test("formatBrief lists each recently edited file once, with its newest edit", () => {
+  const edit = (seq: number, path: string, agentId: string) => ({ seq, kind: "edit", path, agentId });
+  const text = formatBrief({
+    files: ["a"],
+    claims: [],
+    decisions: [],
+    lessons: [],
+    tasks: [],
+    handoff: null,
+    events: [edit(9, "a", "B"), { seq: 8, kind: "claim", path: "a", agentId: "B" }, edit(7, "a", "A"), edit(5, "b", "A")],
+  });
+  expect(text.split("\n").filter((l) => l.startsWith("Recent edit"))).toEqual([
+    "Recent edit: a by B (#9)",
+    "Recent edit: b by A (#5)",
+  ]);
 });
 
 test("a prefix area lists its open tasks", async () => {
@@ -83,6 +110,7 @@ test("formatBrief reads top to bottom: handoff, claims, decisions, lessons, edit
     "Claim: A holds auth/session.ts (here, task T1)",
     "Claim: C holds ui/LoginForm.tsx (2 hops away, task T9)",
     "Decision: session TTL is 15 min (auth/session.ts, here)",
+    "Decision: utils stays pure (lib/utils.ts, 1 hop away)",
     "Decision: use argon2, not bcrypt (lib/crypto.ts, 1 hop away)",
     "Lesson: run codegen before tsc (api/login.ts, 1 hop away)",
     expect.stringMatching(/^Recent edit: auth\/session.ts by A \(#\d+\)$/),

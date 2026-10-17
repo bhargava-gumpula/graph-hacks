@@ -22,7 +22,7 @@ export { codeGraphCounts, loadParse, RESET_DEMO_EXTRAS } from "./queries/loader.
 export { findConflicts, conflictQuery, conflictGuard } from "./queries/conflict.js";
 export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.js";
 
-export { claim, claimQuery, release, DEFAULT_TTL_MS } from "./queries/claims.js";
+export { claim, claimQuery, release, unknownPaths, DEFAULT_TTL_MS } from "./queries/claims.js";
 export type { ClaimInput, ClaimResult } from "./queries/claims.js";
 
 export { graphSnapshot, listClaims } from "./queries/snapshot.js";

@@ -4,7 +4,8 @@ import { connect } from "../graph.js";
 import { parseRepo } from "../parser.js";
 import { useTestGraph } from "../test-helpers.js";
 import { heartbeat } from "./agents.js";
-import { claim, release } from "./claims.js";
+import { claim, release, unknownPaths } from "./claims.js";
+import { recordEdit } from "./edits.js";
 import { findConflicts } from "./conflict.js";
 import { feedSince, latestSeq } from "./feed.js";
 import { loadParse } from "./loader.js";
@@ -40,6 +41,7 @@ describe("Q1 conflicts on the demo repo", () => {
         agent: "A",
         taskId: "T1",
         intent: null,
+        until: expect.any(Number),
       },
     ]);
   });
@@ -67,12 +69,20 @@ describe("Q1 conflicts on the demo repo", () => {
     ]);
   });
 
-  test("no path = provably safe: unrelated file, hub-only link, separate island", async () => {
-    await claim(g(), { agent: "A", paths: ["lib/crypto.ts", HUB] });
+  test("no path = provably safe: files that only share the hub, separate island", async () => {
+    // session.ts and AboutPage.tsx both import the hub; no path runs through it.
+    await claim(g(), { agent: "A", paths: ["lib/crypto.ts", "auth/session.ts"] });
     expect(await findConflicts(g(), { agent: "B", paths: ["ui/AboutPage.tsx"] })).toEqual([]);
     expect((await claim(g(), { agent: "B", paths: ["ui/SettingsPanel.tsx", "api/settings.ts", "lib/prefs.ts"] })).ok).toBe(true);
   });
 
+  test("the hub itself conflicts with a claimed importer (DOWNSTREAM, hub: true)", async () => {
+    await claim(g(), { agent: "A", paths: ["auth/session.ts"] });
+    const res = await findConflicts(g(), { agent: "B", paths: [HUB] });
+    expect(res.map((c) => [c.type, c.hops, c.path.join(" → "), c.hub])).toEqual([
+      ["DOWNSTREAM", 1, `auth/session.ts → ${HUB}`, true],
+    ]);
+  });
   test("own claims and expired claims never conflict", async () => {
     const now = Date.now();
     await claim(g(), { agent: "A", paths: ["lib/crypto.ts"], ttlMs: 1000, now });
@@ -175,5 +185,39 @@ describe("TTL and release", () => {
 
   test("an empty claim is rejected", async () => {
     await expect(claim(g(), { agent: "A", paths: [] })).rejects.toThrow(/at least one path/);
+  });
+});
+
+describe("path normalisation and unknown files", () => {
+  const ghosts = async () =>
+    (await g().roQuery("MATCH (f:File) WHERE f.path STARTS WITH 'demo-repo/' RETURN count(f) AS n"))[0]?.n;
+
+  test("demo-repo/, ./ and absolute paths conflict like the repo-relative path, and no ghost File appears", async () => {
+    await claim(g(), { agent: "A", paths: ["auth/session.ts"], taskId: "T1" });
+    const root = join(import.meta.dirname, "../../../..");
+    for (const p of ["demo-repo/ui/LoginForm.tsx", "./ui/LoginForm.tsx", `${root}/demo-repo/ui/LoginForm.tsx`]) {
+      const res = await claim(g(), { agent: "B", paths: [p] });
+      expect(res.ok, p).toBe(false);
+      if (!res.ok) expect(res.conflicts[0]).toMatchObject({ file: "ui/LoginForm.tsx", type: "UPSTREAM", hops: 2 });
+    }
+    expect(await findConflicts(g(), { agent: "B", paths: ["demo-repo/ui/LoginForm.tsx"] })).toHaveLength(1);
+    await recordEdit(g(), { agentId: "B", path: "demo-repo/ui/AboutPage.tsx" });
+    expect(await ghosts()).toBe(0);
+  });
+
+  test("an unknown path is returned as unknown, not claimed, and creates no File", async () => {
+    const files = async () => (await g().roQuery("MATCH (f:File) RETURN count(f) AS n"))[0]?.n;
+    const before = await files();
+    const res = await claim(g(), { agent: "B", paths: ["ui/NewThing.tsx"] });
+    expect(res).toMatchObject({ ok: true, unknown: ["ui/NewThing.tsx"] });
+    expect(await files()).toBe(before);
+
+    // Known paths in the same request are still checked and claimed.
+    const mixed = await claim(g(), { agent: "B", paths: ["ui/AboutPage.tsx", "demo-repo/ui/Nope.tsx"] });
+    expect(mixed).toMatchObject({ ok: true, unknown: ["ui/Nope.tsx"] });
+    const [held] = await g().roQuery("MATCH (:Agent {id:'B'})-[:CLAIMS]->(f:File) RETURN collect(f.path) AS paths");
+    expect(held?.paths).toEqual(["ui/AboutPage.tsx"]);
+    expect(await files()).toBe(before);
+    expect(await unknownPaths(g(), ["./lib/utils.ts", "x/y.ts"])).toEqual(["x/y.ts"]);
   });
 });

@@ -12,7 +12,7 @@ export interface Hit {
 }
 
 /** Event kinds that change the snapshot or the lists, so they trigger a (coalesced) refetch. */
-const CHANGES = new Set(["claim", "release", "conflict", "decision", "edit", "register", "collision", "lesson", "handoff", "graph"]);
+const CHANGES = new Set(["claim", "release", "conflict", "decision", "edit", "register", "collision", "lesson", "handoff", "graph", "wait", "free"]);
 const HISTORY = 40; // events of history to show on connect
 const BEAT_MS = 600; // one fresh event per beat, so a burst reads as a story
 const RECONNECT_MS = 3000;
@@ -172,7 +172,7 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
     const open = () => {
       stop();
       if (polling) return startPolling();
-      const src = new EventSource(apiUrl(`/api/events?last=${lastSeq}`));
+      const src = new EventSource(apiUrl(`/api/events?last=${lastSeq}`), { withCredentials: true });
       es = src;
       // Some proxies (Cloudflare quick tunnels) hold SSE back. After 4 s of silence, ask /api/feed:
       // if it has events the stream never delivered, switch to polling for good; else it was just quiet.

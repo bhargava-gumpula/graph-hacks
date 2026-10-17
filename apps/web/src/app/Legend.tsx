@@ -17,7 +17,7 @@ const ROWS: { glyph: ReactNode; label: string }[] = [
     label: "Claim, with the agent's letter",
   },
   { glyph: <path d="M2 12 C 10 12, 14 4, 22 4" fill="none" stroke="var(--color-signal)" strokeWidth={2.5} strokeLinecap="round" />, label: "Refused route" },
-  { glyph: <circle cx="12" cy="8" r="6" fill="var(--fg)" fillOpacity={0.3} />, label: "Parallel group (tint)" },
+  { glyph: <circle cx="12" cy="8" r="6" fill="var(--fg)" fillOpacity={0.3} />, label: "Round (tint)" },
 ];
 
 /** A small collapsible key for the canvas. It opens above the control bar, from the corner it sits in. */

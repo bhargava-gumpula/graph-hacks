@@ -9,6 +9,7 @@ import { ConnectPanel } from "./ConnectPanel";
 import { GraphView } from "./GraphView";
 import { AgentsPanel, Brief, CypherDisclosure, Feed, Inspect, Memory, PathChips, blockedBy, conflictParams, hops, splitRuns, useCypher } from "./Panels";
 import { useLive, type LiveStatus } from "./useLive";
+import { agentName } from "./agents";
 import { importPath, layoutGraph } from "./layoutGraph";
 import { Tour, markTourSeen, tourSeen, type TourStep } from "./Tour";
 
@@ -103,10 +104,10 @@ export function Dashboard() {
     );
   }, [events, live.claims, live.seqAtLoad]);
 
-  // WCC groups, biggest first so G1 is the one that must queue the most.
+  // Rounds in order: round 0 first. Tasks in one round can run at the same time.
   const groups = useMemo(() => {
     const b = live.batches.length ? live.batches : toBatches(demo?.batches);
-    return [...b].sort((x, y) => y.tasks.length - x.tasks.length || x.componentId - y.componentId);
+    return [...b].sort((x, y) => x.componentId - y.componentId);
   }, [live.batches, demo]);
   const briefTasks = useMemo(() => {
     const t = new Set<string>(["T1"]);
@@ -124,7 +125,7 @@ export function Dashboard() {
   }, [selected]);
   const blastMap = useMemo(() => new Map((blast?.dependents ?? []).map((d) => [d.path, d.hops])), [blast]);
 
-  // Batches mode: tint each group's files (Batch.paths), falling back to its tasks' claims.
+  // Rounds mode: tint each round's files (Batch.paths), falling back to its tasks' claims.
   const batchOf = useMemo(() => {
     if (!batchMode) return null;
     const m = new Map<string, number>();
@@ -173,7 +174,7 @@ export function Dashboard() {
     const entry: IslandTask = {
       id,
       label: `Refused ${c.file}`,
-      detail: `${hops(c.hops)} to ${c.claimed} (${c.agent})${ms != null ? ` · ${ms} ms` : ""}`,
+      detail: `${hops(c.hops)} to ${c.claimed} (${agentName(c.agent)})${ms != null ? ` · ${ms} ms` : ""}`,
       status: "error",
     };
     setTasks((t) => [...t.filter((x) => x.id !== id && !(x.id.startsWith("demo-") && x.status === "running")).slice(-3), entry]);
@@ -309,23 +310,23 @@ export function Dashboard() {
   const steps: TourStep[] = [
     {
       id: "graph",
-      title: "This is a real repo, as a graph.",
+      title: "A small TypeScript repo, as a graph.",
       body: (
         <>
-          Each dot is a file. Each line is an import. Columns are folders{folders.length ? <>: <span className="font-mono text-[12px]">{folders.join(", ")}</span></> : null}.
+          {files.length || 35} files, built for this demo. Each dot is a file. Each line is an import. Columns are folders{folders.length ? <>: <span className="font-mono text-[12px]">{folders.join(", ")}</span></> : null}.
         </>
       ),
       targets: ["[data-tour=canvas]"],
     },
     {
       id: "agentA",
-      title: `Agent A is changing ${A_FILE}.`,
-      body: "It claims the file before it edits. The ring with the A is that claim, stored in the graph.",
+      title: `Agent A (scripted) is changing ${A_FILE}.`,
+      body: "A script plays A and B, so the story runs the same every time. A claims the file before it edits. The ring with the A is that claim, stored in the graph.",
       targets: ["[data-tour=canvas]", 'li[data-agent="A"]'],
     },
     {
       id: "agentB",
-      title: `Agent B wants to edit ${B_FILE}.`,
+      title: `Agent B (scripted) wants to edit ${B_FILE}.`,
       body: "A different file, on a different branch. A file lock would say yes.",
       targets: ["[data-tour=canvas]", 'li[data-agent="B"]'],
     },
@@ -357,7 +358,10 @@ export function Dashboard() {
     {
       id: "refuse",
       title: "Refused, before any code is written.",
-      body: live.status === "replay" ? "Replaying a recorded run of the real demo." : "This is the real demo, running on the server now.",
+      body:
+        live.status === "replay"
+          ? "Replaying a recorded run of the real check."
+          : "The check is real. It runs in FalkorDB on the server now. Only the agents are scripted.",
       targets: ["[data-tour=canvas]"],
     },
     {
@@ -373,7 +377,7 @@ export function Dashboard() {
     {
       id: "batches",
       title: "Safe work runs in parallel.",
-      body: "Tasks are grouped by the imports between their files (WCC). Each tint is one group. Different groups can run at the same time.",
+      body: "Tasks are put in rounds by the imports between their files. Tasks in a round run at the same time. Each tint is one round.",
       targets: ["[data-tour=canvas]", "[data-tour=batches]"],
     },
     {
@@ -445,7 +449,9 @@ export function Dashboard() {
         : undefined;
 
   const onPath = (p: string[]) => setSelected(p[p.length - 1] ?? null);
-  const tiles = live.graph ? { collisions, checkMs: story?.checkMs ?? null, groups: groups.length || null, files: files.length, imports } : null;
+  const tiles = live.graph
+    ? { collisions, checkMs: story?.checkMs ?? null, groups: groups.length || null, files: files.length, imports, shared: health?.visitor === "shared" }
+    : null;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -505,12 +511,12 @@ export function Dashboard() {
               data-tour="batches"
               onClick={() => setBatchMode((b) => !b)}
               aria-pressed={batchMode}
-              aria-label="Parallel batches"
+              aria-label="Rounds"
               className={`relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition active:scale-95 md:px-3 ${
                 batchMode ? "border-[var(--fg)] text-[var(--fg)]" : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--muted)] hover:text-[var(--fg)]"
               }`}
             >
-              <Rows size={14} /> <span className="hidden md:inline">Parallel batches</span>
+              <Rows size={14} /> <span className="hidden md:inline">Rounds</span>
             </button>
             <button
               type="button"
@@ -868,13 +874,14 @@ function Pending({ label }: { label: string }) {
   );
 }
 
-/** Numbers for the latest run only: refusals since the newest parse, the timed check, and the WCC group count. */
+/** Numbers for the latest run only: refusals since the newest parse, the timed check, and the round count. */
 function Tiles({
   collisions,
   checkMs,
   groups,
   files,
   imports,
+  shared = false,
   compact = false,
 }: {
   collisions: number;
@@ -882,6 +889,8 @@ function Tiles({
   groups: number | null;
   files: number;
   imports: number;
+  /** Every private copy of the demo is taken, so this tab shares one with other visitors. */
+  shared?: boolean;
   compact?: boolean;
 }) {
   const value = compact ? "text-lg font-semibold" : "text-2xl font-semibold tracking-tight";
@@ -928,10 +937,10 @@ function Tiles({
         </Tile>
         <Tile>
           {groups == null ? (
-            <Pending label={compact ? "Groups (WCC)" : "Parallel groups (WCC)"} />
+            <Pending label={compact ? "Rounds" : "Rounds of parallel work"} />
           ) : (
             <div className="flex flex-col">
-              <ChartStatFlow value={groups} label={compact ? "Groups (WCC)" : "Parallel groups (WCC)"} valueClassName={`${value} text-[color:var(--fg)]`} labelClassName={label} />
+              <ChartStatFlow value={groups} label={compact ? "Rounds" : "Rounds of parallel work"} valueClassName={`${value} text-[color:var(--fg)]`} labelClassName={label} />
             </div>
           )}
         </Tile>
@@ -941,6 +950,7 @@ function Tiles({
           {files} files · {imports} imports parsed
         </p>
       )}
+      {shared && <p className="mt-2 text-[11px] text-[var(--muted)]">Busy right now: you share this demo with other visitors.</p>}
     </div>
   );
 }
@@ -949,8 +959,7 @@ function Tiles({
 
 function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
   const n = groups.length;
-  // Tasks in one WCC group interfere, so all but one of them wait.
-  const queued = groups.flatMap((g) => g.tasks.slice(1));
+  const widest = Math.max(0, ...groups.map((g) => g.tasks.length));
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -960,28 +969,16 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
       className="absolute left-3 right-3 top-16 z-10 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/90 p-3 backdrop-blur-md sm:right-auto sm:max-w-[420px]"
     >
       {n === 0 ? (
-        <p className="text-[13px] text-[var(--muted)]">Computing parallel groups with WCC…</p>
+        <p className="text-[13px] text-[var(--muted)]">Planning rounds…</p>
       ) : (
         <>
           <p className="text-[13px] leading-snug">
             <span className="font-medium">
-              {n} group{n === 1 ? "" : "s"} → {n} agent{n === 1 ? "" : "s"} can work at once
+              {n} round{n === 1 ? "" : "s"}: tasks in a round run in parallel.
             </span>
             <span className="text-[var(--muted)]">
-              {" · "}
-              {queued.length ? (
-                <>
-                  {queued.map((t, i) => (
-                    <span key={t} className="whitespace-nowrap">
-                      {t}
-                      {i < queued.length - 1 ? ", " : ""}
-                    </span>
-                  ))}{" "}
-                  must queue
-                </>
-              ) : (
-                "nothing has to queue"
-              )}
+              {" "}
+              {n > 1 ? `Round 1 goes first. Up to ${widest} agent${widest === 1 ? "" : "s"} at once.` : "Everything can run at once."}
             </span>
           </p>
           <ul className="mt-2.5 flex flex-wrap gap-1.5">
@@ -994,7 +991,7 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
                 className="flex items-center gap-1.5 rounded-full border border-[var(--border)] py-0.5 pl-1 pr-2 font-mono text-[11px]"
               >
                 <span className="grid h-4 place-items-center rounded-full px-1.5 text-[9px] font-semibold" style={{ background: `color-mix(in oklab, var(--fg) ${36 - (i % 4) * 8}%, transparent)` }}>
-                  G{i + 1}
+                  R{i + 1}
                 </span>
                 {g.tasks.join(", ")}
               </motion.li>
@@ -1152,9 +1149,9 @@ function TryClaim({
                 {result.error
                   ? `Not checked: ${result.error}`
                   : result.ok
-                    ? `Granted. Agent ${result.agent} now holds ${result.file}.`
+                    ? `Granted. ${agentName(result.agent)} now holds ${result.file}.`
                     : result.conflict
-                      ? `Refused. It reaches Agent ${result.conflict.agent}'s claim in ${hops(result.conflict.hops)}.`
+                      ? `Refused. It reaches ${agentName(result.conflict.agent)}'s claim in ${hops(result.conflict.hops)}.`
                       : "Not granted."}
               </p>
               {result.conflict && <PathChips path={result.conflict.path} />}

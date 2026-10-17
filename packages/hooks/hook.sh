@@ -120,6 +120,8 @@ body=$(jq -nc --arg a "$agent" --arg p "$rel" '{agent:$a, paths:[$p]}')
 if response=$(curl -sf --max-time 1 -H 'content-type: application/json' -d "$body" "$url/api/claims" 2>/dev/null); then
   if [[ $(jq -r '.ok' <<<"$response" 2>/dev/null) == "false" ]]; then
     lines=$(jq -r --argjson now "$(date +%s)000" "$LINES" <<<"$response" 2>/dev/null)
+    safe=$(jq -r '(.safe // []) | select(length > 0) | "Safe now: " + join(", ")' <<<"$response" 2>/dev/null)
+    [[ -n "$safe" ]] && lines=$(printf '%s\n%s' "$lines" "$safe")
     reason=$(printf '%s\n%s\n%s' "$head" "$lines" "$tail")
   fi
   unknown=$(jq -r '(.unknown // [])[]' <<<"$response" 2>/dev/null)

@@ -134,6 +134,7 @@ export function createServer(): McpServer {
         until: z.number().optional().describe("Epoch ms when the claim expires"),
         conflicts: z.array(conflictSchema),
         unknown: z.array(z.string()).describe("Paths not in the parsed graph: not checked, not claimed"),
+        safe: z.array(z.string()).optional().describe("On a conflict: open-task files you could claim instead right now"),
       }),
     },
     async ({ paths: files, task, intent, agent }) => {
@@ -145,8 +146,10 @@ export function createServer(): McpServer {
         const ok = checked > 0 ? [`OK until=${new Date(res.until).toISOString()} (${checked} checked)`] : [];
         return reply([...ok, ...warnings].join("\n"), { ok: true, until: res.until, conflicts: [], unknown });
       }
-      const text = ["CONFLICT", ...res.conflicts.map(conflictText), ...warnings].join("\n");
-      return reply(text, { ok: false, conflicts: res.conflicts, unknown });
+      const safe = res.safe ?? [];
+      const hint = safe.length > 0 ? [`Safe now: ${safe.join(", ")}`] : [];
+      const text = ["CONFLICT", ...res.conflicts.map(conflictText), ...hint, ...warnings].join("\n");
+      return reply(text, { ok: false, conflicts: res.conflicts, unknown, safe });
     },
   );
 

@@ -9,6 +9,7 @@ import { recordEdit } from "./edits.js";
 import { findConflicts } from "./conflict.js";
 import { feedSince, latestSeq } from "./feed.js";
 import { loadParse } from "./loader.js";
+import { planTask, SET_TASK_STATUS } from "./schedule.js";
 
 const g = useTestGraph("sb_test_claims");
 const HUB = "lib/utils.ts";
@@ -220,4 +221,14 @@ describe("path normalisation and unknown files", () => {
     expect(await files()).toBe(before);
     expect(await unknownPaths(g(), ["./lib/utils.ts", "x/y.ts"])).toEqual(["x/y.ts"]);
   });
+});
+
+test("a denied claim lists open-task files that are safe right now", async () => {
+  await planTask(g(), { id: "t-about", paths: ["ui/AboutPage.tsx"] });
+  await planTask(g(), { id: "t-api", paths: ["api/login.ts", "ui/LoginForm.tsx"] });
+  await claim(g(), { agent: "A", paths: ["auth/session.ts"] });
+  const res = await claim(g(), { agent: "B", paths: ["ui/LoginForm.tsx"] });
+  // api/login.ts imports session.ts and LoginForm.tsx was asked for: only AboutPage.tsx is free.
+  expect(res).toMatchObject({ ok: false, safe: ["ui/AboutPage.tsx"] });
+  for (const id of ["t-about", "t-api"]) await g().query(SET_TASK_STATUS, { id, status: "done" });
 });

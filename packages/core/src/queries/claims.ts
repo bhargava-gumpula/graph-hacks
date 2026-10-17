@@ -27,7 +27,26 @@ export interface ClaimInput {
  */
 export type ClaimResult =
   | { ok: true; until: number; seq: number; unknown?: string[] }
-  | { ok: false; conflicts: Conflict[]; seq: number; unknown?: string[] };
+  | { ok: false; conflicts: Conflict[]; seq: number; unknown?: string[]; safe?: string[] };
+
+/** A denied claim suggests at most this many open-task files that are free right now. */
+const SAFE_LIMIT = 5;
+
+/** Files that unfinished tasks plan to touch: the candidates for "Safe now". */
+export const OPEN_TASK_FILES = `
+MATCH (t:Task)-[:TOUCHES]->(f:File)
+WHERE coalesce(t.status, 'open') <> 'done'
+RETURN DISTINCT f.path AS path
+ORDER BY path
+`;
+
+/** Open-task files this agent could claim right now (Q1 finds nothing), minus the ones it asked for. */
+async function safeNow(g: SbGraph, agent: string, asked: string[], now: number, k: number): Promise<string[]> {
+  const candidates = (await g.roQuery(OPEN_TASK_FILES)).map((row) => String(row.path)).filter((p) => !asked.includes(p));
+  if (candidates.length === 0) return [];
+  const blocked = new Set((await findConflicts(g, { agent, paths: candidates, now, k })).map((c) => c.file));
+  return candidates.filter((p) => !blocked.has(p)).slice(0, SAFE_LIMIT);
+}
 
 /** Which of `$paths` are File nodes in the parsed graph. */
 export const KNOWN_FILES = `
@@ -103,7 +122,8 @@ RETURN m.value AS seq, size(claims) AS released
  * check and the write are one query, so two racing claims on linked files
  * cannot both win. A denied claim writes nothing but a `conflict` event that
  * carries the paths. Paths are normalised first (see paths.ts); unknown ones are
- * returned in `unknown` and skipped.
+ * returned in `unknown` and skipped. A denial also lists `safe`: open-task files
+ * the agent could claim instead right now.
  */
 export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult> {
   const requested = [...new Set(input.paths.map(normPath))];
@@ -146,7 +166,7 @@ export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult>
         payload: { requested: paths, conflicts },
         now,
       });
-      return { ok: false, conflicts, seq, unknown };
+      return { ok: false, conflicts, seq, unknown, safe: await safeNow(g, input.agent, paths, now, k) };
     }
   }
 }

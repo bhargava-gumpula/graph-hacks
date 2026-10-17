@@ -10,7 +10,8 @@ const PATH_3 =
   "CONFLICT UPSTREAM ui/LoginForm.tsx ← A via ui/LoginForm.tsx → api/login.ts → auth/session.ts → lib/crypto.ts";
 const OK_CHECK = /^OK no claim within 3 import hops \(\d+(\.\d+)? ms\)\n$/;
 /** The hook's deny reason when it took the CLI fallback. */
-const DENY_3 = `✗ Switchboard blocked this edit\n${PATH_3}\nDon't work around this with Bash. Pick another file or call brief_me.`;
+// t-about (planned in an earlier test) is the open task that is free.
+const DENY_3 = `✗ Switchboard blocked this edit\n${PATH_3}\nSafe now: ui/AboutPage.tsx\nDon't work around this with Bash. Pick another file or call brief_me.`;
 
 function run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {

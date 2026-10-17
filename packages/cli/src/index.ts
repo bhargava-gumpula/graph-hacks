@@ -226,6 +226,7 @@ async function run(flags: Flags): Promise<number> {
         return 0;
       }
       for (const c of res.conflicts) console.log(conflictLine(c));
+      if (res.safe?.length) console.log(`Safe now: ${res.safe.join(", ")}`);
       return 2;
     }
 

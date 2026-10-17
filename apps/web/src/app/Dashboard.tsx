@@ -33,7 +33,7 @@ const when = (s: string | null) => {
 export function Dashboard() {
   const [batchMode, setBatchMode] = useState(false);
   const live = useLive({ withBatches: batchMode });
-  const cypher = useCypher();
+  const cypher = useCypher(live.status);
   const [tab, setTab] = useState<Tab>("feed");
   const [selected, setSelected] = useState<string | null>(null);
   const [blast, setBlast] = useState<Blast | null>(null);
@@ -111,9 +111,10 @@ export function Dashboard() {
     };
   }, []);
 
-  // The island narrates a fresh refusal, replacing the running demo entry.
+  // The island narrates a fresh refusal, replacing the running demo entry. It reads the filtered
+  // hit, so the demo reply never narrates the previous run's refusal with the new run's time.
   useEffect(() => {
-    const h = live.hit;
+    const h = hit;
     if (!h || h.quiet) return;
     if (armed.current) {
       armed.current = false;

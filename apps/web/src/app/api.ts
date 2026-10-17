@@ -145,7 +145,8 @@ function read<T>(path: string, recorded: (r: Replay) => T | undefined): Promise<
 function replayDemo(r: Replay): Promise<DemoReply> {
   const t0 = r.events[0]?.at ?? 0;
   for (const e of r.events) setTimeout(() => replay.emit({ ...e, at: Date.now() }), e.at - t0);
-  return Promise.resolve(r.demo);
+  // The recorded demo reply has no batches; the WCC groups recorded beside it are that run's answer.
+  return Promise.resolve({ ...r.demo, batches: r.demo.batches ?? r.batches });
 }
 
 export const api = {

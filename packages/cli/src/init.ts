@@ -11,7 +11,7 @@ const HOOK_MARK = "/packages/hooks/hook.sh";
 const NPX_MARK = "switchboard-agents hook ";
 const CLAUDE_MATCHER = "Edit|MultiEdit|Write|NotebookEdit|Bash";
 /** Claude Code's per-machine settings file, git-ignored: where a local clone's absolute hook paths go. */
-const LOCAL_SETTINGS = ".claude/settings.local.json";
+export const LOCAL_SETTINGS = ".claude/settings.local.json";
 
 export interface FileChange {
   path: string;
@@ -206,7 +206,7 @@ export function planInit(repoDir: string, root = SWITCHBOARD_ROOT, opts: InitOpt
 }
 
 /** In a git repo, make sure .claude/settings.local.json is ignored, so a machine path is never committed. */
-function gitignoreChange(repo: string): FileChange | null {
+export function gitignoreChange(repo: string): FileChange | null {
   const inGit = spawnSync("git", ["-C", repo, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).status === 0;
   if (!inGit) return null;
   if (spawnSync("git", ["-C", repo, "check-ignore", "-q", LOCAL_SETTINGS]).status === 0) return null;

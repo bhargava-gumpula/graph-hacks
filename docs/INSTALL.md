@@ -99,10 +99,18 @@ switchboard --help
 | `switchboard-mcp` | The stdio MCP server. |
 
 `switchboard init [dir] [--cursor] [--claude] [--dry-run]` writes `.cursor/hooks.json` and `.cursor/mcp.json`
-(Cursor), and `.claude/settings.json` hooks and `.mcp.json` (Claude Code); both by default. Each MCP config passes
-`SB_EDITOR`, so the MCP server and the hooks use the same agent id. The configs point at
+(Cursor), and `.claude/settings.local.json` hooks and `.mcp.json` (Claude Code); both by default. Each MCP config
+passes `SB_EDITOR`, so the MCP server and the hooks use the same agent id. The configs point at
 this install's absolute paths, so run `init` again after moving Node or reinstalling. Run through `npx`, the
 paths land in the npx cache, which npm may clean; `init` warns about that.
+
+- Claude Code reads `.claude/settings.local.json` like `settings.json`, and `init` adds it to the repo's
+  `.gitignore`, so the hook paths are never committed. Hooks an older `init` left in `.claude/settings.json`
+  move there.
+- `.mcp.json`, `.cursor/hooks.json` and `.cursor/mcp.json` still hold this install's paths: Claude Code has no
+  per-machine `.mcp.json` and Cursor has no per-machine hooks file. Keep them out of commits, or write portable
+  configs with `npm run switchboard -- init <repo> --npx` from a clone.
+- A file that already holds what `init` wants is left as it is, so a second run writes nothing.
 
 Any other MCP client: run `switchboard-mcp` from the repo, or `npx -y switchboard-agents mcp`.
 

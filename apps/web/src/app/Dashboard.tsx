@@ -418,10 +418,8 @@ function StoryCaption({ demo, run, cypher }: { demo: DemoReply | null; run: numb
             className="pointer-events-auto relative overflow-hidden rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/90 p-4 shadow-2xl shadow-black/40 backdrop-blur-md"
           >
             <div aria-hidden className="pointer-events-none absolute -left-16 -top-16 size-48 rounded-full bg-[var(--color-signal)]/10 blur-3xl" />
-            <p className="relative line-clamp-3 text-[13px] leading-relaxed text-[var(--fg)]/80 sm:line-clamp-none">
-              {lead}
-              {punch && <span className="font-medium text-[var(--fg)]">{punch}</span>}
-            </p>
+            <p className="relative line-clamp-2 text-[13px] leading-relaxed text-[var(--fg)]/80 sm:line-clamp-none">{lead}</p>
+            {punch && <p className="relative mt-1 text-[13px] font-medium leading-relaxed text-[var(--fg)]">{punch}</p>}
             {demo.path.length > 0 && (
               <div className="relative mt-3">
                 <PathChips path={demo.path} />

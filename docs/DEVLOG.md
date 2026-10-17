@@ -133,3 +133,10 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Deploy attempt:** the $0.00 .xyz checkout (the promo code) reached the final page at gen.xyz but needs the owner's gen.xyz login; no account was created and nothing was paid. A Cloudflare quick tunnel serves the local server meanwhile. Quick tunnels buffer SSE, so the dashboard now polls a new `GET /api/feed?last=N` after 4 s of stream silence (verified through the public URL).
 - **Council:** six blind part-councils (landing, dashboard, engine, agent integration, judging/submission, deploy) and a chair produced 8 file-disjoint packages (N1–N8), now running in parallel worktrees `../gh-night-n1..8` from a shared web-contract commit. Test graphs take an `SB_TEST_NS` suffix so the worktrees can share one FalkorDB.
 - **Lint:** clean after ignoring `.claude/**` and `video/**`.
+
+## 2026-10-17 02:50 PT: night packages merged (N1–N8)
+- **Merged into ui/rebuild** in this order: N1, N7, N2, N8, N4, N3, N6, N5. One conflict (`packages/core/src/index.ts`, both N1 and N3 exported the query texts; kept N3's lines). Fixes during merge: `agents.test` seeds File nodes (claim() no longer creates them), `events.test` honours `SB_TEST_NS`, the landing Query shows N3's new `until`/`hub` columns (checked equal to `conflictQuery(3)`), and toggling batches no longer restarts the live stream.
+- **Regenerated on a quiet machine:** bench (median check 0.69 ms, range in REPORT.md), replay.json, pair census, README, og.png (session.ts story; the old one still showed crypto.ts), app-conflict.png, hero GIF.
+- **Public link:** now runs `SB_PUBLIC=1` (agents A–D only, paths must be in the code graph, no /api/edits). One outage: an agent's `pkill -f apps/server/src/index.ts` also killed the public server; it now runs in a restart loop and agents were told to stop processes by port only.
+- **Gates:** typecheck and lint clean; 23 files, 155 tests pass; web build clean.
+- **Submission form** is open (fields recorded in docs/SUBMISSION.md with draft answers).

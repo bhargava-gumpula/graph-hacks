@@ -38,7 +38,7 @@ The plugin lives in [`plugins/switchboard`](../plugins/switchboard) and the mark
 | Part | File | What it does |
 | --- | --- | --- |
 | Hooks | `hooks/hooks.json` | `SessionStart`: register the agent, re-parse the repo in the background, add a brief to the context. `PreToolUse` on `Edit\|MultiEdit\|Write\|NotebookEdit`: claim the file, or deny with the import path. `PostToolUse`: record the edit and refresh the import graph in the background. `SessionEnd`: release this agent's claims. |
-| MCP server | `.mcp.json` | `switchboard`, 13 tools (`claim`, `brief_me`, `record_decision`, `handoff`, ...). |
+| MCP server | `.mcp.json` | `switchboard`, 15 tools (`claim`, `brief_me`, `record_decision`, `search_memory`, `hotspots`, ...). |
 | Skill | `skills/switchboard/SKILL.md` | What Switchboard is, how to read a refusal, what to do next. |
 | Runtime | `dist/*.mjs` | The hook, the MCP server and the CLI, bundled with esbuild by `npm run build:plugin`. |
 

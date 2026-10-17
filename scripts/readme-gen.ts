@@ -8,6 +8,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
+// The Cypher sections show the default query text, whatever the shell exports.
+delete process.env.SB_HOPS;
+delete process.env.SB_TYPE_IMPORTS;
 const README = resolve(ROOT, "README.md");
 const K = 3;
 
@@ -100,7 +103,7 @@ async function entries(): Promise<Entry[]> {
       call: "SEARCH_DECISIONS",
       file: "search",
       text: str(search!, "search", "SEARCH_DECISIONS"),
-      what: "The full-text index on `Decision(text, why)`, so a word that only appears in the reason still finds the decision, with the files it affects. `SEARCH_LESSONS` does the same over `Lesson(text)`. The agent's words are cut to plain words joined by OR before they reach the index. `brief_me` with `about` and the `search_memory` tool use it.",
+      what: "The full-text index on `Decision(text, why)`, so a word that only appears in the reason still finds the decision, with the files it affects. `SEARCH_LESSONS` does the same over `Lesson(text)`. The agent's words are cut to plain words joined by OR before they reach the index. `brief_me` with `about` and the `search_memory` tool use it. `search_memory` marks a replaced decision (superseded); `brief_me` leaves it out (`$activeOnly`).",
       lock: "it holds names and owners, no text to search.",
     },
     {
@@ -222,7 +225,7 @@ function benchBlock(): string {
   if (pairs?.demo) {
     lines.push(
       "",
-      "Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once. A file lock collides only on the same path, so by definition it catches none of them:",
+      "Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once, by the conflict check's default rules: no path through a hub, no `import type` edge. A file lock collides only on the same path, so by definition it catches none of them:",
       "",
       "| Repo | Files | Pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |",
       "|---|---|---|---|---|---|---|",

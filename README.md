@@ -405,12 +405,13 @@ ORDER BY rank DESC, path
 
 ### Memory search (full-text)
 
-`SEARCH_DECISIONS` in [`packages/core/src/queries/search.ts`](packages/core/src/queries/search.ts). The full-text index on `Decision(text, why)`, so a word that only appears in the reason still finds the decision, with the files it affects. `SEARCH_LESSONS` does the same over `Lesson(text)`. The agent's words are cut to plain words joined by OR before they reach the index. `brief_me` with `about` and the `search_memory` tool use it.
+`SEARCH_DECISIONS` in [`packages/core/src/queries/search.ts`](packages/core/src/queries/search.ts). The full-text index on `Decision(text, why)`, so a word that only appears in the reason still finds the decision, with the files it affects. `SEARCH_LESSONS` does the same over `Lesson(text)`. The agent's words are cut to plain words joined by OR before they reach the index. `brief_me` with `about` and the `search_memory` tool use it. `search_memory` marks a replaced decision (superseded); `brief_me` leaves it out (`$activeOnly`).
 
 Why a lock table cannot do this: it holds names and owners, no text to search.
 
 ```cypher
 CALL db.idx.fulltext.queryNodes('Decision', $q) YIELD node, score
+WITH node, score WHERE NOT ($activeOnly AND node.status = 'superseded')
 OPTIONAL MATCH (node)-[:AFFECTS]->(f:File)
 WITH node, score, collect(f.path) AS paths
 RETURN 'decision' AS kind, node.id AS id, node.text AS text, node.why AS why, node.status AS status, paths, score
@@ -542,12 +543,12 @@ Agent A holds `auth/session.ts` and changes what `sessionLabel` returns. Agent B
 - The conflict check (`findConflicts`, one FalkorDB query from Node) took a median of 0.69 ms (range 0.56 to 1.35 ms) over 10 runs. The machine was busy: 1-minute load average 4.84 on 10 cores.
 - Last run: 2026-10-17, TypeScript 5.9.3, Node v26.9.0.
 
-Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once. A file lock collides only on the same path, so by definition it catches none of them:
+Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once, by the conflict check's default rules: no path through a hub, no `import type` edge. A file lock collides only on the same path, so by definition it catches none of them:
 
 | Repo | Files | Pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |
 |---|---|---|---|---|---|---|
-| `demo-repo/` | 35 | 595 | 0 | 51 | 78 | 27 |
-| `apps/web/` | 101 | 5050 | 0 | 184 | 293 | 109 |
+| `demo-repo/` | 35 | 595 | 0 | 48 | 72 | 24 |
+| `apps/web/` | 104 | 5356 | 0 | 173 | 279 | 106 |
 
 <!-- bench:end -->
 
@@ -595,7 +596,7 @@ The owner's decisions are in the table in [`docs/PLAN.md` §0.6](docs/PLAN.md#06
 
 The first code commit (`aae6dc4`, Oct 14, 11:09 PM PT) came after the Oct 14 11:31 AM PT start. Every commit before it is Markdown notes, plus one Cursor rules file.
 
-Inside the product, the only model call is an optional Claude Haiku summary of a briefing (`packages/core/src/summarize.ts`). It runs only when `ANTHROPIC_API_KEY` is set. The conflict check, the batches and the why-trace never call a model.
+Inside the product, the only model call is an optional Claude Haiku summary of a briefing (`packages/core/src/summarize.ts`). It runs only when `ANTHROPIC_API_KEY` is set. The conflict check, the rounds and the why-trace never call a model.
 
 ## License
 

@@ -4,37 +4,37 @@
     "files": 35,
     "pairs": 595,
     "lock": 0,
-    "oneHop": 51,
-    "graph": 78,
-    "hidden": 27,
+    "oneHop": 48,
+    "graph": 72,
+    "hidden": 24,
     "byHop": [
       {
         "hops": 1,
-        "pairs": 51
+        "pairs": 48
       },
       {
         "hops": 2,
-        "pairs": 23
+        "pairs": 21
       },
       {
         "hops": 3,
-        "pairs": 4
+        "pairs": 3
       }
     ],
-    "ms": 1.07
+    "ms": 1.03
   },
   "real": {
     "dir": "apps/web",
-    "files": 101,
-    "pairs": 5050,
+    "files": 104,
+    "pairs": 5356,
     "lock": 0,
-    "oneHop": 184,
-    "graph": 293,
-    "hidden": 109,
+    "oneHop": 173,
+    "graph": 279,
+    "hidden": 106,
     "byHop": [
       {
         "hops": 1,
-        "pairs": 184
+        "pairs": 173
       },
       {
         "hops": 2,
@@ -42,11 +42,11 @@
       },
       {
         "hops": 3,
-        "pairs": 21
+        "pairs": 18
       }
     ],
-    "ms": 2.09
+    "ms": 2.25
   },
   "note": "pairs are unordered pairs of distinct files; ms is the median of 5 runs of the census query",
-  "ranAt": "2026-10-17T09:47:42.868Z"
+  "ranAt": "2026-10-17T22:41:37.903Z"
 }

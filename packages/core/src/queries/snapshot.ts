@@ -28,17 +28,18 @@ export interface ActiveClaim {
   intent: string | null;
 }
 
+/** Every file, its hub flag, and the agents with an active claim on it (one row per file). */
 export const SNAPSHOT_FILES = `
 MATCH (f:File)
 OPTIONAL MATCH (a:Agent)-[c:CLAIMS]->(f)
 WHERE c.until > $now
-RETURN f.path AS path, f.hub AS hub, collect(a.id) AS claimedBy
+RETURN f.path AS path, f.hub AS hub, collect(DISTINCT a.id) AS claimedBy
 ORDER BY f.path
 `;
 
 export const SNAPSHOT_IMPORTS = `
 MATCH (a:File)-[:IMPORTS]->(b:File)
-RETURN a.path AS source, b.path AS target
+RETURN DISTINCT a.path AS source, b.path AS target
 `;
 
 export const SNAPSHOT_AGENTS = `
@@ -59,7 +60,10 @@ function fileLabel(path: string): string {
   return slash >= 0 ? path.slice(slash + 1) : path;
 }
 
-/** Code graph + agents + active claims. One snapshot for the canvas. */
+/**
+ * Code graph + agents + active claims, the `GET /api/graph` body (docs/api.md).
+ * Three whole-graph queries in parallel, no per-node lookups.
+ */
 export async function graphSnapshot(g: SbGraph, now = Date.now()): Promise<GraphSnapshot> {
   const [files, imports, agents] = await Promise.all([
     g.roQuery(SNAPSHOT_FILES, { now }),

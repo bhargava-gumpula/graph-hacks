@@ -97,7 +97,7 @@ export function CypherDisclosure({ query, params, label = "Cypher" }: { query?: 
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className="inline-flex items-center gap-1 rounded-full font-mono text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--fg)]"
+        className="-my-1 inline-flex items-center gap-1 rounded-full py-1 font-mono text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--fg)]"
       >
         <CaretRight size={10} weight="bold" className={`transition-transform duration-200 ${open ? "rotate-90" : ""}`} />
         {label}
@@ -259,22 +259,29 @@ export function AgentsPanel({
               </div>
               <AnimatePresence initial={false}>
                 {b && (
-                  <motion.button
+                  // The clipped wrapper animates, so padding and borders collapse with it (no end snap).
+                  <motion.div
                     key={`${b.file}>${b.claimed}`}
-                    type="button"
-                    initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                    animate={{ opacity: 1, height: "auto", marginTop: 12 }}
-                    exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                    transition={{ duration: 0.35, ease: EXPO }}
-                    onClick={() => onPath(b.path)}
-                    title="Show this path on the graph"
-                    className="flex w-full items-start gap-2 overflow-hidden rounded-md border border-[var(--color-signal)]/40 bg-[var(--color-signal-soft)] px-2 py-1.5 text-left font-mono text-[11px] leading-snug transition-colors hover:bg-[var(--color-signal)]/25"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                    className="overflow-hidden"
                   >
-                    <Prohibit size={13} className="mt-px shrink-0 text-[var(--color-signal)]" aria-hidden />
-                    <span>
-                      blocked: {b.file} → held by {b.agent} · {hops(b.hops)}
-                    </span>
-                  </motion.button>
+                    <div className="pt-3">
+                      <button
+                        type="button"
+                        onClick={() => onPath(b.path)}
+                        title="Show this path on the graph"
+                        className="flex w-full items-start gap-2 rounded-md border border-[var(--color-signal)]/40 bg-[var(--color-signal-soft)] px-2 py-1.5 text-left font-mono text-[11px] leading-snug transition-colors hover:bg-[var(--color-signal)]/25"
+                      >
+                        <Prohibit size={13} className="mt-px shrink-0 text-[var(--color-signal)]" aria-hidden />
+                        <span>
+                          blocked: {b.file} → held by {b.agent} · {hops(b.hops)}
+                        </span>
+                      </button>
+                    </div>
+                  </motion.div>
                 )}
               </AnimatePresence>
               {mine.length > 0 && (
@@ -350,7 +357,7 @@ function describe(e: FeedItem): string {
 }
 
 const FEED_EMPTY: Record<LiveStatus, string> = {
-  loading: "Connecting to the graph.",
+  loading: "Connecting to the graph…",
   live: "Waiting for events. The live stream is connected.",
   reconnecting: "Reconnecting to the live stream. New events appear when it is back.",
   replay: "This is a recorded run. Press Play the demo to replay it.",
@@ -361,26 +368,31 @@ function FeedRow({ e, cypher, onPath }: { e: FeedItem; cypher: Record<string, st
   const bad = e.kind === "conflict" || e.kind === "collision";
   const dim = e.kind === "register" || e.kind === "release";
   const c = conflictOf(e);
+  // Quiet rows (check-ins, releases) use the muted text colour, not opacity, so they keep 4.5:1 contrast.
+  const row = `flex w-full gap-3 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug ${bad ? "text-[var(--fg)]" : dim ? "text-[var(--muted)]" : "text-[var(--fg)]/80"}`;
+  const inner = (
+    <>
+      <span className={`mt-0.5 shrink-0 ${bad ? "text-[var(--color-signal)]" : "text-[var(--muted)]"}`}>{ICON[e.kind] ?? <Graph size={15} />}</span>
+      <span className="min-w-0 flex-1">{describe(e)}</span>
+      <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--muted)]">#{e.seq}</span>
+    </>
+  );
   return (
     <motion.li
       layout="position"
       initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: dim ? 0.5 : 1, y: 0 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: EXPO }}
       className={`rounded-md ${bad ? "bg-[var(--color-signal-soft)] ring-1 ring-inset ring-[var(--color-signal)]/30" : ""}`}
     >
-      <button
-        type="button"
-        disabled={!c}
-        onClick={() => c && onPath(c.path)}
-        className={`flex w-full gap-3 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug transition-colors ${
-          bad ? "text-[var(--fg)] hover:bg-[var(--color-signal)]/15" : "text-[var(--fg)]/80 hover:bg-[var(--fg)]/[0.05]"
-        }`}
-      >
-        <span className={`mt-0.5 shrink-0 ${bad ? "text-[var(--color-signal)]" : "text-[var(--muted)]"}`}>{ICON[e.kind] ?? <Graph size={15} />}</span>
-        <span className="min-w-0 flex-1">{describe(e)}</span>
-        <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--muted)]">#{e.seq}</span>
-      </button>
+      {/* Only a conflict row is an action (show its path); the rest are plain log entries. */}
+      {c ? (
+        <button type="button" onClick={() => onPath(c.path)} className={`${row} transition-colors hover:bg-[var(--color-signal)]/15`}>
+          {inner}
+        </button>
+      ) : (
+        <div className={row}>{inner}</div>
+      )}
       {c && cypher?.conflict && (
         <div className="px-2.5 pb-2 pl-[38px]">
           <CypherDisclosure query={cypher.conflict} params={conflictParams(c, e.agentId)} />
@@ -442,7 +454,7 @@ export function Feed({
             {showOlder && (
               <motion.ul
                 initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 0.7 }}
+                animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.3, ease: EXPO }}
                 className="mt-1 grid gap-1 overflow-hidden"
@@ -628,11 +640,11 @@ export function Memory({ decisions, events, tasks }: { decisions: Decision[]; ev
               <motion.li
                 key={d.id}
                 initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: d.status === "superseded" ? 0.5 : 1, y: 0 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05, duration: 0.35, ease: EXPO }}
                 className="rounded-[var(--radius-panel)] border border-[var(--border)] p-3"
               >
-                <p className="text-sm">{d.text}</p>
+                <p className={`text-sm ${d.status === "superseded" ? "text-[var(--muted)] line-through decoration-[var(--muted)]" : ""}`}>{d.text}</p>
                 <p className="mt-1 text-xs text-[var(--muted)]">{[d.agent && `Agent ${d.agent}`, d.why && `why: ${d.why}`, d.status].filter(Boolean).join(", ")}</p>
               </motion.li>
             ))}
@@ -718,19 +730,17 @@ export function Brief({ tasks, claims }: { tasks: string[]; claims: Claim[] }) {
           If the agent on this task dies, the next one starts from this: claims, decisions, lessons and recent edits, ranked by graph distance.
         </p>
       </div>
+      {/* Native radios: one tab stop, arrow keys move the choice. */}
       <div role="radiogroup" aria-label="Task" className="flex flex-wrap gap-1 rounded-[var(--radius-panel)] border border-[var(--border)] p-1">
         {options.map((t) => (
-          <button
+          <label
             key={t}
-            type="button"
-            role="radio"
-            aria-checked={task === t}
-            onClick={() => setTask(t)}
-            className="relative rounded-full px-2.5 py-1 font-mono text-[11px] transition-colors"
+            className="relative cursor-pointer touch-manipulation rounded-full px-2.5 py-1 font-mono text-[11px] transition-colors has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-[var(--fg)]/40 pointer-coarse:py-2"
           >
+            <input type="radio" name="brief-task" value={t} checked={task === t} onChange={() => setTask(t)} className="sr-only" />
             {task === t && <motion.span layoutId="brief-task" className="absolute inset-0 rounded-full bg-[var(--fg)]/10" transition={{ type: "spring", stiffness: 420, damping: 34 }} />}
             <span className={`relative ${task === t ? "text-[var(--fg)]" : "text-[var(--muted)] hover:text-[var(--fg)]"}`}>{t}</span>
-          </button>
+          </label>
         ))}
       </div>
       {data?.summary && (

@@ -215,7 +215,11 @@ export function Dashboard() {
     setResetting(true);
     const prev = scene;
     const id = `reset-${Date.now()}`;
-    setTasks((t) => [...t.filter((x) => !x.id.startsWith("hit-")).slice(-3), { id, label: "Resetting the demo", status: "running" }]);
+    // A Play still pacing its refusal leaves a running demo- task; the reset hides that refusal, so drop it too.
+    setTasks((t) => [
+      ...t.filter((x) => !x.id.startsWith("hit-") && !(x.id.startsWith("demo-") && x.status === "running")).slice(-3),
+      { id, label: "Resetting the demo", status: "running" },
+    ]);
     try {
       const before = Math.max(live.hit?.id ?? 0, ...live.events.map((e) => e.seq));
       if (live.status === "replay") setScene({ from: 0, to: before });

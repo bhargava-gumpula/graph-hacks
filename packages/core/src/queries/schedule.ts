@@ -113,7 +113,8 @@ export function colourRounds(ids: string[], edges: { a: string; b: string }[]): 
     near.get(a)?.add(b);
     near.get(b)?.add(a);
   }
-  const order = [...ids].sort((x, y) => near.get(y)!.size - near.get(x)!.size || x.localeCompare(y));
+  // Ties by plain code-unit order, the same order `.sort()` gives inside a round, so no locale can change a schedule.
+  const order = [...ids].sort((x, y) => near.get(y)!.size - near.get(x)!.size || (x < y ? -1 : x > y ? 1 : 0));
   const round = new Map<string, number>();
   for (const id of order) {
     const taken = new Set([...near.get(id)!].map((n) => round.get(n)));

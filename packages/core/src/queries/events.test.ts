@@ -7,7 +7,7 @@ const NAME = "sb_test_events";
 const graph = useTestGraph(NAME);
 
 test("50 concurrent recordEvent calls on 5 connections get seq 1..50, no gaps or duplicates", async () => {
-  const clients = await Promise.all(Array.from({ length: 5 }, () => connect({ graph: NAME })));
+  const clients = await Promise.all(Array.from({ length: 5 }, () => connect({ graph: NAME + (process.env.SB_TEST_NS ?? "") })));
   try {
     const seqs = await Promise.all(
       Array.from({ length: 50 }, (_, i) =>

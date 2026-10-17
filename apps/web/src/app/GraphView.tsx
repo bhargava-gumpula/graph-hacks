@@ -5,6 +5,7 @@ import type { Claim, Snapshot } from "./api";
 import type { Hit } from "./useLive";
 import { curve, layoutGraph } from "./layoutGraph";
 import { pulse } from "../landing/AsciiField";
+import { Legend } from "./Legend";
 
 const EXPO = [0.16, 1, 0.3, 1] as const;
 /** Camera moves on screen: strong ease-in-out, under 300ms. */
@@ -39,6 +40,12 @@ export interface GraphViewProps {
   onSelect: (id: string | null) => void;
   /** Called on the impact frame of a conflict (at once for a restored or reduced-motion one). */
   onLanded?: (id: number) => void;
+  /** Guided tour: only these files stay bright (others dim). */
+  spot?: Set<string> | null;
+  /** Guided tour: claim rings to show before the demo makes them real. `wants` draws a dashed ring. */
+  preview?: { file: string; agent: string; wants?: boolean }[];
+  /** Guided tour: an import chain drawn hop by hop, with hop labels. */
+  trace?: string[] | null;
 }
 
 /**
@@ -47,7 +54,7 @@ export interface GraphViewProps {
  * real dependency path to the claim it hit, then an impact that ripples the field.
  */
 export function GraphView(props: GraphViewProps) {
-  const { graph, claims, hit, selected, blast, batchOf, ghost, focusAgent, checkMs, conflictCypher, onSelect, onLanded } = props;
+  const { graph, claims, hit, selected, blast, batchOf, ghost, focusAgent, checkMs, conflictCypher, onSelect, onLanded, spot = null, preview = [], trace = null } = props;
   const reduce = useReducedMotion();
   // Phone-width canvases get tighter folder columns, so labels stay readable after fit.
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
@@ -272,6 +279,7 @@ export function GraphView(props: GraphViewProps) {
   const colOf = useMemo(() => new Map(L.folders.map((f, i) => [f, i])), [L.folders]);
   const enter = (n: { folder: string; y: number }) => 0.1 + (colOf.get(n.folder) ?? 0) * 0.08 + (n.y / L.height) * 0.2;
   const halo = { paintOrder: "stroke", stroke: "var(--bg)", strokeWidth: 3, strokeLinejoin: "round" } as const;
+  const spotFolders = useMemo(() => (spot ? new Set([...spot].map((id) => L.nodes.get(id)?.folder)) : null), [spot, L.nodes]);
 
   return (
     <div
@@ -311,7 +319,7 @@ export function GraphView(props: GraphViewProps) {
               x={L.colX(i)}
               y={28}
               textAnchor="middle"
-              className="fill-[var(--muted)] font-mono text-[11px]"
+              className={`font-mono text-[11px] transition-[fill] duration-300 ${spotFolders?.has(f) ? "fill-[var(--fg)]" : "fill-[var(--muted)]"}`}
               style={halo}
               initial={reduce ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -326,6 +334,7 @@ export function GraphView(props: GraphViewProps) {
             const inBlast = selected && (e.t.id === selected || blast.has(e.t.id)) && blast.has(e.s.id);
             const inFocus = focus && focus.has(e.s.id) && focus.has(e.t.id);
             const touch = hover && (e.s.id === hover || e.t.id === hover);
+            const lit = spot && spot.has(e.s.id) && spot.has(e.t.id);
             return (
               <motion.path
                 key={e.id}
@@ -335,7 +344,7 @@ export function GraphView(props: GraphViewProps) {
                 transition={{ duration: 0.9, ease: EXPO, delay: enter(e.s) }}
                 fill="none"
                 stroke="var(--fg)"
-                strokeOpacity={onShot ? 0 : inBlast || inFocus ? 0.55 : touch ? 0.45 : e.hub ? 0.05 : focus || selected ? 0.06 : 0.14}
+                strokeOpacity={onShot ? 0 : lit || inBlast || inFocus ? 0.55 : touch ? 0.45 : e.hub ? 0.05 : focus || selected || spot ? 0.06 : 0.14}
                 strokeWidth={inBlast || inFocus || touch ? 1.4 : 1}
                 style={{ transition: "stroke-opacity .35s, stroke-width .35s" }}
               />
@@ -367,6 +376,38 @@ export function GraphView(props: GraphViewProps) {
             </>
           )}
 
+          {trace &&
+            trace.slice(1).map((id, i) => {
+              const a = L.nodes.get(trace[i]);
+              const b = L.nodes.get(id);
+              if (!a || !b) return null;
+              // The curve is symmetric, so its midpoint is the midpoint of its ends.
+              const mx = (a.x + b.x) / 2;
+              const my = (a.y + b.y) / 2;
+              const at = 0.3 + i * 0.9;
+              return (
+                <g key={`trace-${trace[i]}-${id}`} style={{ pointerEvents: "none" }}>
+                  <motion.path
+                    d={curve(a, b)}
+                    fill="none"
+                    stroke="var(--color-signal)"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    initial={reduce ? false : { pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.7, delay: at, ease: [0.77, 0, 0.175, 1] }}
+                  />
+                  <motion.g initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25, delay: at + 0.55 }}>
+                    {/* Under the line, so it never sits on a file label of the same row. */}
+                    <rect x={mx - 23} y={my + 8} width={46} height={20} rx={10} fill="var(--surface)" stroke="var(--color-signal)" strokeOpacity={0.6} />
+                    <text x={mx} y={my + 21.5} textAnchor="middle" className="fill-[var(--fg)] font-mono text-[10px]">
+                      hop {i + 1}
+                    </text>
+                  </motion.g>
+                </g>
+              );
+            })}
+
           {[...L.nodes.values()].map((n) => {
             const claimers = claimsByFile.get(n.id) ?? [];
             const onRoute = shot?.ids.has(n.id);
@@ -376,9 +417,12 @@ export function GraphView(props: GraphViewProps) {
             const isHover = hover === n.id;
             const batch = batchOf?.get(n.id);
             const fh = focus?.get(n.id);
-            const dimmed = (selected && !isSel && hop === undefined && !onRoute) || (focus && fh === undefined && !onRoute);
+            const inSpot = !!spot?.has(n.id);
+            const onTrace = !!trace?.includes(n.id);
+            const dimmed = (spot && !inSpot) || (selected && !isSel && hop === undefined && !onRoute) || (focus && fh === undefined && !onRoute);
             const isGhost = ghost?.file === n.id;
-            const showLabel = isSel || isHover || onShot || claimers.length > 0 || hop !== undefined || fh !== undefined || batch !== undefined;
+            const marks = preview.filter((p) => p.file === n.id && (p.wants || !claimers.includes(p.agent)));
+            const showLabel = inSpot || isSel || isHover || onShot || claimers.length > 0 || hop !== undefined || fh !== undefined || batch !== undefined;
             return (
               <g
                 key={n.id}
@@ -423,10 +467,10 @@ export function GraphView(props: GraphViewProps) {
                   cx={n.x}
                   cy={n.y}
                   initial={false}
-                  animate={{ r: onShot ? 6 : isSel ? 5.5 : isHover ? 5 : n.hub ? 4.5 : 3.25 }}
+                  animate={{ r: onShot ? 6 : isSel ? 5.5 : isHover || inSpot ? 5 : n.hub ? 4.5 : 3.25 }}
                   transition={{ type: "spring", stiffness: 420, damping: 35 }}
                   fill={onShot ? "var(--color-signal)" : "var(--fg)"}
-                  fillOpacity={onShot || isSel || isHover ? 1 : hop ? 1 - hop * 0.2 : fh !== undefined ? 1 - fh * 0.2 : n.hub ? 0.6 : 0.45}
+                  fillOpacity={onShot || isSel || isHover || inSpot ? 1 : hop ? 1 - hop * 0.2 : fh !== undefined ? 1 - fh * 0.2 : n.hub ? 0.6 : 0.45}
                 />
                 <AnimatePresence>
                   {claimers.length > 0 && (
@@ -444,6 +488,24 @@ export function GraphView(props: GraphViewProps) {
                       </text>
                     </motion.g>
                   )}
+                </AnimatePresence>
+                <AnimatePresence>
+                  {marks.map((m) => (
+                    <motion.g
+                      key={`mark-${m.agent}`}
+                      initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 1.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0 }}
+                      style={{ originX: `${n.x}px`, originY: `${n.y}px`, transformBox: "view-box" }}
+                      transition={{ type: "spring", stiffness: 380, damping: 33 }}
+                    >
+                      <circle cx={n.x} cy={n.y} r={m.wants ? 14 : 11} fill="none" stroke="var(--fg)" strokeWidth={1.5} strokeDasharray={m.wants ? "3 3" : undefined} />
+                      <rect x={n.x - 24} y={n.y - 28} width={20} height={14} rx={7} fill={m.wants ? "var(--bg)" : "var(--fg)"} stroke="var(--fg)" strokeWidth={m.wants ? 1.2 : 0} />
+                      <text x={n.x - 14} y={n.y - 18} textAnchor="middle" className={`font-mono text-[9px] font-semibold ${m.wants ? "fill-[var(--fg)]" : "fill-[var(--bg)]"}`}>
+                        {m.agent}
+                      </text>
+                    </motion.g>
+                  ))}
                 </AnimatePresence>
                 <AnimatePresence>
                   {isGhost && ghost && (
@@ -465,8 +527,9 @@ export function GraphView(props: GraphViewProps) {
                 </AnimatePresence>
                 {showLabel && (
                   <text
-                    x={n.x + (onShot ? 10 : 12)}
-                    y={onShot ? n.y - 12 : n.y + 4}
+                    // On a drawn route the label sits above the node, off the line.
+                    x={n.x + (onShot || onTrace ? 10 : 12)}
+                    y={onShot || onTrace ? n.y - 12 : n.y + 4}
                     className={`font-mono text-[11px] ${onShot || isSel || isHover ? "fill-[var(--fg)]" : "fill-[var(--muted)]"}`}
                     style={halo}
                   >
@@ -554,6 +617,7 @@ export function GraphView(props: GraphViewProps) {
       </AnimatePresence>
 
       <div className="absolute bottom-4 right-4 z-10 flex gap-1 rounded-full border border-[var(--border)] bg-[var(--surface)]/90 p-1 backdrop-blur">
+        <Legend />
         {[
           { label: "Zoom in", icon: <Plus size={14} />, on: () => zoomBy(1.25, undefined, undefined, true) },
           { label: "Zoom out", icon: <Minus size={14} />, on: () => zoomBy(0.8, undefined, undefined, true) },

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
-import { ArrowClockwise, HandGrabbing, MagnifyingGlass, Play, Rows, X } from "@phosphor-icons/react";
+import { ArrowClockwise, Compass, HandGrabbing, MagnifyingGlass, Play, Rows, X } from "@phosphor-icons/react";
 import { StatusIsland, type IslandTask } from "@/components/kokonutui/status-island";
 import { ChartStatFlow } from "@/components/charts/chart-stat-flow";
 import { AsciiField } from "../landing/AsciiField";
@@ -8,6 +8,8 @@ import { api, type Batch, type Blast, type Conflict, type DemoReply, type Health
 import { GraphView } from "./GraphView";
 import { AgentsPanel, Brief, CypherDisclosure, Feed, Inspect, Memory, PathChips, blockedBy, conflictParams, hops, splitRuns, useCypher } from "./Panels";
 import { useLive, type LiveStatus } from "./useLive";
+import { importPath, layoutGraph } from "./layoutGraph";
+import { Tour, markTourSeen, tourSeen, type TourStep } from "./Tour";
 
 type Tab = "feed" | "inspect" | "memory" | "brief";
 const TABS: { id: Tab; label: string }[] = [
@@ -20,6 +22,10 @@ const EXPO = [0.16, 1, 0.3, 1] as const;
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const STATUS_LABEL: Record<LiveStatus, string> = { loading: "connecting", live: "live", reconnecting: "reconnecting", replay: "replay", offline: "offline" };
 const COACH = "Two scripted agents, one repo. Press Play: watch the graph refuse an edit a file lock would allow.";
+/** The scripted story: Agent A holds this file, Agent B asks for that one. */
+const A_FILE = "auth/session.ts";
+const B_FILE = "ui/LoginForm.tsx";
+const name = (f: string) => f.split("/").pop() ?? f;
 
 /** The server has sent batches as Batch[] and as string[][]; accept both. */
 const toBatches = (b: unknown): Batch[] =>
@@ -45,6 +51,14 @@ export function Dashboard() {
   const [run, setRun] = useState(0);
   const [health, setHealth] = useState<Health | null>(null);
   const [hoverAgent, setHoverAgent] = useState<string | null>(null);
+  const [demoErr, setDemoErr] = useState<string | null>(null);
+  // Guided tour: the step on screen (null when closed) and what to put back when it closes.
+  const [tour, setTour] = useState<number | null>(null);
+  const [tourFocus, setTourFocus] = useState(false);
+  const tourSaved = useRef<{ tab: Tab; batch: boolean } | null>(null);
+  const tourPlayed = useRef(false);
+  const [beat, setBeat] = useState(0);
+  const [params] = useState(() => new URLSearchParams(window.location.search));
   // Play clears the previous run's path, so the new refusal draws on a clean graph. A new run from
   // any viewer (a newer parse event) clears it too.
   const [staleHit, setStaleHit] = useState<number | null>(null);
@@ -166,6 +180,7 @@ export function Dashboard() {
     armed.current = true;
     setWaiting(true);
     const id = `demo-${Date.now()}`;
+    setDemoErr(null);
     setTasks((t) => [...t.slice(-3), { id, label: "Running the demo", detail: "two agents, one hidden dependency", status: "running" }]);
     try {
       const r = await api.demo();
@@ -175,6 +190,7 @@ export function Dashboard() {
       armed.current = false;
       setWaiting(false);
       setStaleHit(null);
+      setDemoErr((e as Error).message);
       setTasks((t) => t.map((x) => (x.id === id ? { ...x, status: "error", label: "Demo failed", detail: (e as Error).message } : x)));
     } finally {
       setPlaying(false);
@@ -193,6 +209,175 @@ export function Dashboard() {
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live.graph, live.status]);
+
+  /* ------------------------------ Guided tour ------------------------------ */
+
+  const folders = useMemo(() => (live.graph ? layoutGraph(live.graph).folders : []), [live.graph]);
+  const chain = useMemo(() => (live.graph ? importPath(live.graph, B_FILE, A_FILE) : []), [live.graph]);
+  const startTour = (focus = false) => {
+    if (tour != null) return;
+    tourSaved.current = { tab, batch: batchMode };
+    tourPlayed.current = false;
+    setTryOpen(false);
+    setSelected(null);
+    setTourFocus(focus);
+    setTour(0);
+    markTourSeen();
+  };
+  const endTour = () => {
+    const s = tourSaved.current;
+    tourSaved.current = null;
+    setTour(null);
+    if (s) {
+      setTab(s.tab);
+      setBatchMode(s.batch);
+    }
+  };
+  // First visit (or ?tour=1) opens the tour once the graph is on screen. ?play=1 wins: it plays instead.
+  const autoTour = useRef(false);
+  useEffect(() => {
+    if (autoTour.current || !live.graph || (live.status !== "live" && live.status !== "replay")) return;
+    autoTour.current = true;
+    const asked = params.get("tour") === "1";
+    if (asked) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("tour");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    }
+    if (asked || (!params.has("play") && !tourSeen())) startTour();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.graph, live.status]);
+
+  const steps: TourStep[] = [
+    {
+      id: "graph",
+      title: "This is a real repo, as a graph.",
+      body: (
+        <>
+          Each dot is a file. Each line is an import. Columns are folders{folders.length ? <>: <span className="font-mono text-[12px]">{folders.join(", ")}</span></> : null}.
+        </>
+      ),
+      targets: ["[data-tour=canvas]"],
+    },
+    {
+      id: "agentA",
+      title: `Agent A is changing ${A_FILE}.`,
+      body: "It claims the file before it edits. The ring with the A is that claim, stored in the graph.",
+      targets: ["[data-tour=canvas]", 'li[data-agent="A"]'],
+    },
+    {
+      id: "agentB",
+      title: `Agent B wants to edit ${B_FILE}.`,
+      body: "A different file, on a different branch. A file lock would say yes.",
+      targets: ["[data-tour=canvas]", 'li[data-agent="B"]'],
+    },
+    {
+      id: "path",
+      title: "Switchboard follows the imports.",
+      body:
+        chain.length > 1 ? (
+          <>
+            {chain.slice(0, -1).map((f, i) => (
+              <span key={f}>
+                {i === 0 && (
+                  <>
+                    <span className="font-mono text-[12px] text-[var(--fg)]">{name(f)}</span>{" "}
+                  </>
+                )}
+                imports{" "}
+                <span className="font-mono text-[12px] text-[var(--fg)]">{name(chain[i + 1])}</span>
+                {i < chain.length - 2 ? ", which " : "."}
+              </span>
+            ))}{" "}
+            {chain.length - 1} hops to Agent A's claim.
+          </>
+        ) : (
+          "It walks the import lines from the file B wants to every file someone else holds."
+        ),
+      targets: ["[data-tour=canvas]"],
+    },
+    {
+      id: "refuse",
+      title: "Refused, before any code is written.",
+      body: live.status === "replay" ? "Replaying a recorded run of the real demo." : "This is the real demo, running on the server now.",
+      targets: ["[data-tour=canvas]"],
+    },
+    {
+      id: "memory",
+      title: "It remembers.",
+      body: (
+        <>
+          Decisions and lessons live in the same graph. A new agent gets them as a briefing in the <span className="text-[var(--fg)]">Brief</span> tab.
+        </>
+      ),
+      targets: ["[data-tour=panels]"],
+    },
+    {
+      id: "batches",
+      title: "Safe work runs in parallel.",
+      body: "Tasks are grouped by the imports between their files (WCC). Each tint is one group. Different groups can run at the same time.",
+      targets: ["[data-tour=canvas]", "[data-tour=batches]"],
+    },
+    {
+      id: "you",
+      title: "Your turn.",
+      body: "Claim any file as any agent with Try a claim, or press Play to run the story again.",
+      targets: ["[data-tour=actions]"],
+    },
+  ];
+  const step = tour == null ? null : steps[tour].id;
+  // Before the tour reaches the refusal, the canvas tells the story from scratch: no earlier route or ghost.
+  const fresh = step === "graph" || step === "agentA" || step === "agentB" || step === "path";
+
+  // Each step sets up the canvas; leaving a step (or the tour) puts it back.
+  useEffect(() => {
+    if (step == null) return;
+    setTab(step === "memory" ? "memory" : "feed");
+    setBatchMode(step === "batches");
+    if (step === "refuse" && !tourPlayed.current) {
+      tourPlayed.current = true;
+      void playDemo();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+  // Step 1 walks the folders one by one.
+  useEffect(() => {
+    if (step !== "graph") return;
+    setBeat(0);
+    const t = setInterval(() => setBeat((b) => b + 1), 1100);
+    return () => clearInterval(t);
+  }, [step]);
+  const tourSpot = useMemo(() => {
+    if (step === "graph" && folders.length) {
+      const f = folders[beat % folders.length];
+      return new Set(files.filter((x) => (x.includes("/") ? x.slice(0, x.lastIndexOf("/")) : ".") === f));
+    }
+    if (step === "agentA") return new Set([A_FILE]);
+    if (step === "agentB") return new Set([A_FILE, B_FILE]);
+    if (step === "path") return new Set(chain.length ? chain : [A_FILE, B_FILE]);
+    return null;
+  }, [step, beat, folders, files, chain]);
+  const tourPreview =
+    step === "agentA" ? [{ file: A_FILE, agent: "A" }] : step === "agentB" || step === "path" ? [{ file: A_FILE, agent: "A" }, { file: B_FILE, agent: "B", wants: true }] : [];
+  const refusedReady = step !== "refuse" || !!story || !!demoErr;
+  const tourExtra =
+    step === "refuse" ? (
+      story ? (
+        <div className="rounded-md border border-[var(--color-signal)]/35 bg-[var(--color-signal-soft)] p-3">
+          <ServerSentence text={story.sentence} />
+          <p className="mt-2 text-xs text-[var(--muted)]">
+            Checked in <span className="font-mono text-[var(--fg)]">{story.checkMs} ms</span> by one Cypher path query.
+          </p>
+        </div>
+      ) : demoErr ? (
+        <p className="text-[13px] text-[var(--signal-text)]">The demo could not run: {demoErr}</p>
+      ) : (
+        <p className="flex items-center gap-2 text-xs text-[var(--muted)]">
+          <span className="size-1.5 rounded-full bg-[var(--color-signal)] motion-safe:animate-pulse" />
+          Agent A claims, then Agent B asks…
+        </p>
+      )
+    ) : null;
 
   const rest =
     live.status === "replay"
@@ -219,8 +404,10 @@ export function Dashboard() {
               </svg>
               Switchboard
             </a>
-            <span className="hidden font-mono text-xs text-[var(--muted)] md:inline">{live.graphName}</span>
-            <span className="flex items-center gap-1.5 text-xs text-[var(--muted)]" title={`Stream: ${STATUS_LABEL[live.status]}`}>
+            <span className="hidden truncate text-xs text-[var(--muted)] xl:inline">
+              Live demo: two scripted agents on a {files.length || 35}-file repo
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-[var(--muted)]" title={`Stream: ${STATUS_LABEL[live.status]}${live.graphName ? ` (graph ${live.graphName})` : ""}`}>
               <span
                 className={`size-1.5 rounded-full transition-colors ${
                   live.status === "live" ? "bg-[var(--fg)]" : live.status === "offline" ? "bg-[var(--color-signal)]" : "bg-[var(--muted)]"
@@ -232,6 +419,17 @@ export function Dashboard() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => (tour == null ? startTour(true) : endTour())}
+              aria-pressed={tour != null}
+              aria-label="Guided tour"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 disabled:opacity-50 md:px-3"
+              disabled={!live.graph}
+            >
+              <Compass size={14} /> <span className="hidden md:inline">Guided tour</span>
+            </button>
+            <button
+              type="button"
+              data-tour="batches"
               onClick={() => setBatchMode((b) => !b)}
               aria-pressed={batchMode}
               aria-label="Parallel batches"
@@ -241,6 +439,7 @@ export function Dashboard() {
             >
               <Rows size={14} /> <span className="hidden md:inline">Parallel batches</span>
             </button>
+            <div data-tour="actions" className="flex items-center gap-2">
             <button
               ref={tryBtn}
               type="button"
@@ -263,6 +462,7 @@ export function Dashboard() {
                 Play<span className="hidden sm:inline"> the demo</span>
               </span>
             </button>
+            </div>
           </div>
         </header>
 
@@ -336,12 +536,12 @@ export function Dashboard() {
                   setHoverAgent(li?.getAttribute("data-agent") ?? null);
                 }}
               >
-                <AgentsPanel agents={agents} claims={shownClaims} events={live.events} status={live.status} hit={shown} onPick={setSelected} onPath={onPath} />
+                <AgentsPanel agents={agents} claims={shownClaims} events={live.events} status={live.status} hit={fresh ? null : shown} onPick={setSelected} onPath={onPath} />
               </div>
             </div>
           </aside>
 
-          <main className="relative min-h-0 overflow-hidden" aria-busy={!live.graph && live.status === "loading"}>
+          <main data-tour="canvas" className="relative min-h-0 overflow-hidden" aria-busy={!live.graph && live.status === "loading"}>
             {/* Keep the field dark behind the nodes; it still shows at the edges. On impact it opens for a
                 moment, so the shockwave reads around the claim it hit, then closes again. */}
             <motion.div
@@ -357,16 +557,19 @@ export function Dashboard() {
               <GraphView
                 graph={live.graph}
                 claims={shownClaims}
-                hit={hit}
+                hit={fresh ? null : hit}
                 selected={selected}
                 blast={blastMap}
                 batchOf={batchOf}
-                ghost={blocked ? { file: blocked.conflict.file, agent: blocked.agent } : null}
+                ghost={blocked && !fresh ? { file: blocked.conflict.file, agent: blocked.agent } : null}
                 focusAgent={hoverAgent}
                 checkMs={story?.checkMs ?? null}
                 conflictCypher={cypher?.conflict}
                 onSelect={setSelected}
                 onLanded={setLanded}
+                spot={tourSpot}
+                preview={tourPreview}
+                trace={step === "path" ? chain : null}
               />
             ) : (
               <div className="relative grid h-full place-items-center">
@@ -394,17 +597,17 @@ export function Dashboard() {
               )}
             </AnimatePresence>
 
-            {live.graph && (
+            {live.graph && tour == null && (
               <div className="pointer-events-none absolute bottom-4 left-4 z-10 hidden w-[min(440px,calc(100%-10rem))] sm:block">
-                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} />
+                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
               </div>
             )}
           </main>
 
-          <aside className="flex min-h-0 flex-col border-t border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-sm lg:border-l lg:border-t-0">
-            {live.graph && (
+          <aside data-tour="panels" className="flex min-h-0 flex-col border-t border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-sm lg:border-l lg:border-t-0">
+            {live.graph && tour == null && (
               <div className="shrink-0 border-b border-[var(--border)] p-3 sm:hidden">
-                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} />
+                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
               </div>
             )}
             <div
@@ -448,6 +651,22 @@ export function Dashboard() {
             </div>
           </aside>
         </div>
+
+        <AnimatePresence>
+          {tour != null && (
+            <Tour
+              key="tour"
+              steps={steps}
+              index={tour}
+              onIndex={setTour}
+              onClose={endTour}
+              ready={refusedReady}
+              extra={tourExtra}
+              anchor="[data-tour=canvas]"
+              focusOnOpen={tourFocus}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </MotionConfig>
   );
@@ -455,7 +674,18 @@ export function Dashboard() {
 
 /* --------------------------------- Story --------------------------------- */
 
-function StoryCaption({ demo, hold = false, run, cypher }: { demo: DemoReply | null; hold?: boolean; run: number; cypher?: string }) {
+/** The server's own sentence; its last line (a file lock would have said yes) is the point. */
+function ServerSentence({ text }: { text: string }) {
+  const cut = text.lastIndexOf("A file lock");
+  return (
+    <>
+      <p className="text-[13px] leading-relaxed text-[var(--fg)]/80">{cut > 0 ? text.slice(0, cut) : text}</p>
+      {cut > 0 && <p className="mt-1 text-[13px] font-medium leading-relaxed text-[var(--fg)]">{text.slice(cut)}</p>}
+    </>
+  );
+}
+
+function StoryCaption({ demo, hold = false, run, cypher, onTour }: { demo: DemoReply | null; hold?: boolean; run: number; cypher?: string; onTour: () => void }) {
   const want = demo?.path[0];
   // The last sentence is the point: a lock on the file itself would have said yes.
   const cut = demo ? demo.sentence.lastIndexOf("A file lock") : -1;
@@ -506,7 +736,16 @@ function StoryCaption({ demo, hold = false, run, cypher }: { demo: DemoReply | n
             <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-[var(--color-signal-soft)] text-[var(--color-signal)]">
               <Play size={11} weight="fill" />
             </span>
-            <p className="text-[13px] leading-relaxed text-[var(--fg)]/85">{COACH}</p>
+            <div className="text-[13px] leading-relaxed text-[var(--fg)]/85">
+              <p>{COACH}</p>
+              <button
+                type="button"
+                onClick={onTour}
+                className="mt-1 inline-flex touch-manipulation items-center gap-1 rounded-sm text-[var(--signal-text)] underline decoration-[var(--color-signal)]/40 underline-offset-4 transition-[text-decoration-color] duration-150 hover:decoration-[var(--color-signal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-signal)]"
+              >
+                New here? Take the guided tour
+              </button>
+            </div>
           </motion.section>
         )}
       </AnimatePresence>

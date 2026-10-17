@@ -1,7 +1,9 @@
 export const SWITCHBOARD_VERSION = "0.0.0";
 
-export { connect } from "./graph.js";
-export type { ConnectOptions, QueryOptions, SbGraph } from "./graph.js";
+export { clientOptions, connect, locate, redactUrl } from "./graph.js";
+export type { ConnectOptions, DbLocation, QueryOptions, SbGraph } from "./graph.js";
+
+export { normPath } from "./paths.js";
 
 export { ensureSchema } from "./queries/schema.js";
 
@@ -14,10 +16,11 @@ export type { FeedItem } from "./queries/feed.js";
 export { recordEdit, recordEditAndCheck } from "./queries/edits.js";
 export type { EditInput, EditResult } from "./queries/edits.js";
 
-export { parseRepo } from "./parser.js";
+export { isSourcePath, parseFile, parseRepo } from "./parser.js";
 export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
 
-export { codeGraphCounts, loadParse, missingFiles, resetDemo } from "./queries/loader.js";
+export { codeGraphCounts, hubMarker, isRepoOf, loadParse, missingFiles, resetDemo, updateFile, watchRepo } from "./queries/loader.js";
+export type { FileUpdate } from "./queries/loader.js";
 
 export { findConflicts, conflictQuery, conflictGuard } from "./queries/conflict.js";
 export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.js";

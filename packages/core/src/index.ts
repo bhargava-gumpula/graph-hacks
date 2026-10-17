@@ -22,7 +22,7 @@ export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
 export { codeGraphCounts, hubMarker, isRepoOf, loadParse, missingFiles, recordLiveEdit, resetDemo, updateFile, watchRepo } from "./queries/loader.js";
 export type { FileUpdate } from "./queries/loader.js";
 
-export { findConflicts, conflictQuery, conflictGuard } from "./queries/conflict.js";
+export { findConflicts, conflictQuery, conflictGuard, hops, MAX_HOPS } from "./queries/conflict.js";
 export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.js";
 
 export { claim, claimQuery, release, unknownPaths, DEFAULT_TTL_MS } from "./queries/claims.js";

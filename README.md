@@ -4,7 +4,7 @@ Switchboard stops AI coding agents from breaking each other's code. It checks ev
 
 ![Agent B is refused ui/LoginForm.tsx because it imports auth/session.ts, which agent A holds](docs/blog-assets/conflict.gif)
 
-**[Live demo](https://switchboard.bhargava-gumpula.com/app?play=1)** · [API health](https://switchboard-api.bhargava-gumpula.com/api/health) · 2-min video (TBD) · Blog (TBD) · Tracks: **Agent Memory & Coordination** (main), **Agents That Act on Connected Data**
+**[Live demo](https://switchboard-agents.xyz/app?play=1)** · [API health](https://switchboard-agents.xyz/api/health) · 2-min video (TBD) · Blog (TBD) · Tracks: **Agent Memory & Coordination** (main), **Agents That Act on Connected Data**
 
 [![uptime](https://github.com/bhargava-gumpula/graph-hacks/actions/workflows/uptime.yml/badge.svg)](https://github.com/bhargava-gumpula/graph-hacks/actions/workflows/uptime.yml)
 

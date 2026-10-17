@@ -7,10 +7,9 @@ on:
 
 permissions: {}
 
-# PLACEHOLDER DOMAINS: swap these two lines when the final domain is decided.
 env:
-  API_URL: https://switchboard-api.bhargava-gumpula.com
-  SITE_URL: https://switchboard.bhargava-gumpula.com
+  API_URL: https://switchboard-agents.xyz
+  SITE_URL: https://switchboard-agents.xyz
 
 jobs:
   check:

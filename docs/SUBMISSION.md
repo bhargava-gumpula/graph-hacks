@@ -27,7 +27,7 @@ https://github.com/bhargava-gumpula/graph-hacks (make it public first)
 YouTube link, public or unlisted. Script: `docs/DEMO.md`. Draft cut: `video/out/explainer.mp4`.
 
 ## Live demo or deployment (optional)
-The deployed URL (domain pending). Local setup is in the README either way.
+https://switchboard-agents.xyz/app?play=1 (local setup is in the README too).
 
 ## How did you use FalkorDB in your project? (required)
 > Hint: what technical problems you solved using FalkorDB

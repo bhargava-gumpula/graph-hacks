@@ -4,11 +4,9 @@ import { createRoot } from "react-dom/client";
 const path = window.location.pathname;
 const root = createRoot(document.getElementById("root")!);
 
-// The landing page is the rebuilt UI (Tailwind + Motion). /app and /judge are rebuilt in phase U3.
+// /judge was the old button page; the dashboard replaced it.
 if (path.startsWith("/judge")) {
-  void Promise.all([import("./Judge.js"), import("./style.css")]).then(([{ Judge }]) =>
-    root.render(<StrictMode><Judge /></StrictMode>),
-  );
+  window.location.replace("/app");
 } else if (path.startsWith("/app")) {
   void Promise.all([import("./app/Dashboard"), import("./theme.css")]).then(([{ Dashboard }]) =>
     root.render(<StrictMode><Dashboard /></StrictMode>),

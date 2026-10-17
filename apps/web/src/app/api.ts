@@ -83,8 +83,49 @@ export interface ClaimResult {
   [k: string]: unknown;
 }
 
+export interface BriefReply {
+  text: string;
+  summary?: string | null;
+  [k: string]: unknown;
+}
+
+/** One real FalkorDB run of the demo, recorded by scripts/snapshot-replay.ts into public/replay.json. */
+export interface Replay {
+  capturedAt: string;
+  graph: Snapshot;
+  claims: Claim[];
+  decisions: Decision[];
+  batches: Batch[];
+  demo: DemoReply;
+  events: FeedItem[];
+  blast: Record<string, Blast>;
+  why: Record<string, unknown[]>;
+  /** findConflicts for agent B on each file. */
+  check: Record<string, Conflict[]>;
+  brief: Record<string, BriefReply>;
+  cypher: Record<string, string>;
+}
+
+/**
+ * While `data` is set (useLive sets it when the API is down), every api.* call except health answers
+ * from the recording. `emit` is useLive's event handler, so a replayed demo animates like a live one.
+ */
+export const replay: { data: Replay | null; emit: (item: FeedItem) => void } = { data: null, emit: () => undefined };
+
+/** From the web origin, not the API base: the API is the thing that is down. */
+export async function loadReplay(): Promise<Replay> {
+  const r = await json<Replay>(await fetch("/replay.json"));
+  // Leases are absolute times; shift them so a recorded claim shows the time it had left at capture.
+  const shift = Date.now() - Date.parse(r.capturedAt);
+  for (const c of r.claims) c.until += shift;
+  return r;
+}
+
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status}`);
+  }
   return (await res.json()) as T;
 }
 
@@ -92,28 +133,50 @@ async function json<T>(res: Response): Promise<T> {
 export const apiUrl = (path: string) => `${import.meta.env.VITE_API_URL ?? ""}${path}`;
 const get = <T,>(path: string) => fetch(apiUrl(path)).then((r) => json<T>(r));
 
+/** Live GET, or the recorded answer in replay mode. */
+function read<T>(path: string, recorded: (r: Replay) => T | undefined): Promise<T> {
+  const r = replay.data;
+  if (!r) return get<T>(path);
+  const value = recorded(r);
+  return value === undefined ? Promise.reject(new Error("Not in the recorded run")) : Promise.resolve(value);
+}
+
+/** Re-emit the recorded demo events with their original spacing, stamped now. */
+function replayDemo(r: Replay): Promise<DemoReply> {
+  const t0 = r.events[0]?.at ?? 0;
+  for (const e of r.events) setTimeout(() => replay.emit({ ...e, at: Date.now() }), e.at - t0);
+  return Promise.resolve(r.demo);
+}
+
 export const api = {
   health: () => get<Health>("/api/health"),
-  feed: (last: number) => get<FeedItem[]>(`/api/feed?last=${last}`),
-  graph: () => get<Snapshot>("/api/graph"),
-  claims: () => get<Claim[]>("/api/claims"),
-  decisions: () => get<Decision[]>("/api/decisions"),
-  batches: () => get<Batch[]>("/api/batches"),
-  blast: (path: string) => get<Blast>(`/api/blast?path=${encodeURIComponent(path)}`),
-  why: (path: string) => get<unknown[]>(`/api/why?path=${encodeURIComponent(path)}`),
-  cypher: () => get<Record<string, string>>("/api/cypher"),
+  feed: (last: number) => read<FeedItem[]>(`/api/feed?last=${last}`, () => []),
+  graph: () => read<Snapshot>("/api/graph", (r) => r.graph),
+  claims: () => read<Claim[]>("/api/claims", (r) => r.claims),
+  decisions: () => read<Decision[]>("/api/decisions", (r) => r.decisions),
+  batches: () => read<Batch[]>("/api/batches", (r) => r.batches),
+  blast: (path: string) => read<Blast>(`/api/blast?path=${encodeURIComponent(path)}`, (r) => r.blast[path]),
+  why: (path: string) => read<unknown[]>(`/api/why?path=${encodeURIComponent(path)}`, (r) => r.why[path] ?? []),
+  cypher: () => read<Record<string, string>>("/api/cypher", (r) => r.cypher),
   brief: (task?: string, prefix?: string) => {
     const q = new URLSearchParams();
     if (task) q.set("task", task);
     if (prefix !== undefined) q.set("prefix", prefix);
     const qs = q.toString();
-    return get<{ text: string; summary?: string | null } & Record<string, unknown>>(`/api/brief${qs ? `?${qs}` : ""}`);
+    return read<BriefReply>(`/api/brief${qs ? `?${qs}` : ""}`, (r) => r.brief[task ?? Object.keys(r.brief)[0] ?? ""]);
   },
-  demo: () => fetch(apiUrl("/api/demo"), { method: "POST" }).then((r) => json<DemoReply>(r)),
-  claim: (agent: string, paths: string[], task?: string) =>
-    fetch(apiUrl("/api/claims"), {
+  demo: () =>
+    replay.data ? replayDemo(replay.data) : fetch(apiUrl("/api/demo"), { method: "POST" }).then((r) => json<DemoReply>(r)),
+  claim: (agent: string, paths: string[], task?: string): Promise<ClaimResult> => {
+    const r = replay.data;
+    if (r) {
+      const conflicts = paths.flatMap((p) => r.check[p] ?? []).filter((c) => c.agent !== agent);
+      return Promise.resolve({ ok: conflicts.length === 0, conflicts });
+    }
+    return fetch(apiUrl("/api/claims"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ agent, paths, task }),
-    }).then((r) => json<ClaimResult>(r)),
+    }).then((res) => json<ClaimResult>(res));
+  },
 };

@@ -333,9 +333,11 @@ export function watchRepo(
       path,
       setTimeout(() => {
         timers.delete(path);
-        updateFile(g, absRoot, path)
+        // Re-checked per save: another repo parsed into this graph later must not lose its nodes here.
+        isRepoOf(g, absRoot)
+          .then((mine) => (mine ? updateFile(g, absRoot, path) : null))
           .then((u) => {
-            if (u.status === "unchanged") return;
+            if (!u || u.status === "unchanged") return;
             if (u.seq !== null) hubs();
             opts.onUpdate?.(u);
           })

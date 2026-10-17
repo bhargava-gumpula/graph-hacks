@@ -125,7 +125,8 @@ async function storyIntact(): Promise<boolean> {
 // A fresh graph (first start, or FalkorDB lost its data) gets the demo right away, or a parse of SB_REPO.
 const fresh = (await codeGraphCounts(g)).files === 0;
 if (fresh) await (repoDir === demoRepo ? runDemo() : loadParse(g, parseRepo(repoDir)));
-// Per-edit re-parse only against the repo this graph came from (see isRepoOf); else edits are just recorded.
+// Per-edit re-parse only against the repo this graph came from (see isRepoOf), checked again on every
+// edit: another repo parsed into the same graph later (a shared or cloud graph) must not lose its nodes.
 const liveRepo = (await isRepoOf(g, repoDir)) ? repoDir : null;
 if (!liveRepo) console.warn(`${repoDir} is not the repo in graph ${g.name}: edits are recorded, not re-parsed. Set SB_REPO to the repo's directory.`);
 // A public start with a broken story replays it.
@@ -309,7 +310,7 @@ app.post("/api/edits", limit(60), async (c) => {
   );
   if (body instanceof Response) return body;
   lastWrite = Date.now();
-  const edit = await recordLiveEdit(g, liveRepo, { agentId: body.agent, path: body.path, taskId: body.task });
+  const edit = await recordLiveEdit(g, (await isRepoOf(g, repoDir)) ? repoDir : null, { agentId: body.agent, path: body.path, taskId: body.task });
   if (edit.graph?.seq) remarkHubs();
   return c.json(edit);
 });

@@ -537,7 +537,7 @@ Four things we hit, each with a fix in the code.
 - File-level. Two agents editing different functions in the same file still conflict. Two files that share only a database table or a config value do not.
 - At most 3 import hops by default. A collision four or more imports apart is not caught.
 - Paths do not pass through hubs. Editing a hub such as `lib/utils.ts` conflicts with its importers, but two files that merely share a hub do not conflict.
-- The import graph is a snapshot from the last `npm run parse`. It does not update when files change.
+- The import graph is live per edit: each edit an agent makes re-parses that one file. Saves people make are picked up by `switchboard watch` (or `SB_WATCH=1` with `SB_REPO` on the server). A change made any other way waits for the next parse. To share one graph across machines, see [docs/CLOUD.md](docs/CLOUD.md).
 - A claim is advice unless the editor runs the hook. Claude Code and Cursor both hard-block a denied edit. An agent with no hook only follows the contract of calling `claim`.
 
 ## Competitors

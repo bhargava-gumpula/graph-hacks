@@ -181,6 +181,20 @@ describe("isRepoOf", () => {
       expect(e.graph).toBeNull();
       expect(await codeGraphCounts(team())).toEqual({ files: 5, imports: 5 });
     });
+
+    test("a watcher left on another repo's directory leaves the team graph alone", async () => {
+      const seen: FileUpdate[] = [];
+      const w = watchRepo(team(), root, { debounceMs: 50, onUpdate: (u) => seen.push(u) });
+      try {
+        await new Promise((r) => setTimeout(r, 200));
+        appendFileSync(join(root, ABOUT), "// touched\n");
+        await new Promise((r) => setTimeout(r, 800));
+        expect(seen).toEqual([]);
+        expect(await codeGraphCounts(team())).toEqual({ files: 5, imports: 5 });
+      } finally {
+        w.close();
+      }
+    });
   });
 });
 

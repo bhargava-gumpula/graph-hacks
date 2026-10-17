@@ -13,7 +13,9 @@ export type EventKind =
   | "handoff"
   | "heartbeat"
   | "parse"
-  | "graph";
+  | "graph"
+  | "wait"
+  | "free";
 
 export interface EventInput {
   kind: EventKind;
@@ -45,7 +47,8 @@ WITH e, m
 `;
 
 /**
- * Record one event and its optional BY / ON / UNDER links.
+ * Record one event and its optional BY / ON / UNDER links, plus one VIA link per
+ * file in `$via` (a refusal's import path; empty for other events).
  * FOREACH over a one-element list is the optional link: a null id skips it.
  * Still one query, so the links share the Event's seq.
  * New File nodes get `hub = false` so Q1's `none(n.hub)` filter never sees null.
@@ -65,8 +68,25 @@ FOREACH (_ IN CASE WHEN $taskId IS NULL THEN [] ELSE [1] END |
   MERGE (t:Task {id: $taskId})
   CREATE (e)-[:UNDER]->(t)
 )
+FOREACH (path IN $via |
+  MERGE (f:File {path: path})
+  ON CREATE SET f.hub = false, f.rank = 0.0
+  CREATE (e)-[:VIA]->(f)
+)
 RETURN m.value AS seq
 `;
+
+/**
+ * Every file on a conflict's import paths (requested file, the files between, the
+ * claimed file), once each. Other kinds link nothing. The paths come from Q1, so
+ * the files already exist.
+ */
+export function viaPaths(event: EventInput): string[] {
+  if (event.kind !== "conflict") return [];
+  const conflicts = (event.payload as { conflicts?: { path?: unknown }[] } | null | undefined)?.conflicts;
+  if (!Array.isArray(conflicts)) return [];
+  return [...new Set(conflicts.flatMap((c) => (Array.isArray(c?.path) ? c.path.map(String) : [])))];
+}
 
 /** Write an Event and return its seq. */
 export async function recordEvent(g: SbGraph, event: EventInput): Promise<number> {
@@ -77,6 +97,7 @@ export async function recordEvent(g: SbGraph, event: EventInput): Promise<number
     agentId: event.agentId ?? null,
     onPath: event.onPath ?? null,
     taskId: event.taskId ?? null,
+    via: viaPaths(event),
   });
   return readSeq(rows, "recordEvent");
 }

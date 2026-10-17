@@ -7,7 +7,7 @@ export { normPath } from "./paths.js";
 
 export { ensureSchema } from "./queries/schema.js";
 
-export { recordEvent } from "./queries/events.js";
+export { recordEvent, viaPaths } from "./queries/events.js";
 export type { EventInput, EventKind } from "./queries/events.js";
 
 export { DEFAULT_FEED_LIMIT, feedSince, latestSeq } from "./queries/feed.js";
@@ -55,3 +55,9 @@ export { summarizeBrief } from "./summarize.js";
 
 export { brief, formatBrief, handoff, NEAR_FILES, recordLesson } from "./queries/brief.js";
 export type { Brief } from "./queries/brief.js";
+
+export { fulltextQuery, searchMemory, SEARCH_DECISIONS, SEARCH_LESSONS } from "./queries/search.js";
+export type { MemoryHit } from "./queries/search.js";
+
+export { hotspots, HOTSPOTS } from "./queries/history.js";
+export type { Hotspot } from "./queries/history.js";

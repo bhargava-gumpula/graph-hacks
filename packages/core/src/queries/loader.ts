@@ -2,7 +2,7 @@ import { existsSync, watch } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { SbGraph } from "../graph.js";
 import { isSourcePath, parseFile, type ParsedImport, type ParseResult } from "../parser.js";
-import { readSeq, recordEvent, RECORD_EVENT } from "./events.js";
+import { recordEvent } from "./events.js";
 import { markHubs } from "./hubs.js";
 
 const BATCH = 500;
@@ -229,25 +229,15 @@ async function applyFile(g: SbGraph, root: string, path: string, agentId: string
   const stored = row?.hash === undefined || row.hash === null ? null : String(row.hash);
   const before = ((row?.imports as Edge[] | undefined) ?? []).filter((e) => e.to !== null);
 
-  const event = async (status: FileUpdate["status"], added: string[], removed: string[], onPath: string | null) => {
-    // Not recordEvent: `graph` is not one of its EventKind values yet. Same query, same seq counter.
-    const rows = await g.query(RECORD_EVENT, {
-      kind: "graph",
-      at: Date.now(),
-      payload: JSON.stringify({ path, status, added, removed }),
-      agentId: agentId ?? null,
-      onPath,
-      taskId: null,
-    });
-    return readSeq(rows, "updateFile");
-  };
+  const event = (status: FileUpdate["status"], added: string[], removed: string[], onPath?: string) =>
+    recordEvent(g, { kind: "graph", payload: { path, status, added, removed }, agentId, onPath });
 
   if (!parsed) {
     if (!row || stored === null) return done("unchanged");
     await g.query(DELETE_FILE, { path });
     const removed = before.map((e) => e.to).sort();
     // No onPath: the event's ON link would MERGE the deleted File back.
-    return done("deleted", [], removed, await event("deleted", [], removed, null));
+    return done("deleted", [], removed, await event("deleted", [], removed));
   }
 
   const after = parsed.imports;

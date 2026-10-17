@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { parseRepo, type ParseResult } from "../parser.js";
 import { useTestGraph } from "../test-helpers.js";
 import { latestSeq } from "./feed.js";
-import { codeGraphCounts, loadParse, missingFiles, resetDemo } from "./loader.js";
+import { clearActivity, codeGraphCounts, loadParse, missingFiles, resetDemo } from "./loader.js";
 
 const g = useTestGraph("sb_test_loader");
 const parsed = parseRepo(join(import.meta.dirname, "../../../../demo-repo"));
@@ -102,6 +102,28 @@ describe("demo repo", () => {
        RETURN agents, edges, count(n) AS memory`,
     );
     expect(row).toEqual({ agents: ["A", "B"], edges: 0, memory: 0 });
+    expect(await latestSeq(g())).toBe(seq);
+  });
+
+  test("clearActivity drops every agent, claim, wait, edit and memory and keeps the code graph", async () => {
+    await g().query(
+      `MERGE (a:Agent {id: 'claude@main'}) MERGE (c:Agent {id: 'cursor@main'})
+       WITH a, c
+       MATCH (s:File {path: 'auth/session.ts'}), (l:File {path: 'ui/LoginForm.tsx'})
+       MERGE (a)-[:CLAIMS {until: 9e12}]->(s)
+       MERGE (c)-[:WAITS_FOR {since: 1}]->(s)
+       MERGE (a)-[:EDITED {at: 1}]->(s)
+       MERGE (:Event {seq: 1}) MERGE (:Decision {id: 'd1'}) MERGE (:Lesson {id: 'l1'}) MERGE (:Task {id: 't1'})`,
+    );
+    const seq = await latestSeq(g());
+    await clearActivity(g());
+    expect(await codeGraphCounts(g())).toEqual({ files: 35, imports: 51 });
+    const [row] = await g().roQuery(
+      `OPTIONAL MATCH ()-[r]->() WHERE type(r) <> 'IMPORTS' WITH count(r) AS edges
+       OPTIONAL MATCH (n) WHERE n:Agent OR n:Event OR n:Decision OR n:Lesson OR n:Task
+       RETURN edges, count(n) AS rest`,
+    );
+    expect(row).toEqual({ edges: 0, rest: 0 });
     expect(await latestSeq(g())).toBe(seq);
   });
 

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 import { FalkorDB, type Graph } from "falkordb";
 
 const DEFAULT_URL = "redis://localhost:6379";
@@ -72,7 +74,7 @@ export function locate(url: string): DbLocation {
   }
   const tls = u.protocol === "rediss:" || u.protocol === "falkors:";
   const host = u.hostname;
-  const where = LOOPBACK.has(host) ? "local" : tls || host.endsWith(".falkordb.cloud") ? "cloud" : "remote";
+  const where = LOOPBACK.has(host) ? "local" : tls || host.endsWith(".cloud") ? "cloud" : "remote";
   return { host, port: Number(u.port || 6379), tls, where };
 }
 
@@ -98,8 +100,44 @@ export function clientOptions(url: string, env: NodeJS.ProcessEnv = process.env)
   return { url, ...(username ? { username } : {}), ...(password ? { password } : {}) };
 }
 
+const CLOUD_KEYS = ["FALKORDB_CLOUD_HOST", "FALKORDB_CLOUD_PORT", "FALKORDB_CLOUD_USERNAME", "FALKORDB_CLOUD_PASSWORD"] as const;
+
+/**
+ * `SB_ENV_FILE=<path>`: take the FALKORDB_CLOUD_* keys from that file (once per process; the real env wins).
+ * Only those keys: a project .env also sets FALKORDB_URL, SB_GRAPH or API keys meant for something else.
+ */
+export function loadCloudEnv(env: NodeJS.ProcessEnv = process.env): void {
+  const file = env.SB_ENV_FILE;
+  if (!file || env.SB_ENV_LOADED === file) return;
+  let parsed: Record<string, string>;
+  try {
+    parsed = parseEnv(readFileSync(file, "utf8")) as Record<string, string>;
+  } catch {
+    throw new Error(`SB_ENV_FILE=${file} cannot be read`);
+  }
+  for (const key of CLOUD_KEYS) if (parsed[key] && !env[key]) env[key] = parsed[key];
+  env.SB_ENV_LOADED = file;
+}
+
+/**
+ * The FalkorDB URL. `SB_CLOUD=1` is the explicit switch to FalkorDB Cloud: the URL is composed from
+ * FALKORDB_CLOUD_HOST/PORT/USERNAME/PASSWORD (plain redis://; FALKORDB_CLOUD_TLS=1 for rediss://) and wins over
+ * FALKORDB_URL, so a FALKORDB_URL left in a shell never sends one editor to the local graph. Else FALKORDB_URL,
+ * else localhost. The result can hold the password: pass it through redactUrl before showing it.
+ */
+export function dbUrl(env: NodeJS.ProcessEnv = process.env): string {
+  loadCloudEnv(env);
+  if (env.SB_CLOUD !== "1") return env.FALKORDB_URL || DEFAULT_URL;
+  const missing = CLOUD_KEYS.filter((k) => k !== "FALKORDB_CLOUD_PASSWORD" && !env[k]);
+  if (missing.length > 0) throw new Error(`SB_CLOUD=1 needs ${missing.join(", ")} (in the env or in SB_ENV_FILE)`);
+  const user = encodeURIComponent(env.FALKORDB_CLOUD_USERNAME!);
+  const pass = env.FALKORDB_CLOUD_PASSWORD ? `:${encodeURIComponent(env.FALKORDB_CLOUD_PASSWORD)}` : "";
+  const scheme = env.FALKORDB_CLOUD_TLS === "1" ? "rediss" : "redis";
+  return `${scheme}://${user}${pass}@${env.FALKORDB_CLOUD_HOST}:${env.FALKORDB_CLOUD_PORT}`;
+}
+
 export async function connect(opts?: ConnectOptions): Promise<SbGraph> {
-  const url = opts?.url ?? process.env.FALKORDB_URL ?? DEFAULT_URL;
+  const url = opts?.url ?? dbUrl();
   const name = opts?.graph ?? process.env.SB_GRAPH ?? DEFAULT_GRAPH;
   const location = locate(url);
   const options = clientOptions(url);

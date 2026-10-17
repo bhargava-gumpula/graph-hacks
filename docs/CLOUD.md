@@ -33,6 +33,11 @@ SB_GRAPH=sb_team
 ```
 
 Every machine uses the same `FALKORDB_URL` and the same `SB_GRAPH`. That pair is what makes it one graph.
+
+Or keep the four parts in `.env` (`FALKORDB_CLOUD_HOST`, `FALKORDB_CLOUD_PORT`, `FALKORDB_CLOUD_USERNAME`,
+`FALKORDB_CLOUD_PASSWORD`) and set `SB_CLOUD=1` plus `SB_ENV_FILE=/path/to/.env` wherever Switchboard runs:
+the URL is built in memory and only those four keys are read from the file. `switchboard init --cloud /path/to/.env`
+writes those two variables into a repo's hook and MCP configs, so no config file holds the password.
 Pick any name that starts with `sb_`.
 
 Do not run `npm run quickstart` with the cloud URL in `.env`: it parses demo-repo into `SB_GRAPH`,

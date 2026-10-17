@@ -469,7 +469,9 @@ export function Dashboard() {
               <span className="sr-only sm:not-sr-only">Switchboard</span>
             </a>
             <span className="hidden truncate text-xs text-[var(--muted)] xl:inline">
-              Live demo: two scripted agents on a {files.length || 35}-file repo
+              {health?.repo
+                ? `${health.repo}: live agents on a ${files.length}-file repo${health.db?.where === "cloud" ? ", graph in FalkorDB Cloud" : ""}`
+                : `Live demo: two scripted agents on a ${files.length || 35}-file repo`}
             </span>
             <span className="flex items-center gap-1.5 text-xs text-[var(--muted)]" title={`Stream: ${STATUS_LABEL[live.status]}${live.graphName ? ` (graph ${live.graphName})` : ""}`}>
               <span
@@ -696,7 +698,7 @@ export function Dashboard() {
 
             {live.graph && tour == null && (
               <div className="pointer-events-none absolute bottom-4 left-4 z-10 hidden w-[min(440px,calc(100%-10rem))] sm:block">
-                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
+                <StoryCaption demo={story} hold={waiting || Boolean(health?.repo)} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
               </div>
             )}
           </main>
@@ -704,7 +706,7 @@ export function Dashboard() {
           <aside data-tour="panels" className="flex min-h-0 flex-col border-t border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-sm lg:border-l lg:border-t-0">
             {live.graph && tour == null && (
               <div className="shrink-0 border-b border-[var(--border)] p-3 sm:hidden">
-                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
+                <StoryCaption demo={story} hold={waiting || Boolean(health?.repo)} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
               </div>
             )}
             <div

@@ -116,6 +116,16 @@ export async function resetDemo(g: SbGraph): Promise<void> {
   for (const query of RESET_DEMO) await g.query(query);
 }
 
+/**
+ * A fresh take on a live repo: every agent (with its claims, waits and edits), event, decision, lesson and task
+ * goes; the code graph (File, IMPORTS) and the seq counter stay, so a dashboard's feed keeps counting up.
+ */
+export const CLEAR_ACTIVITY = ["MATCH (a:Agent) DETACH DELETE a", "MATCH (n) WHERE n:Event OR n:Decision OR n:Lesson OR n:Task DETACH DELETE n"];
+
+export async function clearActivity(g: SbGraph): Promise<void> {
+  for (const query of CLEAR_ACTIVITY) await g.query(query);
+}
+
 /** Which of these paths are File nodes already. */
 export const FOUND_FILES = `
 MATCH (f:File)

@@ -20,6 +20,7 @@ import {
   planTask,
   recordDecision,
   recordLesson,
+  recordWaits,
   registerAgent,
   release,
   searchMemory,
@@ -156,7 +157,8 @@ export function createServer(): McpServer {
       }),
     },
     async ({ paths: files, task, intent, agent }) => {
-      const res = await claim(await graph(), { agent: who(agent), paths: files, taskId: task, intent });
+      const g = await graph();
+      const res = await claim(g, { agent: who(agent), paths: files, taskId: task, intent });
       const unknown = res.unknown ?? [];
       const warnings = unknownText(unknown);
       if (res.ok) {
@@ -166,7 +168,11 @@ export function createServer(): McpServer {
       }
       const safe = res.safe ?? [];
       const hint = safe.length > 0 ? [`Safe now: ${safe.join(", ")}`] : [];
-      const text = ["CONFLICT", ...res.conflicts.map(conflictText), ...hint, ...warnings].join("\n");
+      // As the edit hook does: the holder hears that someone waits, and this agent hears when the file is free.
+      await recordWaits(g, { agent: who(agent), conflicts: res.conflicts });
+      const held = [...new Set(res.conflicts.filter((c) => c.agent !== who(agent)).map((c) => c.claimed))];
+      const wait = held.length > 0 ? [`You are now waiting on ${held.join(", ")}; Switchboard tells you on your next edit when it is free, or call claim again.`] : [];
+      const text = ["CONFLICT", ...res.conflicts.map(conflictText), ...hint, ...wait, ...warnings].join("\n");
       return reply(text, { ok: false, conflicts: res.conflicts, unknown, safe });
     },
   );

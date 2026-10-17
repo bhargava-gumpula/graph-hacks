@@ -55,7 +55,7 @@ WHERE ($prefix IS NOT NULL AND f.path STARTS WITH $prefix)
    OR ($taskId IS NOT NULL AND (
         (:Task {id: $taskId})-[:TOUCHES]->(f)
         OR (:Task {id: $taskId})<-[:UNDER]-(:Event)-[:ON]->(f)
-        OR size([(:Agent)-[c:CLAIMS]->(f) WHERE c.taskId = $taskId | c]) > 0))
+        OR (:Agent)-[:CLAIMS {taskId: $taskId}]->(f)))
 RETURN f.path AS path
 ORDER BY path
 `;

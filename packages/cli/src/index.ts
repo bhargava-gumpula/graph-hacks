@@ -74,6 +74,9 @@ Setup
                                             .cursor/mcp.json, then parse it into its own graph sb_<repo name>.
                                             --npx points every file at the npm package instead (no machine
                                             paths, safe to commit). Merges; --dry-run prints the diff.
+                                            --graph sb_x and --port N pick the graph and dashboard port;
+                                            --cloud <env file> points hooks and MCP at FalkorDB Cloud
+                                            (SB_CLOUD=1, FALKORDB_CLOUD_* read from that file at run time).
   hook <claude|cursor> <start|pre|post|notify|end>
                                             run the editor hook (JSON event on stdin, JSON answer on stdout)
 
@@ -111,6 +114,9 @@ interface Flags {
   dryRun: boolean;
   npx: boolean;
   help: boolean;
+  graph?: string;
+  port?: string;
+  cloud?: string;
 }
 
 /** One conflict, the line hooks and agents read. */
@@ -141,6 +147,9 @@ function parseArgs(argv: string[]): Flags {
   let help = false;
   let dryRun = false;
   let npx = false;
+  let graph: string | undefined;
+  let port: string | undefined;
+  let cloud: string | undefined;
   const take = (flag: string, i: number) => {
     const value = argv[i + 1];
     if (value === undefined) throw new Error(`${flag} needs a value`);
@@ -162,10 +171,13 @@ function parseArgs(argv: string[]): Flags {
     else if (arg === "--help" || arg === "-h") help = true;
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--npx") npx = true;
+    else if (arg === "--graph") graph = take(arg, i++);
+    else if (arg === "--port") port = take(arg, i++);
+    else if (arg === "--cloud") cloud = take(arg, i++);
     else if (arg.startsWith("--")) throw new Error(`unknown flag ${arg}`);
     else positional.push(arg);
   }
-  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, dryRun, npx, help };
+  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, dryRun, npx, help, graph, port, cloud };
 }
 
 function agentOf(flags: Flags): string {
@@ -238,7 +250,18 @@ async function watchCmd(g: SbGraph, dir: string): Promise<number> {
 async function init(flags: Flags): Promise<number> {
   if (flags.positional.length > 2) throw new Error("init takes one directory");
   // npm run moves cwd to this checkout; INIT_CWD is where the user typed the command.
-  const plan = planInit(resolve(process.env.INIT_CWD ?? process.cwd(), flags.positional[1] ?? "."), SWITCHBOARD_ROOT, { npx: flags.npx });
+  if (flags.graph !== undefined && !/^sb_[a-z0-9_]+$/.test(flags.graph)) throw new Error("--graph must look like sb_my_app");
+  const port = flags.port === undefined ? undefined : Number(flags.port);
+  if (port !== undefined && !(Number.isInteger(port) && port > 1023 && port < 65536)) throw new Error("--port must be a port number above 1023");
+  // --cloud <env file>: hooks and MCP servers read FALKORDB_CLOUD_* from that file (SB_ENV_FILE), so no config holds the password.
+  const cloudEnv = flags.cloud === undefined ? undefined : { SB_ENV_FILE: resolve(process.env.INIT_CWD ?? process.cwd(), flags.cloud), SB_CLOUD: "1" };
+  if (cloudEnv) Object.assign(process.env, cloudEnv);
+  const plan = planInit(resolve(process.env.INIT_CWD ?? process.cwd(), flags.positional[1] ?? "."), SWITCHBOARD_ROOT, {
+    npx: flags.npx,
+    graph: flags.graph,
+    port,
+    env: cloudEnv,
+  });
   const shown = (path: string) => relative(plan.repo, path);
   if (flags.dryRun) {
     if (plan.changes.length === 0) console.log(`${plan.repo} is already wired to Switchboard. Nothing to change.`);

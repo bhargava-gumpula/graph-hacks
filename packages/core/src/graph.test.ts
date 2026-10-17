@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { clientOptions, connect, locate, redactUrl } from "./graph.js";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { clientOptions, connect, dbUrl, locate, redactUrl } from "./graph.js";
 import { useTestGraph } from "./test-helpers.js";
 
 const graph = useTestGraph("sb_test_graph");
@@ -91,5 +94,52 @@ describe("cloud URLs", () => {
 
   test("a connected graph reports where it lives", () => {
     expect(graph().location).toMatchObject({ where: "local", tls: false });
+  });
+});
+
+describe("SB_CLOUD and SB_ENV_FILE", () => {
+  const cloud = { FALKORDB_CLOUD_HOST: "r-1.example.cloud", FALKORDB_CLOUD_PORT: "51809", FALKORDB_CLOUD_USERNAME: "falkordb", FALKORDB_CLOUD_PASSWORD: "p@ss/w:rd" };
+
+  test("without SB_CLOUD it is FALKORDB_URL, else localhost", () => {
+    expect(dbUrl({ ...cloud, FALKORDB_URL: "redis://h:1" })).toBe("redis://h:1");
+    expect(dbUrl({ ...cloud })).toBe("redis://localhost:6379");
+  });
+
+  test("SB_CLOUD=1 composes an encoded redis:// URL that wins over FALKORDB_URL and redacts", () => {
+    const url = dbUrl({ ...cloud, SB_CLOUD: "1", FALKORDB_URL: "redis://localhost:6379" });
+    expect(url).toBe("redis://falkordb:p%40ss%2Fw%3Ard@r-1.example.cloud:51809");
+    expect(new URL(url).password).toBe("p%40ss%2Fw%3Ard");
+    expect(redactUrl(url)).toBe("redis://falkordb:***@r-1.example.cloud:51809");
+    expect(locate(url)).toEqual({ host: "r-1.example.cloud", port: 51809, tls: false, where: "cloud" });
+    expect(dbUrl({ ...cloud, SB_CLOUD: "1", FALKORDB_CLOUD_TLS: "1" })).toMatch(/^rediss:\/\//);
+  });
+
+  test("SB_CLOUD=1 with a key missing names the key, never a value", () => {
+    expect(() => dbUrl({ SB_CLOUD: "1", FALKORDB_CLOUD_PASSWORD: "p@ss/w:rd" })).toThrow(/needs FALKORDB_CLOUD_HOST, FALKORDB_CLOUD_PORT, FALKORDB_CLOUD_USERNAME/);
+    expect(() => dbUrl({ SB_CLOUD: "1", FALKORDB_CLOUD_PASSWORD: "p@ss/w:rd" })).not.toThrow(/p@ss/);
+  });
+
+  test("SB_ENV_FILE brings in only the FALKORDB_CLOUD_* keys, and the real env wins", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "sb-env-")), ".env");
+    writeFileSync(file, "FALKORDB_URL=redis://localhost:6379\nSB_GRAPH=sb_other\nAPI_KEY=k\n" + Object.entries(cloud).map(([k, v]) => `${k}=${v}`).join("\n"));
+    const env: NodeJS.ProcessEnv = { SB_ENV_FILE: file, SB_CLOUD: "1", FALKORDB_CLOUD_PORT: "7000" };
+    expect(dbUrl(env)).toBe("redis://falkordb:p%40ss%2Fw%3Ard@r-1.example.cloud:7000");
+    expect(env.FALKORDB_URL).toBeUndefined();
+    expect(env.SB_GRAPH).toBeUndefined();
+    expect(env.API_KEY).toBeUndefined();
+    expect(() => dbUrl({ SB_ENV_FILE: join(file, "nope") })).toThrow(/SB_ENV_FILE=.* cannot be read/);
+  });
+
+  test("a failed cloud connect never prints the password, raw or encoded", async () => {
+    const saved = { ...process.env };
+    Object.assign(process.env, { ...cloud, FALKORDB_CLOUD_HOST: "127.0.0.1", FALKORDB_CLOUD_PORT: "1", SB_CLOUD: "1" });
+    try {
+      const err = (await connect({ graph: "sb_test_never" }).catch((e: unknown) => e)) as Error;
+      expect(err.message).toMatch(/^Cannot connect to FalkorDB at redis:\/\/falkordb:\*\*\*@127\.0\.0\.1:1\./);
+      expect(err.message).not.toMatch(/p@ss|p%40ss|w:rd/);
+    } finally {
+      for (const k of [...Object.keys(cloud), "SB_CLOUD"]) delete process.env[k];
+      Object.assign(process.env, saved);
+    }
   });
 });

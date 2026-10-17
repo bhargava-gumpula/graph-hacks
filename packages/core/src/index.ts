@@ -1,6 +1,6 @@
 export const SWITCHBOARD_VERSION = "0.0.0";
 
-export { clientOptions, connect, locate, redactUrl } from "./graph.js";
+export { clientOptions, connect, dbUrl, locate, redactUrl } from "./graph.js";
 export type { ConnectOptions, DbLocation, QueryOptions, SbGraph } from "./graph.js";
 
 export { normPath } from "./paths.js";
@@ -19,7 +19,7 @@ export type { EditInput, EditResult } from "./queries/edits.js";
 export { isSourcePath, parseFile, parseRepo } from "./parser.js";
 export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
 
-export { codeGraphCounts, hubMarker, isRepoOf, loadParse, missingFiles, recordLiveEdit, resetDemo, updateFile, watchRepo } from "./queries/loader.js";
+export { clearActivity, codeGraphCounts, hubMarker, isRepoOf, loadParse, missingFiles, recordLiveEdit, resetDemo, updateFile, watchRepo } from "./queries/loader.js";
 export type { FileUpdate } from "./queries/loader.js";
 
 export { findConflicts, conflictQuery, conflictGuard, hops, MAX_HOPS } from "./queries/conflict.js";
@@ -34,6 +34,7 @@ export type { ActiveClaim, GraphEdge, GraphNode, GraphSnapshot } from "./queries
 export { agentId } from "./agent-id.js";
 
 export { heartbeat, registerAgent, status } from "./queries/agents.js";
+export { recordWaits } from "./queries/waits.js";
 export type { AgentKind, AgentView, StatusClaim, StatusResult } from "./queries/agents.js";
 
 export { markHubs, HUB_INDEGREE, MARK_HUBS } from "./queries/hubs.js";

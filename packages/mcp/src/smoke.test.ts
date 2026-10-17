@@ -141,6 +141,7 @@ test("stdio server: tools list, register, status, claim conflict, bad input", as
     expect(blocked.result?.content?.[0]?.text).toContain(
       "UPSTREAM ui/LoginForm.tsx ← A via ui/LoginForm.tsx → api/login.ts → auth/session.ts → lib/crypto.ts",
     );
+    expect(blocked.result?.content?.[0]?.text).toContain("You are now waiting on lib/crypto.ts");
     expect(blocked.result?.structuredContent).toMatchObject({
       ok: false,
       conflicts: [{ agent: "A", hops: 3, claimed: "lib/crypto.ts" }],

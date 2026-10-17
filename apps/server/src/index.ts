@@ -17,6 +17,7 @@ import {
   conflictGuard,
   conflictQuery,
   connect,
+  dbUrl,
   ensureSchema,
   feedSince,
   findConflicts,
@@ -51,7 +52,7 @@ import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { allowedOrigin, newVisitorId, VISITOR_COOKIE, VISITOR_ID, visitorGraphs } from "./visitors.js";
 
@@ -164,7 +165,7 @@ if (PUBLIC && repoDir === demoRepo) {
  */
 async function visitorClient(): Promise<FalkorDB> {
   // Named so an operator (and the test) can find it in CLIENT LIST.
-  const db = await FalkorDB.connect({ ...clientOptions(process.env.FALKORDB_URL ?? "redis://localhost:6379"), name: `sb-visitors-${g.name}` });
+  const db = await FalkorDB.connect({ ...clientOptions(dbUrl()), name: `sb-visitors-${g.name}` });
   // As in core's connect(): a dropped connection emits 'error', which kills the process without a listener. The
   // client reconnects on its own and the failing command rejects into the route's error handler.
   db.on("error", () => undefined);
@@ -283,7 +284,9 @@ app.get("/api/health", async (c) => {
   const db = PUBLIC ? { where: g.location.where } : { where: g.location.where, host: g.location.host };
   // visitor: "own" is this visitor's copy, "shared" means the copies are full and this tab shares the demo.
   const visitor = visitors ? (c.var.shared ? "shared" : "own") : undefined;
-  return c.json({ ok: true, graph: g.name, db, seq: await latestSeq(g), files, dbMs, uptimeS, lastResetAt: lastResetAt.get(g.name) ?? null, visitor });
+  // repo: a real repo's name (SB_REPO), so the dashboard says live agents, not the scripted demo.
+  const repo = !PUBLIC && repoDir !== demoRepo ? basename(repoDir) : undefined;
+  return c.json({ ok: true, graph: g.name, db, repo, seq: await latestSeq(g), files, dbMs, uptimeS, lastResetAt: lastResetAt.get(g.name) ?? null, visitor });
 });
 
 /** The Cypher behind each feature, exactly as the server runs it (k = 3), for the "show the query" panels. */

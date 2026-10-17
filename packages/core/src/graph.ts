@@ -51,10 +51,10 @@ export async function connect(opts?: ConnectOptions): Promise<SbGraph> {
   try {
     db = await FalkorDB.connect({ url });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(`Is FalkorDB running? Try \`npm run db:up\` (${detail})`, {
-      cause: err,
-    });
+    throw new Error(
+      `Cannot connect to FalkorDB at ${url}. Is it running? Try \`npm run db:up\` (${describe(err)})`,
+      { cause: err },
+    );
   }
 
   // The client rejects the failing command and also emits 'error'.
@@ -85,6 +85,22 @@ async function run(
     ...(params !== undefined ? { params } : {}),
   } as ClientQueryOptions;
 
-  const reply = await graph[mode]<Record<string, unknown>>(cypher, options);
-  return reply.data ?? [];
+  try {
+    const reply = await graph[mode]<Record<string, unknown>>(cypher, options);
+    return reply.data ?? [];
+  } catch (err) {
+    // Keep the server's message first (callers match on it, e.g. "already indexed"),
+    // then say which statement failed.
+    const first = cypher.trim().split("\n")[0]!.slice(0, 80);
+    throw new Error(`${describe(err)} [${mode}: ${first}]`, { cause: err });
+  }
+}
+
+/** A readable message, including for the AggregateError a refused connection gives (its message is ""). */
+function describe(err: unknown): string {
+  if (err instanceof AggregateError && err.errors.length > 0) {
+    return err.errors.map((e) => (e instanceof Error ? e.message : String(e))).join("; ");
+  }
+  if (err instanceof Error) return err.message || err.name;
+  return String(err);
 }

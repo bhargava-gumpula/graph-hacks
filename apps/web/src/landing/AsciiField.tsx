@@ -5,26 +5,41 @@ import { useEffect, useRef } from "react";
  * A slow flow field of characters, brighter near the pointer. Anything can
  * fire `pulse(x, y)` (viewport coordinates) to send a shockwave of orange
  * glyphs out from that point, so a conflict on the page visibly hits the field.
+ *
+ * Calm by design: the resting field only reaches ' .·:-'; the heavy glyphs
+ * '+*%#@' come from pointer or pulse energy. Fast by design: alpha is quantised
+ * into a few buckets and each (row, bucket) is one fillText of a space-padded
+ * string, so a frame is a few hundred draw calls instead of one per cell.
  */
 const RAMP = " .·:-=+*%#@";
+const CODES = Array.from(RAMP, (ch) => ch.charCodeAt(0));
+const TOP = RAMP.length - 1;
 const FONT_PX = 13;
 const LINE = 16;
-const FPS = 30;
+const FPS = 20;
+const IDLE_FPS = 10;
+const IDLE_AFTER_MS = 2000;
+const MAX_DPR = 1.5;
+/** The resting field is scaled into the light end of the ramp and never passes REST_TOP ('-'). */
+const BASE = 0.5;
+const REST_TOP = 4;
+const POINTER_R = 140;
+const POINTER_BOOST = 0.25;
+const PULSE_LIFE = 1.6;
+const PULSE_SPEED = 520;
+const PULSE_BAND = 46;
+/**
+ * Neutral alpha buckets (fg colour), indexed by glyph level plus pointer proximity, so
+ * each resting glyph ' .·:-' gets its own step; then hot buckets (signal colour).
+ */
+const FG_ALPHA = [0.12, 0.18, 0.24, 0.3, 0.37, 0.45];
+const HOT_ALPHA = [0.4, 0.62, 0.85];
+const BUCKETS = FG_ALPHA.length + HOT_ALPHA.length;
 
 type Pulse = { x: number; y: number; t0: number };
 
 export function pulse(x: number, y: number) {
   window.dispatchEvent(new CustomEvent("sb:pulse", { detail: { x, y } }));
-}
-
-/** Cheap smooth noise from layered sines: no allocations, stable across frames. */
-function field(x: number, y: number, t: number) {
-  return (
-    Math.sin(x * 0.11 + t * 0.6) * 0.35 +
-    Math.sin(y * 0.17 - t * 0.45) * 0.25 +
-    Math.sin((x + y) * 0.07 + t * 0.3) * 0.25 +
-    Math.sin(Math.hypot(x - 40, y - 20) * 0.09 - t * 0.8) * 0.15
-  );
 }
 
 export function AsciiField() {
@@ -40,60 +55,121 @@ export function AsciiField() {
     let cols = 0;
     let rows = 0;
     let cw = 8;
-    let dpr = 1;
     let raf = 0;
     let last = 0;
+    let lastMove = -Infinity;
     let visible = true;
-    const pointer = { x: -9999, y: -9999 };
+    const pointer = { x: -9999, y: -9999, in: false };
     const pulses: Pulse[] = [];
+    // Per-frame scratch, sized on resize. The radial term of the field is static per cell,
+    // so its sin/cos are cached and only rotated by time each frame.
+    let radSin = new Float32Array(0);
+    let radCos = new Float32Array(0);
+    let colTerm = new Float32Array(0);
+    let rowTerm = new Float32Array(0);
+    let diagTerm = new Float32Array(0);
+    let line: Uint16Array[] = [];
+    let used = new Uint8Array(0);
+    let text: (string | null)[] = [];
 
     const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+      canvas.width = Math.round(window.innerWidth * dpr);
+      canvas.height = Math.round(window.innerHeight * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.font = `${FONT_PX}px "Geist Mono Variable", ui-monospace, monospace`;
       ctx.textBaseline = "top";
       cw = ctx.measureText("M").width;
       cols = Math.ceil(window.innerWidth / cw);
       rows = Math.ceil(window.innerHeight / LINE);
+      radSin = new Float32Array(cols * rows);
+      radCos = new Float32Array(cols * rows);
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+          const d = Math.hypot(c - 40, r - 20) * 0.09;
+          radSin[r * cols + c] = Math.sin(d);
+          radCos[r * cols + c] = Math.cos(d);
+        }
+      colTerm = new Float32Array(cols);
+      rowTerm = new Float32Array(rows);
+      diagTerm = new Float32Array(cols + rows);
+      line = Array.from({ length: BUCKETS }, () => new Uint16Array(cols));
+      used = new Uint8Array(BUCKETS);
+      text = new Array(BUCKETS * rows).fill(null);
     };
 
     const draw = (now: number) => {
       const t = now / 1000;
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      // Drop finished pulses.
-      while (pulses.length && t - pulses[0].t0 > 1.6) pulses.shift();
+      while (pulses.length && t - pulses[0].t0 > PULSE_LIFE) pulses.shift();
+
+      // field(c, r, t) = sin(c*.11+.6t)*.35 + sin(r*.17-.45t)*.25 + sin((c+r)*.07+.3t)*.25 + sin(dist*.09-.8t)*.15
+      for (let c = 0; c < cols; c++) colTerm[c] = Math.sin(c * 0.11 + t * 0.6) * 0.35;
+      for (let r = 0; r < rows; r++) rowTerm[r] = Math.sin(r * 0.17 - t * 0.45) * 0.25;
+      for (let i = 0; i < cols + rows; i++) diagTerm[i] = Math.sin(i * 0.07 + t * 0.3) * 0.25;
+      const st = Math.sin(t * 0.8) * 0.15;
+      const ct = Math.cos(t * 0.8) * 0.15;
+      const R = POINTER_R;
+      const hasPointer = pointer.in;
+
       for (let r = 0; r < rows; r++) {
         const y = r * LINE;
+        const nearRow = hasPointer && Math.abs(y - pointer.y) < R;
+        used.fill(0);
         for (let c = 0; c < cols; c++) {
-          const x = c * cw;
-          let v = (field(c, r, t) + 1) / 2; // 0..1
-          let hot = 0;
-          const pd = Math.hypot(x - pointer.x, y - pointer.y);
-          if (pd < 180) v += (1 - pd / 180) * 0.45;
-          for (const p of pulses) {
-            const age = t - p.t0;
-            const radius = age * 520;
-            const d = Math.hypot(x - p.x, y - p.y);
-            const band = Math.abs(d - radius);
-            if (band < 46) {
-              const k = (1 - band / 46) * (1 - age / 1.6);
-              hot = Math.max(hot, k);
-              v += k * 0.9;
+          const i = r * cols + c;
+          const f = colTerm[c] + rowTerm[r] + diagTerm[c + r] + radSin[i] * ct - radCos[i] * st;
+          let e = 0; // pointer and pulse energy on top of the resting glyph
+          let near = 0;
+          if (nearRow) {
+            const x = c * cw;
+            const dx = x - pointer.x;
+            if (dx < R && dx > -R) {
+              const pd = Math.hypot(dx, y - pointer.y);
+              if (pd < R) {
+                near = 1 - pd / R;
+                e += near * POINTER_BOOST;
+              }
             }
           }
-          const idx = Math.min(RAMP.length - 1, Math.max(0, Math.floor(v * (RAMP.length - 1) * 0.92)));
-          if (idx === 0) continue;
-          const ch = RAMP[idx];
-          if (hot > 0.15) {
-            ctx.fillStyle = signal;
-            ctx.globalAlpha = Math.min(0.85, 0.2 + hot * 0.75);
-          } else {
-            ctx.fillStyle = fg;
-            ctx.globalAlpha = 0.05 + (idx / RAMP.length) * 0.16 + (pd < 180 ? (1 - pd / 180) * 0.18 : 0);
+          let hot = 0;
+          for (let k = 0; k < pulses.length; k++) {
+            const p = pulses[k];
+            const age = t - p.t0;
+            const band = Math.abs(Math.hypot(c * cw - p.x, y - p.y) - age * PULSE_SPEED);
+            if (band < PULSE_BAND) {
+              const k = (1 - band / PULSE_BAND) * (1 - age / PULSE_LIFE);
+              if (k > hot) hot = k;
+              e += k * 0.9;
+            }
           }
-          ctx.fillText(ch, x, y);
+          const rest = Math.min(REST_TOP, Math.round(((f + 1) / 2) * TOP * 0.92 * BASE));
+          const idx = Math.min(TOP, rest + Math.floor(e * TOP * 0.92));
+          if (idx <= 0) continue;
+          let b: number;
+          if (hot > 0.15) {
+            const a = Math.min(0.85, 0.2 + hot * 0.75);
+            b = FG_ALPHA.length + (a < 0.5 ? 0 : a < 0.74 ? 1 : 2);
+          } else {
+            b = Math.min(FG_ALPHA.length - 1, Math.floor(idx + near * 3) - 1);
+          }
+          if (!used[b]) {
+            used[b] = 1;
+            line[b].fill(32);
+          }
+          line[b][c] = CODES[idx];
+        }
+        for (let b = 0; b < BUCKETS; b++)
+          text[b * rows + r] = used[b] ? String.fromCharCode.apply(null, line[b] as unknown as number[]) : null;
+      }
+
+      ctx.fillStyle = fg;
+      for (let b = 0; b < BUCKETS; b++) {
+        if (b === FG_ALPHA.length) ctx.fillStyle = signal;
+        ctx.globalAlpha = b < FG_ALPHA.length ? FG_ALPHA[b] : HOT_ALPHA[b - FG_ALPHA.length];
+        for (let r = 0; r < rows; r++) {
+          const s = text[b * rows + r];
+          if (s) ctx.fillText(s, 0, r * LINE);
         }
       }
       ctx.globalAlpha = 1;
@@ -101,14 +177,22 @@ export function AsciiField() {
 
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      if (!visible || now - last < 1000 / FPS) return;
-      last = now;
+      const busy = pulses.length > 0 || now - lastMove < IDLE_AFTER_MS;
+      const interval = 1000 / (busy ? FPS : IDLE_FPS);
+      // A little slack, and a fixed cadence: a late frame doesn't push every later frame back.
+      if (!visible || now - last < interval - 3) return;
+      last = now - last > interval * 2 ? now : last + interval;
       draw(now);
     };
 
     const onMove = (e: PointerEvent) => {
       pointer.x = e.clientX;
       pointer.y = e.clientY;
+      pointer.in = true;
+      lastMove = performance.now();
+    };
+    const onLeave = (e: PointerEvent) => {
+      if (!e.relatedTarget) pointer.in = false;
     };
     const onPulse = (e: Event) => {
       const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail;
@@ -124,6 +208,7 @@ export function AsciiField() {
     });
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onMove, { passive: true });
+    document.addEventListener("pointerout", onLeave, { passive: true });
     window.addEventListener("sb:pulse", onPulse);
     document.addEventListener("visibilitychange", onVis);
     if (reduce) draw(0);
@@ -132,10 +217,17 @@ export function AsciiField() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerout", onLeave);
       window.removeEventListener("sb:pulse", onPulse);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
 
-  return <canvas ref={ref} aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 h-full w-full" />;
+  return (
+    <canvas
+      ref={ref}
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 z-0 h-full w-full opacity-60 lg:opacity-100 lg:[mask-image:linear-gradient(90deg,rgba(0,0,0,.3)_0%,rgba(0,0,0,.3)_42%,#000_72%)]"
+    />
+  );
 }

@@ -1,9 +1,16 @@
 import type React from 'react';
 import raw from '../../apps/web/src/data/graph.json';
+import bench from '../../bench/results.json';
 import {C, MONO, clamp01, prog} from './theme';
 
 // The real demo-repo graph (files + imports) that the web app ships.
-export const CHAIN = ['ui/LoginForm.tsx', 'api/login.ts', 'auth/session.ts', 'lib/crypto.ts'];
+// The conflict path from bench/results.json, B's file first: ui/LoginForm.tsx -> api/login.ts -> auth/session.ts.
+export const PATH: string[] = bench.conflict.path;
+/** A's claimed file and B's wanted file. */
+export const CLAIMED = bench.claim.file;
+export const WANTED = bench.edit.file;
+// One file per folder sits on the middle row (lib/crypto.ts only anchors the lib column), so the path is one straight line.
+const CHAIN = [...PATH, 'lib/crypto.ts'];
 const FOLDERS = ['ui', 'api', 'auth', 'lib'];
 const HUB = 'lib/utils.ts';
 
@@ -22,7 +29,7 @@ export const layoutGraph = (vertical: boolean) => {
 	const gap = vertical ? 44 : 30; // extra air above and below the chain row, room for the claim tags
 	const colW = (box.r - box.l) / FOLDERS.length;
 	const s = (box.b - box.t - 2 * gap) / 11;
-	const cy = box.t + 6 * s + gap; // the chain row: all four chain files share it, so the 3-hop path is one straight line
+	const cy = box.t + 6 * s + gap; // the chain row: one file per folder, so the conflict path is one straight line
 
 	const nodes: GNode[] = [];
 	FOLDERS.forEach((folder, col) => {
@@ -53,8 +60,8 @@ export const layoutGraph = (vertical: boolean) => {
 				const k = (x1 - x0) * 0.5;
 				d = `M${x0},${a.y} C${x0 + k},${a.y} ${x1 - k},${b.y} ${x1},${b.y}`;
 			}
-			const i = CHAIN.indexOf(e.source);
-			const hop = i >= 0 && CHAIN[i + 1] === e.target ? i + 1 : 0;
+			const i = PATH.indexOf(e.source);
+			const hop = i >= 0 && PATH[i + 1] === e.target ? i + 1 : 0;
 			return {s: a, t: b, d, hop, order: 0};
 		})
 		.sort((p, q) => p.s.col - q.s.col || p.s.y - q.s.y)
@@ -88,7 +95,7 @@ export const GraphView: React.FC<{
 	fast?: boolean;
 	/** 0..1 how far the non-chain graph is dimmed. */
 	dim?: number;
-	/** 0..3: how many hops of the chain are lit (fractional = drawing). */
+	/** 0..PATH.length-1: how many hops of the path are lit (fractional = drawing). */
 	lit?: number;
 	/** 0..1 white ring on B's target. */
 	target?: number;
@@ -155,7 +162,7 @@ export const GraphView: React.FC<{
 			))}
 			{g.nodes.map((n) => {
 				const st = nodeStart(g, n, fast);
-				const ci = CHAIN.indexOf(n.id);
+				const ci = PATH.indexOf(n.id);
 				const isLit = (ci > 0 && lit >= ci) || n.id === claimed;
 				const isTarget = ci === 0 && target > 0;
 				return (

@@ -7,22 +7,22 @@ type Line = {at: number; text: string; kind: 'cmd' | 'out' | 'minus' | 'plus' | 
 
 const A: Line[] = [
 	{at: 12, text: 'git worktree add ../wt-a', kind: 'cmd'},
-	{at: 40, text: 'agent-a "make password hashing async"', kind: 'cmd'},
-	{at: 92, text: 'read   lib/crypto.ts', kind: 'out'},
-	{at: 102, text: 'edit   lib/crypto.ts', kind: 'out'},
-	{at: 112, text: '- hashPassword(p): string', kind: 'minus'},
-	{at: 116, text: '+ async hashPassword(p): Promise<string>', kind: 'plus'},
+	{at: 40, text: 'agent-a "make session labels objects"', kind: 'cmd'},
+	{at: 92, text: 'read   auth/session.ts', kind: 'out'},
+	{at: 102, text: 'edit   auth/session.ts', kind: 'out'},
+	{at: 112, text: '- sessionLabel(s): string', kind: 'minus'},
+	{at: 116, text: '+ sessionLabel(s): { user: string; at: string }', kind: 'plus'},
 	{at: 146, text: 'tsc    0 errors', kind: 'ok'},
-	{at: 214, text: 'git commit -am "async hashing"', kind: 'cmd'},
+	{at: 214, text: 'git commit -am "label object"', kind: 'cmd'},
 ];
 const B: Line[] = [
 	{at: 22, text: 'git worktree add ../wt-b', kind: 'cmd'},
-	{at: 56, text: 'agent-b "tidy up the login form"', kind: 'cmd'},
+	{at: 56, text: 'agent-b "show the label on login"', kind: 'cmd'},
 	{at: 100, text: 'read   ui/LoginForm.tsx', kind: 'out'},
 	{at: 110, text: 'edit   ui/LoginForm.tsx', kind: 'out'},
-	{at: 122, text: '+ const who = mark || user.email;', kind: 'plus'},
+	{at: 122, text: '+ … + " · " + result.label.toUpperCase();', kind: 'plus'},
 	{at: 154, text: 'tsc    0 errors', kind: 'ok'},
-	{at: 226, text: 'git commit -am "tidy login"', kind: 'cmd'},
+	{at: 226, text: 'git commit -am "label on login"', kind: 'cmd'},
 ];
 
 const Terminal: React.FC<{who: 'A' | 'B'; lines: Line[]; f: number; x: number}> = ({who, lines, f, x}) => (

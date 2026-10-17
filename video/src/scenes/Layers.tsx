@@ -15,8 +15,10 @@ const LAYERS = [
 	{name: 'Code graph', desc: '35 files · 51 imports'},
 ];
 const DOTS = [50, 143, 236, 330].flatMap((x) => [95, 190, 285].map((y) => ({x, y})));
-const A_PT = {x: 330, y: 190}; // lib/crypto.ts in the mini graph
-const B_PT = {x: 50, y: 190};
+// Mini graph: four columns like ui/ api/ auth/ lib/. A holds the auth file (k 7), B is at the ui file (k 1), path 1 -> 4 -> 7.
+const A_K = 7;
+const A_PT = DOTS[A_K]; // auth/session.ts in the mini graph
+const B_PT = DOTS[1];
 // rotateX(60deg) rotateZ(-45deg), orthographic: local (u,v) around the centre -> screen offset.
 const iso = (p: {x: number; y: number}) => {
 	const u = p.x - L / 2;
@@ -46,7 +48,7 @@ const Plane: React.FC<{i: number; y: number; hit: number; ring: number}> = ({i, 
 			{i === 3 && (
 				<>
 					{[
-						[0, 4],
+						[1, 4],
 						[4, 7],
 						[7, 10],
 						[1, 3],
@@ -56,10 +58,10 @@ const Plane: React.FC<{i: number; y: number; hit: number; ring: number}> = ({i, 
 						[6, 10],
 						[9, 10],
 					].map(([a, b]) => (
-						<line key={`${a}-${b}`} x1={DOTS[a].x} y1={DOTS[a].y} x2={DOTS[b].x} y2={DOTS[b].y} stroke={[1, 4, 7, 10].includes(a) && [4, 7, 10].includes(b) ? C.text : C.muted} strokeOpacity={0.55} strokeWidth={2} />
+						<line key={`${a}-${b}`} x1={DOTS[a].x} y1={DOTS[a].y} x2={DOTS[b].x} y2={DOTS[b].y} stroke={[1, 4].includes(a) && [4, 7].includes(b) ? C.text : C.muted} strokeOpacity={0.55} strokeWidth={2} />
 					))}
 					{DOTS.map((d, k) => (
-						<circle key={k} cx={d.x} cy={d.y} r={k === 10 && hit ? 15 : 11} fill={k === 10 && hit ? C.accent : C.panel} stroke={k === 10 && hit ? C.accent : C.text} strokeWidth={2} />
+						<circle key={k} cx={d.x} cy={d.y} r={k === A_K && hit ? 15 : 11} fill={k === A_K && hit ? C.accent : C.panel} stroke={k === A_K && hit ? C.accent : C.text} strokeWidth={2} />
 					))}
 				</>
 			)}

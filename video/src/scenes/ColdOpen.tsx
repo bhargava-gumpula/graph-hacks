@@ -55,7 +55,7 @@ const ColdOpenInner: React.FC<SceneProps> = ({guides, vo}) => {
 						<div>{[3, 4, 5, 6, 7, 8].map(word)}</div>
 					</div>
 					<div style={{marginTop: 64, fontFamily: MONO, fontSize: 32, color: C.muted, display: 'grid', gap: 16}}>
-						{tag('A', 'editing lib/crypto.ts', 46)}
+						{tag('A', 'editing auth/session.ts', 46)}
 						{tag('B', 'editing ui/LoginForm.tsx', 62)}
 					</div>
 				</div>

@@ -39,12 +39,24 @@ MATCH (m:Meta {key:'seq'})
 RETURN m.value AS seq
 `;
 
-/** Events with `seq > last`, oldest first. `limit` defaults to 200. */
+export const DEFAULT_FEED_LIMIT = 200;
+const MAX_FEED_LIMIT = 1000;
+
+/**
+ * Events with `seq > last`, oldest first, at most `limit` (1..1000) per page.
+ * Page by passing the last returned seq back in. Each seq is allocated and
+ * written in one atomic query, so a lower seq can never show up after a
+ * higher one was read: paging by seq never skips an event.
+ */
 export async function feedSince(
   g: SbGraph,
   last: number,
-  limit = 200,
+  limit = DEFAULT_FEED_LIMIT,
 ): Promise<FeedItem[]> {
+  if (!Number.isFinite(last)) throw new RangeError(`last must be a number, got ${last}`);
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_FEED_LIMIT) {
+    throw new RangeError(`limit must be an integer 1..${MAX_FEED_LIMIT}, got ${limit}`);
+  }
   const rows = await g.roQuery(FEED_SINCE, { last, limit });
   return rows.map(toFeedItem);
 }
@@ -60,11 +72,21 @@ function toFeedItem(row: Record<string, unknown>): FeedItem {
     seq: row.seq as number,
     kind: row.kind as EventKind,
     at: row.at as number,
-    payload: typeof row.payload === "string" ? JSON.parse(row.payload) : null,
+    payload: parsePayload(row.payload),
     agentId: asString(row.agentId),
     onLabel: asString(row.onLabel),
     onKey: asString(row.onKey),
   };
+}
+
+/** A payload that isn't valid JSON comes back as the raw string, never throws. */
+function parsePayload(value: unknown): unknown {
+  if (typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 
 function asString(value: unknown): string | null {

@@ -418,6 +418,7 @@ export function GraphView(props: GraphViewProps) {
             const batch = batchOf?.get(n.id);
             const fh = focus?.get(n.id);
             const inSpot = !!spot?.has(n.id);
+            const onTrace = !!trace?.includes(n.id);
             const dimmed = (spot && !inSpot) || (selected && !isSel && hop === undefined && !onRoute) || (focus && fh === undefined && !onRoute);
             const isGhost = ghost?.file === n.id;
             const marks = preview.filter((p) => p.file === n.id && (p.wants || !claimers.includes(p.agent)));
@@ -526,8 +527,9 @@ export function GraphView(props: GraphViewProps) {
                 </AnimatePresence>
                 {showLabel && (
                   <text
-                    x={n.x + (onShot ? 10 : 12)}
-                    y={onShot ? n.y - 12 : n.y + 4}
+                    // On a drawn route the label sits above the node, off the line.
+                    x={n.x + (onShot || onTrace ? 10 : 12)}
+                    y={onShot || onTrace ? n.y - 12 : n.y + 4}
                     className={`font-mono text-[11px] ${onShot || isSel || isHover ? "fill-[var(--fg)]" : "fill-[var(--muted)]"}`}
                     style={halo}
                   >

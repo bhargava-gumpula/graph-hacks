@@ -17,6 +17,8 @@
   --color-paper: #ededf0;
   --radius-panel: 10px;
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Strong ease-out for UI feedback (press, hover): under 300 ms, no built-in curve. */
+  --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 :root {

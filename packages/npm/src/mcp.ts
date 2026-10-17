@@ -5,7 +5,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { createServer } from "../../mcp/src/index.js";
 import { configure } from "./env.js";
 
-configure(process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
+// Cursor fills SB_PROJECT_DIR from ${workspaceFolder}; a client that leaves the placeholder unresolved gets cwd.
+const dir = [process.env.SB_PROJECT_DIR, process.env.CLAUDE_PROJECT_DIR].find((d) => d && !d.includes("${"));
+configure(dir ?? process.cwd());
 
 export function start(): Promise<void> {
   return createServer().connect(new StdioServerTransport());

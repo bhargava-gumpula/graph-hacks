@@ -72,7 +72,9 @@ function cursorHooks(cur: Json): Json {
 }
 
 function mcpServers(cur: Json, editor: string): Json {
-  const server = { command: process.execPath, args: [join(HERE, "switchboard-mcp.mjs")], env: { SB_EDITOR: editor } };
+  const env: Record<string, string> = { SB_EDITOR: editor };
+  if (editor === "cursor") env.SB_PROJECT_DIR = "${workspaceFolder}";
+  const server = { command: process.execPath, args: [join(HERE, "switchboard-mcp.mjs")], env };
   return { ...cur, mcpServers: { ...((cur.mcpServers as Json | undefined) ?? {}), switchboard: server } };
 }
 

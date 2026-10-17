@@ -111,17 +111,19 @@ async function storyIntact(): Promise<boolean> {
   return (await listClaims(g)).some((c) => c.agent === "A" && c.path === "auth/session.ts" && c.until > soon);
 }
 
-// With SB_REPO the graph is that repo's, so the demo story (which resets the graph) never runs on it.
-const demoGraph = repoDir === demoRepo;
-// A fresh graph (first start, or FalkorDB lost its data) gets the demo right away, or a parse of SB_REPO;
-// so does a public start with a broken story.
-if ((await codeGraphCounts(g)).files === 0) await (demoGraph ? runDemo() : loadParse(g, parseRepo(repoDir)));
-else if (PUBLIC && !(await storyIntact())) await runDemo();
+// A fresh graph (first start, or FalkorDB lost its data) gets the demo right away, or a parse of SB_REPO.
+const fresh = (await codeGraphCounts(g)).files === 0;
+if (fresh) await (repoDir === demoRepo ? runDemo() : loadParse(g, parseRepo(repoDir)));
 // Per-edit re-parse only against the repo this graph came from (see isRepoOf); else edits are just recorded.
 const liveRepo = (await isRepoOf(g, repoDir)) ? repoDir : null;
 if (!liveRepo) console.warn(`${repoDir} is not the repo in graph ${g.name}: edits are recorded, not re-parsed. Set SB_REPO to the repo's directory.`);
+// The demo story resets the graph, so it runs only on demo-repo's own graph: never with SB_REPO, and never
+// on a graph parsed from another repo (a shared team graph, for one) by a server started without SB_REPO.
+const demoGraph = repoDir === demoRepo && liveRepo !== null;
+// A public start with a broken story replays it.
+if (!fresh && PUBLIC && demoGraph && !(await storyIntact())) await runDemo();
 
-if (PUBLIC) {
+if (PUBLIC && demoGraph) {
   // Checked every minute, not on idle time: steady claim traffic must not starve the replay.
   setInterval(() => {
     if (demoRun || Date.now() - lastWrite < 60_000) return;
@@ -250,7 +252,7 @@ app.get("/api/decisions", async (c) => c.json(await listDecisions(g)));
 
 /** The two-minute story, driven from the page so a judge never needs a terminal. */
 app.post("/api/demo", limit(6), async (c) => {
-  if (!demoGraph) return c.json({ error: "this server holds a real repo's graph (SB_REPO); the demo would reset it" }, 409);
+  if (!demoGraph) return c.json({ error: "this graph is a real repo's, not demo-repo's; the demo would reset it" }, 409);
   lastWrite = Date.now();
   return c.json(await runDemo());
 });

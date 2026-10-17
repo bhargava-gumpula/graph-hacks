@@ -35,7 +35,8 @@ SB_GRAPH=sb_team
 Every machine uses the same `FALKORDB_URL` and the same `SB_GRAPH`. That pair is what makes it one graph.
 Pick any name that starts with `sb_`.
 
-Do not use `npm run quickstart` with a cloud URL: it expects a local FalkorDB and prints the URL it checks.
+Do not run `npm run quickstart` with the cloud URL in `.env`: it parses demo-repo into `SB_GRAPH`,
+which would replace the team graph's files.
 The other commands read only the real environment, so load `.env` into the shell first:
 
 ```
@@ -64,7 +65,8 @@ SB_REPO=/path/to/your/repo SB_WATCH=1 npm run server
 
 - `SB_REPO` is the repo on this machine's disk. The server re-parses edited files from there.
 - `SB_WATCH=1` also catches saves made by people, not just agents. Leave it off if you only want agent edits.
-- With `SB_REPO` set, the server never replays the demo story, which would reset the graph.
+- The server replays the demo story (which resets the graph) only on demo-repo's own graph. With `SB_REPO`
+  set, or on a graph another repo was parsed into, the Play button answers 409 and nothing is reset.
 - Without a server, `npm run switchboard -- watch /path/to/your/repo` does the same for saves and prints
   one line per change.
 

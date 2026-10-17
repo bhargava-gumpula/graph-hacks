@@ -64,7 +64,10 @@ refused while Cursor holds `ui/LoginForm.tsx`. Anything unclear (globs, variable
 out, a read-only command (`cat`, `grep`, `git diff`) never yields a file, and a parse failure allows the command.
 
 After the command, the hook compares `git status` with what it saw before and records an edit for each file that
-changed, whatever the command was (`npm run format`, a code generator).
+changed, whatever the command was (`npm run format`, a code generator). Claude Code and Cursor share one checkout,
+so that diff also shows the other editor's work while the command ran. A changed file another agent claims, or
+edited after the command started, is theirs: it is left out, so a long `npm test` in Claude Code never turns
+Cursor's edit to `ui/Footer.tsx` into an edit (and a collision) by `claude@main`.
 
 ## Advice instead of blocks
 

@@ -1,7 +1,10 @@
 // The hook's answers for crafted Claude Code and Cursor events, against a real FalkorDB graph of demo-repo.
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { loadParse, parseRepo, release } from "@switchboard/core";
+import { latestSeq, loadParse, parseRepo, release } from "@switchboard/core";
 import { useTestGraph } from "../../core/src/test-helpers.js";
 import { answer, handle, repoPath, type Ctx, type Editor, type Phase } from "./hook.js";
 
@@ -76,6 +79,41 @@ describe("hook: refusal becomes coordination", () => {
     expect(await run("claude", "pre", bash("cat auth/session.ts && grep -n x ui/LoginForm.tsx"))).toEqual({});
     // Cursor's beforeShellExecution sends `command` at the top level.
     expect((await run("cursor", "pre", { command: "rm auth/session.ts" })).permission).toBe("allow");
+  });
+
+  test("a shell command records its own changes, not the other editor's edits made while it ran", async () => {
+    // A git checkout of demo-repo: the shell post call diffs `git status` before and after.
+    const repo = join(realpathSync(mkdtempSync(join(tmpdir(), "sb-hook-sh-"))), "demo");
+    cpSync(ROOT, repo, { recursive: true });
+    const git = (...args: string[]) => execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdio: "ignore" });
+    git("init", "-q", "-b", "main");
+    git("add", "-A");
+    git("commit", "-qm", "init");
+    const at = (editor: Editor, phase: Phase, input: Record<string, unknown>) =>
+      handle({ editor, phase, input: { cwd: repo, ...input }, g: g(), agent: editor === "claude" ? CLAUDE : CURSOR, root: repo, prefix: "", graph: "test", warn: false }) as Promise<
+        Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+      >;
+    try {
+      const seq = await latestSeq(g());
+      const bash = { tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: "t-npm-test", session_id: "s-sh" };
+      expect(await at("claude", "pre", bash)).toEqual({});
+      // While it runs, Cursor claims and edits Footer.tsx in the same checkout; the command writes a log.
+      const footer = { tool_name: "Write", tool_input: { file_path: join(repo, "ui/Footer.tsx") } };
+      expect(await at("cursor", "pre", footer)).toEqual({ permission: "allow" });
+      writeFileSync(join(repo, "ui/Footer.tsx"), "export const Footer = () => null;\n");
+      await at("cursor", "post", footer);
+      writeFileSync(join(repo, "test.log"), "ok\n");
+      await at("claude", "post", bash);
+
+      const rows = await g().roQuery(
+        "MATCH (e:Event)-[:BY]->(a:Agent) WHERE e.seq > $seq OPTIONAL MATCH (e)-[:ON]->(f:File) RETURN e.kind AS kind, a.id AS agent, f.path AS path ORDER BY e.seq",
+        { seq },
+      );
+      expect(rows.filter((r) => r.agent === CLAUDE)).toEqual([{ kind: "edit", agent: CLAUDE, path: "test.log" }]);
+      expect(rows.filter((r) => r.kind === "collision")).toEqual([]);
+    } finally {
+      rmSync(join(repo, ".."), { recursive: true, force: true });
+    }
   });
 });
 

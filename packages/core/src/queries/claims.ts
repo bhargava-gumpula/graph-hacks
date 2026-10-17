@@ -203,3 +203,27 @@ export async function release(
   if (paths === null) await dropWaits(g, input.agent);
   return { released: Number(rows[0]?.released ?? 0), seq: readSeq(rows, "release") };
 }
+
+/** Of `$paths`, the files another agent holds an active claim on, or edited at or after `$since`. */
+export const OTHERS_ON = `
+UNWIND $paths AS path
+MATCH (o:Agent)-[r:CLAIMS|EDITED]->(f:File {path: path})
+WHERE o.id <> $agent AND ((type(r) = 'CLAIMS' AND r.until > $now) OR (type(r) = 'EDITED' AND r.at >= $since))
+RETURN DISTINCT f.path AS path
+`;
+
+/**
+ * Which of these files are another agent's right now: it claims them, or edited them since `since`.
+ * A shell command's PostToolUse sees every change in the checkout while it ran, including another
+ * editor's; those are left out, so they are not recorded as this agent's edits (or collisions).
+ */
+export async function othersOn(
+  g: SbGraph,
+  input: { agent: string; paths: string[]; since: number; now?: number },
+): Promise<string[]> {
+  if (input.paths.length === 0) return [];
+  const norm = input.paths.map(normPath);
+  const rows = await g.roQuery(OTHERS_ON, { agent: input.agent, paths: norm, since: input.since, now: input.now ?? Date.now() });
+  const theirs = new Set(rows.map((r) => r.path as string));
+  return input.paths.filter((_, i) => theirs.has(norm[i]!));
+}

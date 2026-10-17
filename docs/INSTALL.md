@@ -233,7 +233,8 @@ For a new version, bump `version` in `packages/npm/package.json`, `packages/npm/
   which runs on every edit, is about 0.7 MB and answers in about 0.1 s. From source, `hook.sh` runs the hook
   through `tsx`, about 0.8 s.
 - Shell commands: only obvious write targets are claimed before a command runs (redirections, `tee`, `sed -i`,
-  `mv`, `cp`, `rm`, `touch`, `git checkout --`). Every changed file is recorded after it, from `git status`.
+  `mv`, `cp`, `rm`, `touch`, `git checkout --`). The files it changed are recorded after it, from `git status`,
+  except files another agent claims or edited while it ran (the checkout is shared; those edits are theirs).
 - Only TypeScript and JavaScript imports are parsed. The parser skips `node_modules`, `dist`, `out`, `build`,
   `coverage`, dot directories (`.next`, `.turbo`, `.vercel`) and what the repo's root `.gitignore` lists (simple
   patterns; nested `.gitignore` files are not read). A file the parser has not seen (a new file) is allowed,

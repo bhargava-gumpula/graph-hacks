@@ -4,7 +4,8 @@
 //   start   register the agent, re-parse in the background, put a brief in the context.
 //   pre     claim the file (Edit/Write) or the obvious write targets of a shell command; on a conflict,
 //           deny with the import path and wait on the blocking file. SB_MODE=warn allows it with the text.
-//   post    record the edit, or the files a shell command changed (git status before and after).
+//   post    record the edit, or the files a shell command changed (git status before and after), minus
+//           files another agent claims or edited meanwhile: the checkout is shared, those edits are theirs.
 //   notify  Cursor postToolUse: only the notices (who waits on your files, which files are free now).
 //   end     release this agent's claims; files others waited on are free, and its own waits end.
 // Fails open: FalkorDB down, a timeout, a parse failure or any error allows the edit. SWITCHBOARD_OFF=1 disables it.
@@ -28,6 +29,7 @@ import {
   type SbGraph,
 } from "@switchboard/core";
 import { agentId } from "../../core/src/agent-id.js";
+import { othersOn } from "../../core/src/queries/claims.js";
 import { formatNotices, recordWaits, waitNotices } from "../../core/src/queries/waits.js";
 import { configure } from "../../npm/src/env.js";
 import { changedFiles, dirtyFiles, writeTargets } from "./shell.js";
@@ -206,11 +208,14 @@ export async function handle(c: Ctx): Promise<object> {
     if (command !== undefined) {
       const snap = snapshotFile(input, command);
       try {
-        const before = JSON.parse(readFileSync(snap, "utf8")) as Record<string, number>;
+        const before = JSON.parse(readFileSync(snap, "utf8")) as { at: number; files: Record<string, number> };
         unlinkSync(snap);
-        paths = inRepo(changedFiles(before, dirtyFiles(cwd))).slice(0, MAX_SHELL_EDITS);
+        const changed = inRepo(changedFiles(before.files, dirtyFiles(cwd)));
+        // The checkout is shared: another editor's edits while the command ran are theirs, not this command's.
+        const theirs = new Set(await othersOn(g, { agent, paths: changed, since: before.at }));
+        paths = changed.filter((p) => !theirs.has(p)).slice(0, MAX_SHELL_EDITS);
       } catch {
-        // no snapshot (not a git checkout) or git timed out: nothing to record
+        // no snapshot (not a git checkout), git timed out, or the graph failed: nothing to record
         paths = [];
       }
     } else {
@@ -231,7 +236,7 @@ export async function handle(c: Ctx): Promise<object> {
   const snap = command === undefined ? undefined : snapshotFile(input, command);
   if (command !== undefined && snap) {
     try {
-      writeFileSync(snap, JSON.stringify(dirtyFiles(cwd)));
+      writeFileSync(snap, JSON.stringify({ at: Date.now(), files: dirtyFiles(cwd) }));
     } catch {
       // not a git checkout: the post call records nothing
     }

@@ -1,5 +1,10 @@
+import { randomUUID } from "node:crypto";
 import type { SbGraph } from "../graph.js";
 import { recordEvent } from "./events.js";
+
+/** How far (undirected import hops) a briefing looks around its files. */
+const NEAR_HOPS = 2;
+const EVENT_LIMIT = 20;
 
 export interface BriefClaim {
   agent: string;
@@ -12,6 +17,7 @@ export interface BriefClaim {
 export interface BriefNote {
   id: string;
   text: string;
+  /** The closest file this note is attached to. */
   path: string;
   hops: number;
 }
@@ -26,74 +32,100 @@ export interface Brief {
   handoff: { note: string; from: string; to: string } | null;
 }
 
-/** Files a briefing is about: a task's footprint, or every file under a directory prefix. */
+export interface BriefInput {
+  /** A task: its planned files, files claimed under it, and files edited under it. */
+  taskId?: string;
+  /** Every file whose path starts with this (a directory). */
+  prefix?: string;
+  /** Explicit files. */
+  paths?: string[];
+  now?: number;
+}
+
+/** Resolve the area (task, prefix, paths; any mix) to the File paths it covers. */
 export const AREA_FILES = `
 MATCH (f:File)
-WHERE ($taskId IS NOT NULL AND (:Task {id: $taskId})-[:TOUCHES]->(f))
-   OR ($prefix IS NOT NULL AND f.path STARTS WITH $prefix)
-RETURN DISTINCT f.path AS path
+WHERE ($prefix IS NOT NULL AND f.path STARTS WITH $prefix)
+   OR f.path IN $paths
+   OR ($taskId IS NOT NULL AND (
+        (:Task {id: $taskId})-[:TOUCHES]->(f)
+        OR (:Task {id: $taskId})<-[:UNDER]-(:Event)-[:ON]->(f)
+        OR size([(:Agent)-[c:CLAIMS]->(f) WHERE c.taskId = $taskId | c]) > 0))
+RETURN f.path AS path
 ORDER BY path
 `;
 
-/** Active claims on those files or within 2 import hops, hubs skipped on the hops. */
+/**
+ * The neighbourhood: every file within NEAR_HOPS import hops of the area, either
+ * direction, with its distance (0 = in the area). As in Q1, multi-hop paths never
+ * touch a hub, so lib/utils.ts does not pull the whole repo into every briefing.
+ */
+export const NEAR_FILES = `
+UNWIND $paths AS path
+MATCH (f:File {path: path})
+MATCH p = (f)-[:IMPORTS*0..${NEAR_HOPS}]-(g:File)
+WHERE length(p) = 0 OR none(n IN nodes(p) WHERE coalesce(n.hub, false))
+RETURN g.path AS path, min(length(p)) AS hops
+`;
+
+/** Active claims on the neighbourhood, nearest first. */
 export const NEAR_CLAIMS = `
-UNWIND $paths AS path
-MATCH (f:File {path: path})
-OPTIONAL MATCH p = (f)-[:IMPORTS*0..2]-(g:File)
-WHERE none(n IN nodes(p) WHERE n.hub AND n <> f AND n <> g)
-WITH g, min(length(p)) AS hops
-MATCH (a:Agent)-[c:CLAIMS]->(g)
+UNWIND $near AS n
+MATCH (a:Agent)-[c:CLAIMS]->(:File {path: n.path})
 WHERE c.until > $now
-RETURN DISTINCT a.id AS agent, g.path AS path, hops, c.taskId AS taskId, c.until AS until
-ORDER BY hops, path
+RETURN a.id AS agent, n.path AS path, n.hops AS hops, c.taskId AS taskId, c.until AS until
+ORDER BY hops, path, agent
 `;
 
-/** Active decisions that affect the area or a file within 2 hops. */
+/** Active decisions on the neighbourhood, one row each at its closest file; newest first within a hop. */
 export const NEAR_DECISIONS = `
-UNWIND $paths AS path
-MATCH (f:File {path: path})
-MATCH (d:Decision {status: 'active'})-[:AFFECTS]->(x:File)
-WHERE x = f OR (NOT x.hub AND (f)-[:IMPORTS*1..2]-(x))
-RETURN DISTINCT d.id AS id, d.text AS text, x.path AS path, CASE WHEN x = f THEN 0 ELSE 1 END AS hops
-ORDER BY hops, id
+UNWIND $near AS n
+MATCH (d:Decision {status: 'active'})-[:AFFECTS]->(:File {path: n.path})
+WITH d, n ORDER BY n.hops, n.path
+WITH d, collect(n)[0] AS best
+RETURN d.id AS id, d.text AS text, best.path AS path, best.hops AS hops
+ORDER BY hops, d.at DESC, id
 `;
 
-/** Lessons about the area, same hop rule as decisions. */
+/** Lessons on the neighbourhood, same ranking as decisions. */
 export const NEAR_LESSONS = `
-UNWIND $paths AS path
-MATCH (f:File {path: path})
-MATCH (l:Lesson)-[:ABOUT]->(x:File)
-WHERE x = f OR (NOT x.hub AND (f)-[:IMPORTS*1..2]-(x))
-RETURN DISTINCT l.id AS id, l.text AS text, x.path AS path, CASE WHEN x = f THEN 0 ELSE 1 END AS hops
-ORDER BY hops, id
+UNWIND $near AS n
+MATCH (l:Lesson)-[:ABOUT]->(:File {path: n.path})
+WITH l, n ORDER BY n.hops, n.path
+WITH l, collect(n)[0] AS best
+RETURN l.id AS id, l.text AS text, best.path AS path, best.hops AS hops
+ORDER BY hops, l.at DESC, id
 `;
 
-/** Newest events on the files themselves (not the neighbourhood). */
+/** Newest events on the area's own files, including a dead agent's edits. */
 export const AREA_EVENTS = `
 UNWIND $paths AS path
-MATCH (e:Event)-[:ON]->(f:File {path: path})
+MATCH (e:Event)-[:ON]->(:File {path: path})
 OPTIONAL MATCH (e)-[:BY]->(a:Agent)
-RETURN e.seq AS seq, e.kind AS kind, f.path AS path, a.id AS agentId
+RETURN e.seq AS seq, e.kind AS kind, path, a.id AS agentId
 ORDER BY seq DESC
-LIMIT 20
+LIMIT ${EVENT_LIMIT}
 `;
 
+/** Unfinished tasks that plan to touch the area. */
 export const AREA_TASKS = `
 UNWIND $paths AS path
-MATCH (t:Task {status: 'open'})-[:TOUCHES]->(:File {path: path})
+MATCH (t:Task)-[:TOUCHES]->(:File {path: path})
+WHERE coalesce(t.status, 'open') <> 'done'
 RETURN DISTINCT t.id AS id, t.title AS title
 ORDER BY id
 `;
 
+/** The latest handoff note for any of these tasks. */
 export const LATEST_HANDOFF = `
 MATCH (src:Agent)-[h:HANDED_OFF]->(dst:Agent)
-WHERE h.taskId = $taskId
+WHERE h.taskId IN $taskIds
 RETURN h.note AS note, src.id AS fromId, dst.id AS toId
 ORDER BY h.at DESC
 LIMIT 1
 `;
 
-/** A lesson node. The record_lesson tool will call this later. */
+/** A lesson node and the files it is about. Unknown paths are skipped. */
 export const LINK_LESSON = `
 MERGE (l:Lesson {id: $id})
 SET l.text = $text, l.at = $at
@@ -103,10 +135,14 @@ MATCH (f:File {path: path})
 MERGE (l)-[:ABOUT]->(f)
 `;
 
+/** Either agent may not have registered yet (a replacement often hasn't), so MERGE both. */
 export const LINK_HANDOFF = `
-MATCH (src:Agent {id: $from}), (dst:Agent {id: $to})
+MERGE (src:Agent {id: $from})
+MERGE (dst:Agent {id: $to})
 CREATE (src)-[:HANDED_OFF {taskId: $taskId, note: $note, at: $at}]->(dst)
 `;
+
+const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
 function notes(rows: Record<string, unknown>[]): BriefNote[] {
   return rows.map((row) => ({
@@ -117,37 +153,41 @@ function notes(rows: Record<string, unknown>[]): BriefNote[] {
   }));
 }
 
+const EMPTY: Omit<Brief, "files"> = { claims: [], decisions: [], lessons: [], events: [], tasks: [], handoff: null };
+
 /**
- * Q4. What a fresh agent needs about an area: claims, decisions, lessons,
- * recent events, open tasks, and the latest handoff note. Ranked by hop distance.
+ * Q4. What a fresh or replacement agent needs about an area: claims, decisions,
+ * lessons, recent events, open tasks and the latest handoff note. Claims, decisions
+ * and lessons are ranked by import-hop distance from the area, then by recency.
  */
-export async function brief(
-  g: SbGraph,
-  input: { taskId?: string; prefix?: string; now?: number },
-): Promise<Brief> {
+export async function brief(g: SbGraph, input: BriefInput): Promise<Brief> {
   const now = input.now ?? Date.now();
   const fileRows = await g.roQuery(AREA_FILES, {
-    taskId: input.taskId ?? null,
-    prefix: input.prefix ?? null,
+    taskId: input.taskId || null,
+    prefix: input.prefix || null,
+    paths: input.paths ?? [],
   });
   const files = fileRows.map((row) => String(row.path));
   if (files.length === 0) {
-    return { files, claims: [], decisions: [], lessons: [], events: [], tasks: [], handoff: null };
+    // A task with no files can still have a handoff note.
+    const handoff = input.taskId ? await latestHandoff(g, [input.taskId]) : null;
+    return { files, ...EMPTY, handoff };
   }
 
+  const near = (await g.roQuery(NEAR_FILES, { paths: files })).map((row) => ({
+    path: String(row.path),
+    hops: Number(row.hops),
+  }));
   const [claimRows, decisionRows, lessonRows, eventRows, taskRows] = await Promise.all([
-    g.roQuery(NEAR_CLAIMS, { paths: files, now }),
-    g.roQuery(NEAR_DECISIONS, { paths: files }),
-    g.roQuery(NEAR_LESSONS, { paths: files }),
+    g.roQuery(NEAR_CLAIMS, { near, now }),
+    g.roQuery(NEAR_DECISIONS, { near }),
+    g.roQuery(NEAR_LESSONS, { near }),
     g.roQuery(AREA_EVENTS, { paths: files }),
     g.roQuery(AREA_TASKS, { paths: files }),
   ]);
 
-  let handoff: Brief["handoff"] = null;
-  if (input.taskId) {
-    const [row] = await g.roQuery(LATEST_HANDOFF, { taskId: input.taskId });
-    if (row) handoff = { note: String(row.note), from: String(row.fromId), to: String(row.toId) };
-  }
+  const tasks = taskRows.map((row) => ({ id: String(row.id), title: str(row.title) }));
+  const taskIds = [...new Set([...(input.taskId ? [input.taskId] : []), ...tasks.map((t) => t.id)])];
 
   return {
     files,
@@ -155,7 +195,7 @@ export async function brief(
       agent: String(row.agent),
       path: String(row.path),
       hops: Number(row.hops),
-      taskId: typeof row.taskId === "string" ? row.taskId : null,
+      taskId: str(row.taskId),
       until: Number(row.until),
     })),
     decisions: notes(decisionRows),
@@ -164,22 +204,25 @@ export async function brief(
       seq: Number(row.seq),
       kind: String(row.kind),
       path: String(row.path),
-      agentId: typeof row.agentId === "string" ? row.agentId : null,
+      agentId: str(row.agentId),
     })),
-    tasks: taskRows.map((row) => ({
-      id: String(row.id),
-      title: typeof row.title === "string" ? row.title : null,
-    })),
-    handoff,
+    tasks,
+    handoff: await latestHandoff(g, taskIds),
   };
 }
 
-/** Record a lesson about one or more files. */
+async function latestHandoff(g: SbGraph, taskIds: string[]): Promise<Brief["handoff"]> {
+  if (taskIds.length === 0) return null;
+  const [row] = await g.roQuery(LATEST_HANDOFF, { taskIds });
+  return row ? { note: String(row.note), from: String(row.fromId), to: String(row.toId) } : null;
+}
+
+/** Record a lesson about one or more files. Returns its id. */
 export async function recordLesson(
   g: SbGraph,
   input: { text: string; paths: string[]; id?: string; now?: number; agent?: string },
 ): Promise<string> {
-  const id = input.id ?? `l-${Date.now()}`;
+  const id = input.id ?? `l-${randomUUID()}`;
   const at = input.now ?? Date.now();
   await g.query(LINK_LESSON, { id, text: input.text, at, paths: input.paths });
   await recordEvent(g, {
@@ -208,13 +251,20 @@ export async function handoff(
   });
 }
 
-/** Plain text for a session-start hook. The graph rows stay the evidence. */
+const hopLabel = (hops: number) => (hops === 0 ? "here" : `${hops} hop${hops === 1 ? "" : "s"} away`);
+
+/** Plain text for a session-start hook or an MCP reply. The graph rows stay the evidence. */
 export function formatBrief(b: Brief): string {
   const lines = [`Files: ${b.files.join(", ") || "(none)"}`];
-  for (const c of b.claims) lines.push(`Claim: ${c.agent} holds ${c.path} (${c.hops} hops)`);
-  for (const d of b.decisions) lines.push(`Decision: ${d.text} (${d.path})`);
-  for (const l of b.lessons) lines.push(`Lesson: ${l.text} (${l.path})`);
-  for (const t of b.tasks) lines.push(`Open task: ${t.id}${t.title ? " " + t.title : ""}`);
   if (b.handoff) lines.push(`Handoff ${b.handoff.from} → ${b.handoff.to}: ${b.handoff.note}`);
+  for (const c of b.claims) {
+    lines.push(`Claim: ${c.agent} holds ${c.path} (${hopLabel(c.hops)}${c.taskId ? `, task ${c.taskId}` : ""})`);
+  }
+  for (const d of b.decisions) lines.push(`Decision: ${d.text} (${d.path}, ${hopLabel(d.hops)})`);
+  for (const l of b.lessons) lines.push(`Lesson: ${l.text} (${l.path}, ${hopLabel(l.hops)})`);
+  for (const t of b.tasks) lines.push(`Open task: ${t.id}${t.title && t.title !== t.id ? ` ${t.title}` : ""}`);
+  for (const e of b.events.filter((e) => e.kind === "edit").slice(0, 5)) {
+    lines.push(`Recent edit: ${e.path} by ${e.agentId ?? "unknown"} (#${e.seq})`);
+  }
   return lines.join("\n");
 }

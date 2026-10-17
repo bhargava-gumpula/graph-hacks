@@ -70,6 +70,7 @@ Nothing loads `.env` for you. The defaults in the code match `.env.example`. To 
 | `SB_GRAPH` | one FalkorDB graph per project, default `sb_demo` |
 | `SERVER_PORT` | server port, default `8787` |
 | `SB_PREFIX` | directory stripped from editor paths before a check. Default `demo-repo` |
+| `SB_URL` | where the editor hooks reach the server. Default `http://localhost:8787` |
 | `SB_AGENT` | agent id. Default is the git branch of the checkout |
 | `SWITCHBOARD_OFF` | `1` lets every edit through |
 | `ANTHROPIC_API_KEY` | optional. If set, `brief_me` adds a short Haiku summary on top of the graph text. If unset, the graph text is the whole answer |

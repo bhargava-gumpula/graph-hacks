@@ -1,0 +1,15 @@
+{
+  "name": "switchboard",
+  "description": "Switchboard: a FalkorDB graph that coordinates AI coding agents.",
+  "owner": {
+    "name": "Bhargava G",
+    "url": "https://github.com/bhargava-gumpula"
+  },
+  "plugins": [
+    {
+      "name": "switchboard",
+      "source": "./plugins/switchboard",
+      "description": "Claims every edit in a shared import graph and refuses one that collides with another agent's work."
+    }
+  ]
+}

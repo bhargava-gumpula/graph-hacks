@@ -1,0 +1,14 @@
+{
+  "name": "switchboard",
+  "displayName": "Switchboard",
+  "version": "0.1.0",
+  "description": "Stops AI coding agents from breaking each other's work. Every edit is claimed in a shared FalkorDB import graph; an edit that collides with another agent's file within 3 import hops is refused with the path, the holder and safe files.",
+  "author": {
+    "name": "Bhargava G",
+    "url": "https://github.com/bhargava-gumpula"
+  },
+  "homepage": "https://switchboard-agents.xyz",
+  "repository": "https://github.com/bhargava-gumpula/graph-hacks",
+  "license": "MIT",
+  "keywords": ["agents", "coordination", "falkordb", "graph", "mcp", "cursor", "multi-agent"]
+}

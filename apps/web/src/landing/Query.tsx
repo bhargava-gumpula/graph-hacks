@@ -19,10 +19,11 @@ const WANT: Part = { k: "unwind", code: "UNWIND $paths AS want" };
 const ACTIVE: Part = { k: "active", code: "WHERE o.id <> $agent AND c.until > $now" };
 const NO_HUB: Part = { k: "hub", code: "  AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))" };
 const UNION: Part = { k: "union", code: "UNION ALL" };
-const ret = (type: string, claimed: string, path: string, hops: string): Part => ({
+const ret = (type: string, claimed: string, path: string, hops: string, hub: string): Part => ({
   k: "ret",
-  code: `RETURN want AS file, '${type}' AS type, ${claimed} AS claimed,\n       ${path} AS path, ${hops} AS hops,\n       o.id AS agent, c.taskId AS taskId, c.intent AS intent`,
+  code: `RETURN want AS file, '${type}' AS type, ${claimed} AS claimed,\n       ${path} AS path, ${hops} AS hops,\n       o.id AS agent, c.taskId AS taskId, c.intent AS intent,\n       c.until AS until, ${hub} AS hub`,
 });
+const BOTH_HUB = "coalesce(f.hub, false) OR coalesce(g.hub, false)";
 
 /**
  * The real conflictQuery(3) from packages/core/src/queries/conflict.ts, hubs skipped
@@ -33,19 +34,19 @@ const PARTS: Part[] = [
   WANT,
   { k: "same", code: "MATCH (f:File {path: want})<-[c:CLAIMS]-(o:Agent)" },
   ACTIVE,
-  ret("SAME", "f.path", "[f.path]", "0"),
+  ret("SAME", "f.path", "[f.path]", "0", "coalesce(f.hub, false)"),
   UNION,
   WANT,
   { k: "up", code: "MATCH p = (f:File {path: want})-[:IMPORTS*1..3]->(g:File),\n      (g)<-[c:CLAIMS]-(o:Agent)" },
   ACTIVE,
   NO_HUB,
-  ret("UPSTREAM", "g.path", "[n IN nodes(p) | n.path]", "length(p)"),
+  ret("UPSTREAM", "g.path", "[n IN nodes(p) | n.path]", "length(p)", BOTH_HUB),
   UNION,
   WANT,
   { k: "down", code: "MATCH p = (g:File)-[:IMPORTS*1..3]->(f:File {path: want}),\n      (g)<-[c:CLAIMS]-(o:Agent)" },
   ACTIVE,
   NO_HUB,
-  ret("DOWNSTREAM", "g.path", "[n IN nodes(p) | n.path]", "length(p)"),
+  ret("DOWNSTREAM", "g.path", "[n IN nodes(p) | n.path]", "length(p)", BOTH_HUB),
 ];
 
 export const CYPHER = PARTS.map((p) => p.code).join("\n");

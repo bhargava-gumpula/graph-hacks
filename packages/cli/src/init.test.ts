@@ -31,20 +31,26 @@ test("each graph gets its own fixed server port, away from the demo's 8787", () 
   }
 });
 
-test("a fresh repo gets all three configs, wired like this repo's own", () => {
+test("a fresh repo gets Claude Code and Cursor hooks and both MCP configs", () => {
   const repo = tempRepo("my-app");
   const plan = planInit(repo, ROOT);
   expect(plan.graph).toBe("sb_my_app");
   expect(plan.port).toBe(8870);
-  expect(plan.changes.map((c) => c.path.slice(repo.length + 1))).toEqual([".claude/settings.json", ".cursor/hooks.json", ".mcp.json"]);
+  // A local clone: Claude Code's hooks go in the per-machine settings file, never the committed one.
+  expect(plan.changes.map((c) => c.path.slice(repo.length + 1))).toEqual([
+    ".claude/settings.local.json",
+    ".cursor/hooks.json",
+    ".mcp.json",
+    ".cursor/mcp.json",
+  ]);
   applyInit(plan);
 
   // Not a git repo: SB_ROOT pins it. SB_URL sends the hooks to this repo's own server, never the demo's.
   const env = `env SB_GRAPH=sb_my_app SB_URL=http://localhost:8870 SB_PREFIX= SB_ROOT=${repo} ${HOOK}`;
-  const claude = json(repo, ".claude/settings.json");
+  const claude = json(repo, ".claude/settings.local.json");
   expect(claude.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: `${env} claude start`, timeout: 15 }] }]);
   expect(claude.hooks.PreToolUse).toEqual([
-    { matcher: "Edit|MultiEdit|Write|NotebookEdit", hooks: [{ type: "command", command: `${env} claude pre`, timeout: 5 }] },
+    { matcher: "Edit|MultiEdit|Write|NotebookEdit|Bash", hooks: [{ type: "command", command: `${env} claude pre`, timeout: 5 }] },
   ]);
   expect(claude.hooks.PostToolUse[0].hooks[0].command).toBe(`${env} claude post`);
   expect(claude.hooks.SessionEnd[0].hooks[0]).toEqual({ type: "command", command: `${env} claude end`, timeout: 10 });
@@ -53,20 +59,62 @@ test("a fresh repo gets all three configs, wired like this repo's own", () => {
     version: 1,
     hooks: {
       sessionStart: [{ command: `${env} cursor start` }],
-      preToolUse: [{ command: `${env} cursor pre`, matcher: "Write" }],
+      preToolUse: [
+        { command: `${env} cursor pre`, matcher: "Write" },
+        { command: `${env} cursor pre`, matcher: "Delete" },
+      ],
+      beforeShellExecution: [{ command: `${env} cursor pre` }],
       afterFileEdit: [{ command: `${env} cursor post` }],
+      afterShellExecution: [{ command: `${env} cursor post` }],
+      postToolUse: [
+        { command: `${env} cursor notify`, matcher: "Write" },
+        { command: `${env} cursor notify`, matcher: "Shell" },
+      ],
       sessionEnd: [{ command: `${env} cursor end` }],
     },
   });
-  expect(json(repo, ".mcp.json")).toEqual({
-    mcpServers: {
-      switchboard: {
-        command: `${ROOT}/node_modules/.bin/tsx`,
-        args: [`${ROOT}/packages/mcp/src/index.ts`],
-        env: { SB_GRAPH: "sb_my_app", SB_PREFIX: "", SB_ROOT: repo },
-      },
-    },
+  const server = (editor: string) => ({
+    command: `${ROOT}/node_modules/.bin/tsx`,
+    args: [`${ROOT}/packages/mcp/src/index.ts`],
+    env: { SB_GRAPH: "sb_my_app", SB_PREFIX: "", SB_ROOT: repo, SB_EDITOR: editor },
   });
+  expect(json(repo, ".mcp.json")).toEqual({ mcpServers: { switchboard: server("claude") } });
+  expect(json(repo, ".cursor/mcp.json")).toEqual({ mcpServers: { switchboard: server("cursor") } });
+});
+
+test("in a git repo, init makes sure the per-machine settings file is ignored, once", () => {
+  const repo = tempRepo("ignored-app", true);
+  writeFileSync(join(repo, ".gitignore"), "node_modules");
+  applyInit(planInit(repo, ROOT));
+  expect(readFileSync(join(repo, ".gitignore"), "utf8")).toBe("node_modules\n.claude/settings.local.json\n");
+  expect(planInit(repo, ROOT).changes).toEqual([]);
+});
+
+test("--npx names the npm package everywhere: no path on this machine, safe to commit, idempotent", () => {
+  const repo = tempRepo("portable", true);
+  mkdirSync(join(repo, ".claude"));
+  // A local-clone install before: its hooks move out of settings.local.json.
+  writeFileSync(join(repo, ".claude/settings.local.json"), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: `${HOOK} claude pre` }] }] } }));
+  const plan = planInit(repo, ROOT, { npx: true });
+  expect(plan.changes.map((c) => c.path.slice(repo.length + 1))).toEqual([
+    ".claude/settings.json",
+    ".claude/settings.local.json",
+    ".cursor/hooks.json",
+    ".mcp.json",
+    ".cursor/mcp.json",
+  ]);
+  for (const c of plan.changes) expect(c.after).not.toContain(ROOT);
+  applyInit(plan);
+  const env = "env SB_GRAPH=sb_portable SB_URL=http://localhost:" + serverPort("sb_portable") + " SB_PREFIX=";
+  expect(json(repo, ".claude/settings.json").hooks.PreToolUse[0].hooks[0].command).toBe(`${env} npx -y switchboard-agents hook claude pre`);
+  expect(json(repo, ".claude/settings.local.json")).toEqual({});
+  expect(json(repo, ".cursor/hooks.json").hooks.beforeShellExecution).toEqual([{ command: `${env} npx -y switchboard-agents hook cursor pre` }]);
+  expect(json(repo, ".cursor/mcp.json").mcpServers.switchboard).toEqual({
+    command: "npx",
+    args: ["-y", "switchboard-agents", "mcp"],
+    env: { SB_EDITOR: "cursor", SB_GRAPH: "sb_portable", SB_PROJECT_DIR: "${workspaceFolder}" },
+  });
+  expect(planInit(repo, ROOT, { npx: true }).changes).toEqual([]);
 });
 
 test("a git repo resolves paths from its own top level, so worktrees work", () => {
@@ -97,9 +145,9 @@ test("existing settings are merged, the original is kept once in .bak, and a sec
   const claude = json(repo, ".claude/settings.json");
   expect(claude.permissions).toEqual({ allow: ["Bash(ls:*)"] });
   expect(claude.hooks.Stop).toEqual([{ hooks: [{ type: "command", command: "say done" }] }]);
-  expect(claude.hooks.PreToolUse).toHaveLength(2);
-  expect(claude.hooks.PreToolUse[0]).toEqual({ matcher: "Bash", hooks: [{ type: "command", command: "echo mine" }] });
-  expect(claude.hooks.PreToolUse[1].hooks[0].command).toContain(`${HOOK} claude pre`);
+  // The older install's hook left the committed file for the per-machine one.
+  expect(claude.hooks.PreToolUse).toEqual([{ matcher: "Bash", hooks: [{ type: "command", command: "echo mine" }] }]);
+  expect(json(repo, ".claude/settings.local.json").hooks.PreToolUse[0].hooks[0].command).toContain(`${HOOK} claude pre`);
   expect(json(repo, ".mcp.json").mcpServers.other).toEqual({ command: "other-mcp" });
   expect(readFileSync(join(repo, ".claude/settings.json.bak"), "utf8")).toBe(original);
 

@@ -8,6 +8,29 @@ Switchboard stops AI coding agents from breaking each other's code. It checks ev
 
 [![uptime](https://github.com/bhargava-gumpula/graph-hacks/actions/workflows/uptime.yml/badge.svg)](https://github.com/bhargava-gumpula/graph-hacks/actions/workflows/uptime.yml)
 
+<!-- quickstart:start -->
+
+## Quick start
+
+You need Node 22 or newer and Docker (Docker Desktop or OrbStack). The editor hooks also need `jq`.
+
+```bash
+git clone https://github.com/bhargava-gumpula/graph-hacks.git && cd graph-hacks
+npm run quickstart
+```
+
+That is all. It reuses a FalkorDB that already answers on port 6379, or starts one with `docker compose up -d`. Then it installs packages if `node_modules` is missing, creates `.env` from `.env.example`, parses `demo-repo`, builds the web app, starts the server and opens http://localhost:8787/app?tour=1. Run it again any time: finished steps are skipped. `npm run quickstart -- --dry-run` prints the plan and changes nothing; `--no-open` skips the browser.
+
+**Use it on your own repo:**
+
+```bash
+npm run switchboard -- init ~/code/my-app
+```
+
+`init` merges the Switchboard hooks into the repo's `.claude/settings.json` and `.cursor/hooks.json` and adds the MCP server to `.mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.
+
+<!-- quickstart:end -->
+
 ## 30 seconds
 
 Two agents share one repository.
@@ -35,9 +58,9 @@ FalkorDB is the only store. There is no second database and no message broker. R
 | Why: why does this file look like this? | edit → agent → task → decision, plus `SUPERSEDES*1..5` to the newest decision. | Five joins, one of them recursive. |
 | Brief: what should a new agent know first? | `(f)-[:IMPORTS*0..2]-(g)` around the files it will touch, then claims, decisions and lessons on that set. | The same walk, then one join per kind of memory. |
 
-## Quickstart
+## Manual setup
 
-You need Node 22 or newer and Docker running. The first FalkorDB pull is about 200 MB.
+The same steps as `npm run quickstart`, one at a time. You need Node 22 or newer and Docker running. The first FalkorDB pull is about 200 MB.
 
 ```bash
 npm ci && npm run db:up && npm run parse -- demo-repo
@@ -62,7 +85,7 @@ npm run build -w @switchboard/web && npm run server
 
 Open http://localhost:8787/app.
 
-Nothing loads `.env` for you. The defaults in the code match `.env.example`. To change a value, export it, for example `set -a; source .env; set +a`.
+Only `npm run quickstart` reads `.env`, and a variable already set in your shell wins. Every other command reads only the environment; the defaults in the code match `.env.example`. To change a value for them, export it, for example `set -a; source .env; set +a`.
 
 | Variable | Meaning |
 |---|---|

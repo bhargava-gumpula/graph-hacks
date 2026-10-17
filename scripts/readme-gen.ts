@@ -1,6 +1,7 @@
 // Rebuilds the generated parts of README.md from the source of truth. Usage: npm run readme
 //   <!-- cypher:start --> ... <!-- cypher:end -->   the query texts in packages/core/src/queries
 //   <!-- bench:start --> ... <!-- bench:end -->     bench/results.json, and bench/pairs.json when it exists
+//   <!-- quickstart:start --> ... <!-- quickstart:end -->   the Quick start section, written below
 // Idempotent: a second run changes nothing. It needs no database; it only imports the query strings.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -217,6 +218,32 @@ function benchBlock(): string {
   return lines.join("\n");
 }
 
+// ---- quick start -------------------------------------------------------------------------------
+
+/** The two commands a new reader needs, right under the link row. Kept here so a hand edit is not lost. */
+function quickstartBlock(): string {
+  return [
+    "## Quick start",
+    "",
+    "You need Node 22 or newer and Docker (Docker Desktop or OrbStack). The editor hooks also need `jq`.",
+    "",
+    "```bash",
+    "git clone https://github.com/bhargava-gumpula/graph-hacks.git && cd graph-hacks",
+    "npm run quickstart",
+    "```",
+    "",
+    "That is all. It reuses a FalkorDB that already answers on port 6379, or starts one with `docker compose up -d`. Then it installs packages if `node_modules` is missing, creates `.env` from `.env.example`, parses `demo-repo`, builds the web app, starts the server and opens http://localhost:8787/app?tour=1. Run it again any time: finished steps are skipped. `npm run quickstart -- --dry-run` prints the plan and changes nothing; `--no-open` skips the browser.",
+    "",
+    "**Use it on your own repo:**",
+    "",
+    "```bash",
+    "npm run switchboard -- init ~/code/my-app",
+    "```",
+    "",
+    "`init` merges the Switchboard hooks into the repo's `.claude/settings.json` and `.cursor/hooks.json` and adds the MCP server to `.mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.",
+  ].join("\n");
+}
+
 // ---- splice into README ----------------------------------------------------------------------
 
 function splice(text: string, name: string, body: string): string {
@@ -229,7 +256,8 @@ function splice(text: string, name: string, body: string): string {
 }
 
 const before = readFileSync(README, "utf8");
-let after = splice(before, "cypher", await cypherBlock());
+let after = splice(before, "quickstart", quickstartBlock());
+after = splice(after, "cypher", await cypherBlock());
 after = splice(after, "bench", benchBlock());
 if (after !== before) writeFileSync(README, after);
 console.log(after === before ? "README.md is up to date" : "README.md updated");

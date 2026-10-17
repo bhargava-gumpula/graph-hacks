@@ -279,7 +279,12 @@ export function Dashboard() {
           <>
             {chain.slice(0, -1).map((f, i) => (
               <span key={f}>
-                <span className="font-mono text-[12px] text-[var(--fg)]">{name(f)}</span> imports{" "}
+                {i === 0 && (
+                  <>
+                    <span className="font-mono text-[12px] text-[var(--fg)]">{name(f)}</span>{" "}
+                  </>
+                )}
+                imports{" "}
                 <span className="font-mono text-[12px] text-[var(--fg)]">{name(chain[i + 1])}</span>
                 {i < chain.length - 2 ? ", which " : "."}
               </span>
@@ -327,9 +332,8 @@ export function Dashboard() {
   // Each step sets up the canvas; leaving a step (or the tour) puts it back.
   useEffect(() => {
     if (step == null) return;
-    const s = tourSaved.current;
-    setTab(step === "memory" ? "memory" : (s?.tab ?? "feed"));
-    setBatchMode(step === "batches" ? true : (s?.batch ?? false));
+    setTab(step === "memory" ? "memory" : "feed");
+    setBatchMode(step === "batches");
     if (step === "refuse" && !tourPlayed.current) {
       tourPlayed.current = true;
       void playDemo();
@@ -675,7 +679,7 @@ function ServerSentence({ text }: { text: string }) {
   const cut = text.lastIndexOf("A file lock");
   return (
     <>
-      <p className="line-clamp-3 text-[13px] leading-relaxed text-[var(--fg)]/80">{cut > 0 ? text.slice(0, cut) : text}</p>
+      <p className="text-[13px] leading-relaxed text-[var(--fg)]/80">{cut > 0 ? text.slice(0, cut) : text}</p>
       {cut > 0 && <p className="mt-1 text-[13px] font-medium leading-relaxed text-[var(--fg)]">{text.slice(cut)}</p>}
     </>
   );

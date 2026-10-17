@@ -175,7 +175,10 @@ export async function main(editorArg = "claude", eventArg = "pre"): Promise<void
     // Cursor also runs Claude Code hooks; its own hook already handled this event.
     if (editor === "claude" && "cursor_version" in input) return done({});
     const cwd = typeof input.cwd === "string" && input.cwd ? input.cwd : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
-    configure(cwd, editor === "claude" ? "claude-code" : "cursor");
+    const chosen = process.env.SB_GRAPH;
+    const p = configure(cwd, editor === "claude" ? "claude-code" : "cursor");
+    // A plugin is on in every session; outside a git repo (say, ~) there is no project to parse or guard.
+    if (!p.git && !chosen) return done(fallback);
     g = await connect();
     await ensureSchema(g);
     done(await handle(editor, event, input, g));

@@ -18,6 +18,8 @@ function git(dir: string, ...args: string[]): string | undefined {
 }
 
 export interface Project {
+  /** False outside a git repo: the hooks then stay out of the way and nothing is parsed. */
+  git: boolean;
   root: string;
   graph: string;
   agent: string | undefined;
@@ -29,12 +31,13 @@ export interface Project {
  * The agent id is `<editor>@<branch>`, so Claude Code and Cursor on the same branch are two agents.
  */
 export function project(dir: string, editor?: string): Project {
-  const root = git(dir, "rev-parse", "--show-toplevel") ?? resolve(dir);
+  const top = git(dir, "rev-parse", "--show-toplevel");
+  const root = top ?? resolve(dir);
   const common = git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir");
   const main = common ? (basename(common) === ".git" ? dirname(common) : common.replace(/\.git$/, "")) : root;
   const branch = git(dir, "rev-parse", "--abbrev-ref", "HEAD");
   const agent = editor ? (branch && branch !== "HEAD" ? `${editor}@${branch}` : editor) : undefined;
-  return { root, graph: graphName(main), agent };
+  return { git: top !== undefined, root, graph: graphName(main), agent };
 }
 
 /** Fill SB_ROOT, SB_PREFIX, SB_GRAPH and SB_AGENT for core, which reads them on each call. */
@@ -45,5 +48,5 @@ export function configure(dir: string, editor = process.env.SB_EDITOR): Project 
   env.SB_PREFIX ??= "";
   env.SB_GRAPH ??= p.graph;
   if (!env.SB_AGENT && p.agent) env.SB_AGENT = p.agent;
-  return { root: env.SB_ROOT, graph: env.SB_GRAPH, agent: env.SB_AGENT };
+  return { git: p.git, root: env.SB_ROOT, graph: env.SB_GRAPH, agent: env.SB_AGENT };
 }

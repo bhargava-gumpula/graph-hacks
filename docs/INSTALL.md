@@ -140,6 +140,34 @@ Say Claude Code and Cursor both work on one repo, and Cursor edits `src/db.ts` f
 Two sessions with the same agent id never block each other: that is one agent. Two Claude Code sessions on the
 same branch share `claude-code@<branch>`, so give one its own worktree or set `SB_AGENT`.
 
+## Demo: Claude Code and Cursor on one repo, with the live graph
+
+Before the npm package is published, install it from this checkout. Run these from the graph-hacks root.
+
+```bash
+npm run build:plugin
+(cd packages/npm && npm pack && npm i -g ./switchboard-agents-0.1.0.tgz)
+
+# A small repo to fight over: a copy of demo-repo with its own git history.
+cp -R demo-repo ~/sb-demo && cd ~/sb-demo && git init -q && git add -A && git commit -qm init
+switchboard init --cursor      # Cursor hooks + MCP, parses ~/sb-demo into graph sb_sb_demo
+cd -
+
+# The dashboard on that graph (any free port; 8787 and 8788 are taken here).
+npm run build -w @switchboard/web
+SERVER_PORT=8795 SB_GRAPH=sb_sb_demo npm run server     # open http://localhost:8795/app
+```
+
+Then, in two windows:
+
+- **Claude Code** with the plugin: `cd ~/sb-demo && SB_URL=http://localhost:8795 claude --plugin-dir ~/path/to/graph-hacks/plugins/switchboard`
+  (or install it once with `claude plugin marketplace add ~/path/to/graph-hacks` and `claude plugin install switchboard@switchboard`).
+- **Cursor**: `cursor ~/sb-demo`.
+
+Give both the same kind of job, for example "change how sessions expire". Whoever edits first holds the file;
+the other is refused with the import path and the dashboard shows the claim and the refusal as they happen.
+Do not also run `switchboard init --claude` in a repo where the plugin is on: Claude Code would run both hook sets.
+
 ## MCP registry
 
 [`packages/npm/server.json`](../packages/npm/server.json) describes the npm package for the official MCP registry as

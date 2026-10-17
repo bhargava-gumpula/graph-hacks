@@ -3,7 +3,7 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { connect, runMvpScenario, type MvpScenarioResult } from "../packages/core/src/index.js";
+import { connect, resetDemo, runMvpScenario, type MvpScenarioResult } from "../packages/core/src/index.js";
 
 const SESSION = "auth/session.ts";
 const LOGIN = "ui/LoginForm.tsx";
@@ -29,6 +29,7 @@ async function main(): Promise<void> {
   const demo = resolve(process.argv[2] ?? "demo-repo");
   const g = await connect();
   try {
+    await resetDemo(g);
     console.log(format(await runMvpScenario(g, demo)));
   } finally {
     await g.close();

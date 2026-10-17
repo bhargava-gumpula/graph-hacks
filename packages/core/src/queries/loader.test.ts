@@ -2,7 +2,8 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { parseRepo, type ParseResult } from "../parser.js";
 import { useTestGraph } from "../test-helpers.js";
-import { codeGraphCounts, loadParse, RESET_DEMO_EXTRAS } from "./loader.js";
+import { latestSeq } from "./feed.js";
+import { codeGraphCounts, loadParse, missingFiles, resetDemo } from "./loader.js";
 
 const g = useTestGraph("sb_test_loader");
 const parsed = parseRepo(join(import.meta.dirname, "../../../../demo-repo"));
@@ -81,12 +82,38 @@ describe("demo repo", () => {
     expect(await codeGraphCounts(g())).toEqual({ files: 35, imports: 51 });
   });
 
-  test("RESET_DEMO_EXTRAS drops non-demo files and agents only", async () => {
-    await g().query("MERGE (:File {path: 'packages/core/src/x.ts'}) MERGE (:Agent {id: 'A'}) MERGE (:Agent {id: 'stray'})");
-    await g().query(RESET_DEMO_EXTRAS);
+  test("resetDemo with no stray files still drops stray agents, claims and memory", async () => {
+    await g().query(
+      `MERGE (a:Agent {id: 'A'}) MERGE (c:Agent {id: 'C'}) MERGE (b:Agent {id: 'B'})
+       WITH a, b, c
+       MATCH (s:File {path: 'auth/session.ts'}), (l:File {path: 'ui/LoginForm.tsx'})
+       MERGE (c)-[:CLAIMS {until: 9e12}]->(s)
+       MERGE (b)-[:CLAIMS {until: 9e12}]->(l)
+       MERGE (a)-[:EDITED {at: 1}]->(s)
+       MERGE (:Decision {id: 'd1'}) MERGE (:Lesson {id: 'l1'}) MERGE (:Task {id: 't1'})`,
+    );
+    const seq = await latestSeq(g());
+    await resetDemo(g());
     expect(await codeGraphCounts(g())).toEqual({ files: 35, imports: 51 });
-    const [row] = await g().roQuery("MATCH (a:Agent) RETURN collect(a.id) AS ids");
-    expect(row?.ids).toEqual(["A"]);
+    const [row] = await g().roQuery(
+      `MATCH (a:Agent) WITH collect(a.id) AS agents
+       OPTIONAL MATCH ()-[r]->() WHERE type(r) <> 'IMPORTS' WITH agents, count(r) AS edges
+       OPTIONAL MATCH (n) WHERE n:Event OR n:Decision OR n:Lesson OR n:Task
+       RETURN agents, edges, count(n) AS memory`,
+    );
+    expect(row).toEqual({ agents: ["A", "B"], edges: 0, memory: 0 });
+    expect(await latestSeq(g())).toBe(seq);
+  });
+
+  test("resetDemo drops files outside the demo repo", async () => {
+    await g().query("MERGE (:File {path: 'packages/core/src/x.ts'})");
+    await resetDemo(g());
+    expect(await codeGraphCounts(g())).toEqual({ files: 35, imports: 51 });
+  });
+
+  test("missingFiles lists paths that are not File nodes, in input order", async () => {
+    expect(await missingFiles(g(), ["ui/evil.tsx", "auth/session.ts", "x"])).toEqual(["ui/evil.tsx", "x"]);
+    expect(await missingFiles(g(), ["auth/session.ts"])).toEqual([]);
   });
 });
 

@@ -121,3 +121,7 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Not done:** the owner's voice on the video, publishing the blog, and submitting the form.
 - **Goal check:** the conflict, the batches, the why-trace, and the briefing are FalkorDB queries. Memory is events, decisions, and lessons in that graph. Coordination is claims and conflicts. The demo plays from one button. The benchmark is reproducible from `npm run bench`. The owner can say: a path means two agents will collide; no path means they will not. We are inside the Friday window. The landing page and the benchmark were in the plan. The three mockups were cut because the demo was already on this layout.
 - **Tests:** 43/43. Typecheck and lint clean.
+
+## 2026-10-17 01:20 PT: UI rebuild started (owner decision)
+- **Owner's decision:** keep the tested engine, rebuild all UI/UX from scratch following 9 Instagram reels (docs/UI-REELS.md). The old UI is saved at tags `archive/cursor-v1` and `archive/cursor-v1-ui-reels`. Plan in docs/UI-REBUILD.md (U1–U4, freeze Sat 10 PM).
+- **U1:** Tailwind v4 + Motion + GSAP + Phosphor + Geist; one accent (signal orange). The new hero is the **real demo-repo graph drawn in code** (folder columns ui → api → auth → lib): agent A edits crypto.ts, agent B reaches for LoginForm.tsx, the 3-hop path lights up and the edit is refused. Reduced motion shows the final frame. The web tsconfig moved to Bundler resolution (Vite).

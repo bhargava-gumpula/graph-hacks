@@ -1,11 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App.js";
-import { Judge } from "./Judge.js";
-import { Landing } from "./Landing.js";
-import "./style.css";
 
 const path = window.location.pathname;
-const page = path.startsWith("/judge") ? <Judge /> : path.startsWith("/app") ? <App /> : <Landing />;
+const root = createRoot(document.getElementById("root")!);
 
-createRoot(document.getElementById("root")!).render(<StrictMode>{page}</StrictMode>);
+// The landing page is the rebuilt UI (Tailwind + Motion). /app and /judge are rebuilt in phase U3.
+if (path.startsWith("/judge") || path.startsWith("/app")) {
+  void Promise.all([import("./App.js"), import("./Judge.js"), import("./style.css")]).then(([{ App }, { Judge }]) =>
+    root.render(<StrictMode>{path.startsWith("/judge") ? <Judge /> : <App />}</StrictMode>),
+  );
+} else {
+  void Promise.all([import("./Landing.js"), import("./theme.css")]).then(([{ Landing }]) =>
+    root.render(<StrictMode><Landing /></StrictMode>),
+  );
+}

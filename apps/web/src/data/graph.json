@@ -1,0 +1,471 @@
+{
+"nodes": [
+{
+"id": "api/audit.ts",
+"label": "audit.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "api/health.ts",
+"label": "health.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "api/login.ts",
+"label": "login.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "api/notes.ts",
+"label": "notes.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "api/profile.ts",
+"label": "profile.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "api/search.ts",
+"label": "search.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "api/settings.ts",
+"label": "settings.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "api/users.ts",
+"label": "users.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "auth/guards.ts",
+"label": "guards.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "auth/passwords.ts",
+"label": "passwords.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "auth/policy.ts",
+"label": "policy.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "auth/roles.ts",
+"label": "roles.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "auth/session.ts",
+"label": "session.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "auth/tokens.ts",
+"label": "tokens.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "lib/crypto.ts",
+"label": "crypto.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "lib/errors.ts",
+"label": "errors.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "lib/format.ts",
+"label": "format.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "lib/ids.ts",
+"label": "ids.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "lib/prefs.ts",
+"label": "prefs.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "lib/time.ts",
+"label": "time.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "lib/types.ts",
+"label": "types.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "lib/utils.ts",
+"label": "utils.ts",
+"kind": "file",
+"hub": true
+},
+{
+"id": "lib/validate.ts",
+"label": "validate.ts",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/AboutPage.tsx",
+"label": "AboutPage.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/EmptyState.tsx",
+"label": "EmptyState.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/Footer.tsx",
+"label": "Footer.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/Header.tsx",
+"label": "Header.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/LoginForm.tsx",
+"label": "LoginForm.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/NoteEditor.tsx",
+"label": "NoteEditor.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/NotesList.tsx",
+"label": "NotesList.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/SearchBox.tsx",
+"label": "SearchBox.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/SettingsPanel.tsx",
+"label": "SettingsPanel.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/Sidebar.tsx",
+"label": "Sidebar.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/UserBadge.tsx",
+"label": "UserBadge.tsx",
+"kind": "file",
+"hub": false
+},
+{
+"id": "ui/UserMenu.tsx",
+"label": "UserMenu.tsx",
+"kind": "file",
+"hub": false
+}
+],
+"edges": [
+{
+"source": "api/audit.ts",
+"target": "lib/errors.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/audit.ts",
+"target": "lib/time.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/health.ts",
+"target": "lib/time.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/health.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/login.ts",
+"target": "auth/session.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/login.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/notes.ts",
+"target": "lib/types.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/notes.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/notes.ts",
+"target": "lib/validate.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/profile.ts",
+"target": "api/users.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/profile.ts",
+"target": "auth/policy.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/search.ts",
+"target": "api/notes.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/search.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/settings.ts",
+"target": "lib/prefs.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/settings.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/users.ts",
+"target": "lib/ids.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "api/users.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/guards.ts",
+"target": "auth/roles.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/guards.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/passwords.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/passwords.ts",
+"target": "lib/validate.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/policy.ts",
+"target": "auth/roles.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/session.ts",
+"target": "lib/crypto.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/session.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/tokens.ts",
+"target": "lib/ids.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "auth/tokens.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "lib/errors.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "lib/format.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "lib/ids.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "lib/prefs.ts",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/AboutPage.tsx",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/EmptyState.tsx",
+"target": "lib/format.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/Footer.tsx",
+"target": "lib/time.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/Header.tsx",
+"target": "lib/errors.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/Header.tsx",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/LoginForm.tsx",
+"target": "api/login.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/LoginForm.tsx",
+"target": "lib/types.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/LoginForm.tsx",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/NoteEditor.tsx",
+"target": "api/notes.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/NotesList.tsx",
+"target": "api/notes.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/NotesList.tsx",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/SearchBox.tsx",
+"target": "api/search.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/SettingsPanel.tsx",
+"target": "api/settings.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/SettingsPanel.tsx",
+"target": "lib/prefs.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/SettingsPanel.tsx",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/Sidebar.tsx",
+"target": "api/health.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/Sidebar.tsx",
+"target": "auth/policy.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/UserBadge.tsx",
+"target": "api/users.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/UserBadge.tsx",
+"target": "lib/utils.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/UserMenu.tsx",
+"target": "api/profile.ts",
+"kind": "IMPORTS"
+},
+{
+"source": "ui/UserMenu.tsx",
+"target": "api/users.ts",
+"kind": "IMPORTS"
+}
+]
+}

@@ -27,7 +27,7 @@ That is all. It reuses a FalkorDB that already answers on port 6379, or starts o
 npm run switchboard -- init ~/code/my-app
 ```
 
-`init` merges the Switchboard hooks into the repo's `.claude/settings.json` and `.cursor/hooks.json` and adds the MCP server to `.mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. It parses the repo into its own graph (`sb_my_app`) and prints the next steps: start the server on that graph with `SB_GRAPH=sb_my_app npm run server`, then open http://localhost:8787/app. Running it twice changes nothing. `--dry-run` prints the diff.
+`init` merges the Switchboard hooks into the repo's `.claude/settings.json` and `.cursor/hooks.json` and adds the MCP server to `.mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.
 
 <!-- quickstart:end -->
 

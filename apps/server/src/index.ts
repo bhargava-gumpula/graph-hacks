@@ -161,6 +161,13 @@ app.post("/api/edits", rateLimit, async (c) => {
   return c.json({ seq: await recordEdit(g, { agentId: body.agent, path: body.path, taskId: body.task }) });
 });
 
+/** Polling twin of `/api/events`, for proxies that buffer SSE (Cloudflare quick tunnels do). */
+app.get("/api/feed", async (c) => {
+  const last = parse(z.coerce.number().int().min(0), c.req.query("last") ?? "0", c);
+  if (last instanceof Response) return last;
+  return c.json(await feedSince(g, last));
+});
+
 /**
  * SSE feed. Resumes after `?last=` or the browser's `Last-Event-ID` on reconnect.
  * One loop per client: `last` only moves forward, so a row is never sent twice.

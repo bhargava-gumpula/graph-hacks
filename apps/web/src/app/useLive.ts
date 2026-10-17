@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type Batch, type Claim, type Conflict, type Decision, type FeedItem, type Snapshot } from "./api";
+import { api, apiUrl, type Batch, type Claim, type Conflict, type Decision, type FeedItem, type Snapshot } from "./api";
 
-export type LiveStatus = "loading" | "live" | "reconnecting" | "offline";
+export type LiveStatus = "loading" | "live" | "reconnecting" | "replay" | "offline";
 
 /** A conflict the canvas should animate, stamped so the same one never replays. */
 export interface Hit {
   id: number;
   conflict: Conflict;
+  /** Show the path without the impact ripple (e.g. state restored on load). */
+  quiet?: boolean;
 }
 
 /**
  * Everything the dashboard shows, kept fresh: the snapshot and lists are refetched
  * when an event that changes them arrives over SSE (`/api/events`).
  */
-export function useLive() {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- withBatches is wired by the live-data package
+export function useLive(opts: { withBatches?: boolean } = {}) {
   const [graph, setGraph] = useState<Snapshot | null>(null);
   const [claims, setClaims] = useState<Claim[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -47,24 +50,46 @@ export function useLive() {
       }, 250);
     };
 
+    let lastSeq = 0;
+    let poll: ReturnType<typeof setInterval> | undefined;
+    const onItem = (item: FeedItem) => {
+      lastSeq = Math.max(lastSeq, item.seq);
+      // The stream replays history first; only new events animate or trigger refetches.
+      const fresh = item.at >= loadedAt - 2000;
+      if (fresh) counter.current += 1;
+      setEvents((prev) => (prev.some((p) => p.seq === item.seq) ? prev : [item, ...prev].slice(0, 200)));
+      if (!fresh) return;
+      if (item.kind === "conflict" || item.kind === "collision") {
+        const c = (item.payload as { conflicts?: Conflict[] } | null)?.conflicts?.[0];
+        if (c) setHit({ id: item.seq, conflict: c });
+      }
+      if (["claim", "release", "conflict", "decision", "edit", "register", "collision", "lesson", "handoff"].includes(item.kind)) {
+        scheduleRefresh();
+      }
+    };
+
+    // Some proxies (Cloudflare quick tunnels) hold SSE back; if the replay never arrives, poll instead.
+    const startPolling = () => {
+      es?.close();
+      setStatus("live");
+      poll = setInterval(() => {
+        api
+          .feed(lastSeq)
+          .then((items) => items.forEach(onItem))
+          .catch(() => setStatus("reconnecting"));
+      }, 2000);
+    };
+
     const open = (last: number) => {
-      es = new EventSource(`/api/events?last=${last}`);
+      es = new EventSource(apiUrl(`/api/events?last=${last}`));
+      let heard = false;
+      const watchdog = setTimeout(() => !heard && !cancelled && startPolling(), 4000);
       es.onopen = () => setStatus("live");
       es.onerror = () => setStatus("reconnecting");
       es.addEventListener("event", (ev) => {
-        const item = JSON.parse((ev as MessageEvent).data) as FeedItem;
-        // The stream replays history first; only new events animate or trigger refetches.
-        const fresh = item.at >= loadedAt - 2000;
-        if (fresh) counter.current += 1;
-        setEvents((prev) => (prev.some((p) => p.seq === item.seq) ? prev : [item, ...prev].slice(0, 200)));
-        if (!fresh) return;
-        if (item.kind === "conflict" || item.kind === "collision") {
-          const c = (item.payload as { conflicts?: Conflict[] } | null)?.conflicts?.[0];
-          if (c) setHit({ id: item.seq, conflict: c });
-        }
-        if (["claim", "release", "conflict", "decision", "edit", "register", "collision", "lesson", "handoff"].includes(item.kind)) {
-          scheduleRefresh();
-        }
+        heard = true;
+        clearTimeout(watchdog);
+        onItem(JSON.parse((ev as MessageEvent).data) as FeedItem);
       });
     };
 
@@ -90,9 +115,15 @@ export function useLive() {
       cancelled = true;
       es?.close();
       clearInterval(tick);
+      if (poll) clearInterval(poll);
       if (timer) clearTimeout(timer);
     };
   }, [refresh]);
 
-  return { graph, claims, decisions, batches, events, status, graphName, hit, rate, refresh };
+  // Contract placeholders; the live-data package fills these in.
+  const retry = useCallback(() => undefined, []);
+  const replayAt: string | null = null;
+  const seqAtLoad = 0;
+
+  return { graph, claims, decisions, batches, events, status, graphName, hit, rate, refresh, retry, replayAt, seqAtLoad };
 }

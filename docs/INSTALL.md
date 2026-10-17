@@ -182,6 +182,7 @@ Nothing here has been published. Each step is yours to run, in this order.
 # 0. Merge this branch to main and push, so `/plugin marketplace add bhargava-gumpula/graph-hacks` finds the plugin.
 
 # 1. Rebuild the bundles after any change to packages/* (plugins/switchboard/dist is committed).
+#    npm run check:plugin exits 1 when the committed bundles are stale, e.g. after merging a core change.
 npm run build:plugin
 claude plugin validate ./plugins/switchboard && claude plugin validate .
 

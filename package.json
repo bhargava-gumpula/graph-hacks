@@ -27,7 +27,8 @@
     "pairs": "tsx scripts/pairs.ts",
     "readme": "tsx scripts/readme-gen.ts",
     "self": "SB_GRAPH=sb_self tsx packages/cli/src/index.ts",
-    "build:plugin": "node scripts/build-plugin.mjs"
+    "build:plugin": "node scripts/build-plugin.mjs",
+    "check:plugin": "node scripts/build-plugin.mjs --check"
   },
   "bin": {
     "switchboard": "packages/cli/src/index.ts"

@@ -91,7 +91,7 @@ switchboard --help
 
 | Bin | What it is |
 | --- | --- |
-| `switchboard` (also `switchboard-agents`) | The CLI: `init`, `status`, `claim`, `check`, `brief`, `why`, `blast`, `parse`, `decide`, `lesson`, `handoff`, `plan`, `batches`, plus `mcp` and `hook`. |
+| `switchboard` (also `switchboard-agents`) | The CLI: `init`, `status`, `claim`, `check`, `brief`, `why`, `blast`, `parse`, `decide`, `lesson`, `handoff`, `plan`, `batches`, `search`, `hotspots`, plus `mcp` and `hook`. |
 | `switchboard-mcp` | The stdio MCP server. |
 
 `switchboard init [dir] [--cursor] [--claude] [--dry-run]` writes `.cursor/hooks.json` and `.cursor/mcp.json`
@@ -113,6 +113,8 @@ All optional, as environment variables.
 | `SB_URL` | none | A running Switchboard dashboard (from source: `npm run server`), linked in the session brief. |
 | `SWITCHBOARD_OFF` | unset | `1` lets every edit through. |
 | `SB_HOOK_LOG` | `$TMPDIR/switchboard-hook.log` | One line per hook decision. |
+| `SB_HOPS` | `3` | How many import hops the conflict check, blast radius and rounds follow, 1 to 5. Fewer hops means fewer refusals and more missed collisions. |
+| `SB_TYPE_IMPORTS` | unset | `1` counts `import type` edges in conflict paths and rounds. By default they are skipped. |
 
 For the Claude Code plugin, put them in your shell environment or in the `env` block of `~/.claude/settings.json`.
 

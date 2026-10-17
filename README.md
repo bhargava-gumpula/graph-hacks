@@ -80,14 +80,16 @@ That sentence is the reply of `POST /api/demo`. In Claude Code and Cursor the re
 
 ## Why a graph
 
-FalkorDB is the only store. There is no second database and no message broker. Remove it and the claim check, the event feed, the batches, the why-trace and the briefing all stop.
+FalkorDB is the only store. There is no second database and no message broker. Remove it and the claim check, the event feed, the rounds, the why-trace and the briefing all stop.
 
 | Feature | FalkorDB query | Without FalkorDB |
 |---|---|---|
 | Conflict: does this edit reach another agent's claim? | `(f)-[:IMPORTS*1..3]->(g)<-[c:CLAIMS]-(o)` and the reverse direction, hubs skipped. The path comes back. | Two recursive CTEs, one per direction, each with a hand-built path column and a hub filter. A lock table only matches names. |
 | Blast radius: who breaks if this file changes? | `(d)-[:IMPORTS*1..3]->(f {path: $path})`, nearest hop per dependent, with the agents holding claims on each. | A reverse recursive walk, then a join to claims. |
-| Batches: which tasks can run together? | `CALL algo.WCC({nodeLabels: ['Task'], relationshipTypes: ['INTERFERES']})` | Build the pair list yourself, then run union-find in application code. |
+| Rounds: which tasks can run together? | Task footprints, then `(f1)-[:IMPORTS*1..3]->(f2)` between every pair of tasks, in one read query. The pairs are coloured into rounds. | A recursive walk per pair of tasks, then the same colouring. |
 | Hubs: which file is so widely imported that a path through it means nothing? | `CALL algo.pageRank('File', 'IMPORTS')` | Count importers by hand, or write PageRank. |
+| Memory: was this tried before? | `CALL db.idx.fulltext.queryNodes('Decision', $q)` over the decision and its reason. | A separate search index kept in sync with the decisions table. |
+| Hotspots: where do refusals keep happening? | `(e:Event)-[:VIA]->(f:File)` counted per file over a window. | Store each refusal's path as text and parse it back. |
 | Why: why does this file look like this? | edit → agent → task → decision, plus `SUPERSEDES*1..5` to the newest decision. | Five joins, one of them recursive. |
 | Brief: what should a new agent know first? | `(f)-[:IMPORTS*0..2]-(g)` around the files it will touch, then claims, decisions and lessons on that set. | The same walk, then one join per kind of memory. |
 
@@ -157,7 +159,7 @@ Now ask the agent to edit `demo-repo/ui/LoginForm.tsx`. It is refused, and the r
 - **Cursor.** Enable `switchboard` in Settings → Tools & MCP. `.cursor/hooks.json` loads automatically. Cursor drops the output of its session-start hook, so ask the agent to call `brief_me` first.
 - **Off switch.** `SWITCHBOARD_OFF=1`. The hook log is `$TMPDIR/switchboard-hook.log`.
 
-The MCP server exposes 13 tools:
+The MCP server exposes 15 tools:
 
 | Tool | What it does |
 |---|---|
@@ -168,12 +170,14 @@ The MCP server exposes 13 tools:
 | `status` | Every agent and every live claim. |
 | `record_decision` | Write a decision, its reason, and the files it affects. |
 | `record_lesson` | Write a gotcha or a failed approach about some files. |
-| `brief_me` | A briefing for a task or a directory: nearby claims, decisions, lessons, recent events, open tasks, the latest handoff. |
+| `brief_me` | A briefing for a task or a directory: nearby claims, decisions, lessons, recent events, open tasks, the latest handoff. With `about`, also decisions and lessons anywhere that mention its words. |
 | `why` | Trace a file to the edit, the agent, the task and the decision behind it. |
 | `blast_radius` | Files that import this one, hop by hop, and who holds them. |
 | `plan_task` | Open a task and list the files it will touch. |
-| `parallel_batches` | Group open tasks into batches that can run together. |
+| `parallel_batches` | Split open tasks into rounds: tasks in one round can run at the same time, round 0 first. |
 | `handoff` | Give a task to another agent with a note. |
+| `search_memory` | Find decisions and lessons by their words, the reason included. |
+| `hotspots` | Files on the most refused import paths in the last N days. |
 
 ## Graph model
 
@@ -186,7 +190,6 @@ graph LR
   Agent -->|EDITED| File
   Agent -->|WORKS_ON| Task
   Task -->|TOUCHES| File
-  Task -->|INTERFERES| Task
   Task -->|CAUSED_BY| Decision
   Agent -->|MADE| Decision
   Decision -->|AFFECTS| File
@@ -196,6 +199,7 @@ graph LR
   Event -->|BY| Agent
   Event -->|ON| File
   Event -->|UNDER| Task
+  Event -->|VIA| File
 ```
 
 Node labels: `File`, `Agent`, `Task`, `Decision`, `Lesson`, `Event`, and `Meta` (the `seq` counter).
@@ -207,7 +211,6 @@ Node labels: `File`, `Agent`, `Task`, `Decision`, `Lesson`, `Event`, and `Meta` 
 | `EDITED` | Agent → File | The agent wrote the file. |
 | `WORKS_ON` | Agent → Task | The agent is on this task. |
 | `TOUCHES` | Task → File | A task's planned files. |
-| `INTERFERES` | Task → Task | Two open tasks can reach each other through imports. |
 | `MADE` | Agent → Decision | Who made the decision. |
 | `AFFECTS` | Decision → File | A decision applies to a file. |
 | `CAUSED_BY` | Task → Decision | A task exists because of a decision. |
@@ -215,6 +218,7 @@ Node labels: `File`, `Agent`, `Task`, `Decision`, `Lesson`, `Event`, and `Meta` 
 | `ABOUT` | Lesson → File | A lesson applies to a file. |
 | `HANDED_OFF` | Agent → Agent | One agent gave a task to another. |
 | `BY` / `ON` / `UNDER` | Event → Agent / File / Task | An event's agent, file and task. |
+| `VIA` | Event → File | Every file on a refused claim's import path. |
 
 Memory types map to the graph like this. Episodic: `Event` with `BY`, `ON` and `UNDER`. Semantic: `Decision` with `AFFECTS` and `SUPERSEDES`. Procedural: `Lesson` with `ABOUT`. Shared state and handoffs: `CLAIMS`, `WORKS_ON`, `HANDED_OFF`. Per-project tenancy: one graph each.
 
@@ -228,7 +232,7 @@ These are the queries the product depends on. They live in [`packages/core/src/q
 
 ### Conflict
 
-`conflictQuery(3)` in [`packages/core/src/queries/conflict.ts`](packages/core/src/queries/conflict.ts). For each file an agent asks for, find another agent's live claim on the same file (SAME), on a file it imports within 3 hops (UPSTREAM), or on a file that imports it within 3 hops (DOWNSTREAM). The path comes back with the row.
+`conflictQuery(3)` in [`packages/core/src/queries/conflict.ts`](packages/core/src/queries/conflict.ts). For each file an agent asks for, find another agent's live claim on the same file (SAME), on a file it imports within 3 hops (UPSTREAM), or on a file that imports it within 3 hops (DOWNSTREAM). The path comes back with the row. `SB_HOPS` sets the hop limit (1 to 5). A path may not run through a hub or use an `import type` edge; `SB_TYPE_IMPORTS=1` counts type-only imports again.
 
 Why a lock table cannot do this: it compares names, so `LoginForm.tsx` and `session.ts` never meet. Here the import path is the answer.
 
@@ -241,13 +245,13 @@ RETURN want AS file, 'SAME' AS type, f.path AS claimed, [f.path] AS path, 0 AS h
 UNION ALL
 UNWIND $paths AS want
 MATCH p = (f:File {path: want})-[:IMPORTS*1..3]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false)) AND none(r IN relationships(p) WHERE coalesce(r.typeOnly, false))
 RETURN want AS file, 'UPSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n.path] AS path, length(p) AS hops,
        o.id AS agent, c.taskId AS taskId, c.intent AS intent, c.until AS until, coalesce(f.hub, false) OR coalesce(g.hub, false) AS hub
 UNION ALL
 UNWIND $paths AS want
 MATCH p = (g:File)-[:IMPORTS*1..3]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false)) AND none(r IN relationships(p) WHERE coalesce(r.typeOnly, false))
 RETURN want AS file, 'DOWNSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n.path] AS path, length(p) AS hops,
        o.id AS agent, c.taskId AS taskId, c.intent AS intent, c.until AS until, coalesce(f.hub, false) OR coalesce(g.hub, false) AS hub
 ```
@@ -264,10 +268,10 @@ OPTIONAL MATCH (f:File {path: want})<-[c:CLAIMS]-(o:Agent)
 WHERE o.id <> $agent AND c.until > $now
 WITH want, count(c) AS same
 OPTIONAL MATCH p = (f:File {path: want})-[:IMPORTS*1..3]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false)) AND none(r IN relationships(p) WHERE coalesce(r.typeOnly, false))
 WITH want, same, count(c) AS up
 OPTIONAL MATCH p = (g:File)-[:IMPORTS*1..3]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false)) AND none(r IN relationships(p) WHERE coalesce(r.typeOnly, false))
 WITH want, same, up, count(c) AS down
 WITH sum(same + up + down) AS blocked
 WITH blocked WHERE blocked = 0
@@ -285,10 +289,10 @@ OPTIONAL MATCH (f:File {path: want})<-[c:CLAIMS]-(o:Agent)
 WHERE o.id <> $agent AND c.until > $now
 WITH want, count(c) AS same
 OPTIONAL MATCH p = (f:File {path: want})-[:IMPORTS*1..3]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false)) AND none(r IN relationships(p) WHERE coalesce(r.typeOnly, false))
 WITH want, same, count(c) AS up
 OPTIONAL MATCH p = (g:File)-[:IMPORTS*1..3]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false)) AND none(r IN relationships(p) WHERE coalesce(r.typeOnly, false))
 WITH want, same, up, count(c) AS down
 WITH sum(same + up + down) AS blocked
 WITH blocked WHERE blocked = 0
@@ -323,7 +327,7 @@ RETURN DISTINCT m.value AS seq
 
 ### Blast radius
 
-`blastQuery(3)` in [`packages/core/src/queries/blast.ts`](packages/core/src/queries/blast.ts). Every file that imports the changed file within 3 hops, with its nearest hop count and the agents that hold a live claim on it. Zero rows means nothing depends on it.
+`blastQuery(3)` in [`packages/core/src/queries/blast.ts`](packages/core/src/queries/blast.ts). Every file that imports the changed file within 3 hops (`SB_HOPS`), with its nearest hop count and the agents that hold a live claim on it. Zero rows means nothing depends on it. Type-only importers count here: a changed type breaks them at compile time.
 
 Why a lock table cannot do this: it has no idea who depends on a file.
 
@@ -337,7 +341,7 @@ ORDER BY hops, path
 
 ### Interference between tasks
 
-`interfereQuery(3)` in [`packages/core/src/queries/schedule.ts`](packages/core/src/queries/schedule.ts). For every pair of unfinished tasks, find the closest connection between their files: the same file, or an import path within 3 hops either way. The scheduler writes each row as an `INTERFERES` edge.
+`interfereQuery(3)` in [`packages/core/src/queries/schedule.ts`](packages/core/src/queries/schedule.ts). For every pair of unfinished tasks, find the closest connection between their files: the same file, or an import path within 3 hops either way, with the conflict check's hub and type-only rules. It is a read query: the scheduler colours its rows and stores nothing.
 
 Why a lock table cannot do this: a lock exists only once an agent starts editing. This compares tasks before anyone has claimed anything.
 
@@ -349,9 +353,9 @@ UNWIND a.paths AS p1
 UNWIND b.paths AS p2
 MATCH (f1:File {path: p1}), (f2:File {path: p2})
 OPTIONAL MATCH up = (f1)-[:IMPORTS*1..3]->(f2)
-WHERE none(n IN nodes(up)[1..-1] WHERE coalesce(n.hub, false))
+WHERE none(n IN nodes(up)[1..-1] WHERE coalesce(n.hub, false)) AND none(r IN relationships(up) WHERE coalesce(r.typeOnly, false))
 OPTIONAL MATCH down = (f2)-[:IMPORTS*1..3]->(f1)
-WHERE none(n IN nodes(down)[1..-1] WHERE coalesce(n.hub, false))
+WHERE none(n IN nodes(down)[1..-1] WHERE coalesce(n.hub, false)) AND none(r IN relationships(down) WHERE coalesce(r.typeOnly, false))
 WITH a, b, f1, f2, min(length(up)) AS u, min(length(down)) AS d
 WITH a, b, f1.path AS via,
      CASE WHEN f1 = f2 THEN 0 WHEN u IS NULL THEN d WHEN d IS NULL THEN u WHEN u < d THEN u ELSE d END AS hops
@@ -362,22 +366,28 @@ RETURN a, b, best.via AS via, best.hops AS hops
 ORDER BY a, b
 ```
 
-### Parallel batches (WCC)
+### Rounds: tasks that can run at once
 
-`WCC_BATCHES` in [`packages/core/src/queries/schedule.ts`](packages/core/src/queries/schedule.ts). Weakly connected components over the `INTERFERES` edges. Tasks in one component run one after another. Different components can run at the same time.
+`TASK_FOOTPRINTS` in [`packages/core/src/queries/schedule.ts`](packages/core/src/queries/schedule.ts). Every unfinished task's files, planned and claimed. `parallelBatches` passes them to the interference query above, then colours the interference graph: the task with the most interfering tasks goes first, and each task takes the lowest round none of them holds. Tasks in one round can run at the same time; round 0 runs first. On a chain where A touches B and B touches C, A and C share a round. One weakly connected component per batch, the old rule, ran all three in turn. Reading the rounds writes nothing to the graph.
 
 Why a lock table cannot do this: it tells you who is waiting, not which tasks could never have collided.
 
 ```cypher
-CALL algo.WCC({nodeLabels: ['Task'], relationshipTypes: ['INTERFERES']}) YIELD node, componentId
-WITH node, componentId WHERE node.id IN $ids
-RETURN componentId, collect(node.id) AS tasks
-ORDER BY componentId
+MATCH (t:Task)
+WHERE coalesce(t.status, 'open') <> 'done'
+WITH t,
+     [(t)-[:TOUCHES]->(f:File) | f.path] +
+     [(:Agent)-[c:CLAIMS]->(f:File) WHERE c.taskId = t.id AND c.until > $now | f.path] AS paths
+WHERE size(paths) > 0
+UNWIND paths AS path
+WITH t, path ORDER BY path
+RETURN t.id AS id, collect(DISTINCT path) AS paths
+ORDER BY id
 ```
 
 ### Hubs (PageRank)
 
-`MARK_HUBS` in [`packages/core/src/queries/hubs.ts`](packages/core/src/queries/hubs.ts). PageRank over `IMPORTS`, then a flag on heavily imported files (`lib/utils.ts` in the demo repo). A conflict path may not pass through a flagged file, so a shared helper that imports other code cannot chain all its callers into one conflict. In the demo repo `lib/utils.ts` imports nothing, so the rule changes no result there.
+`MARK_HUBS` in [`packages/core/src/queries/hubs.ts`](packages/core/src/queries/hubs.ts). PageRank over `IMPORTS`, then a flag on heavily imported files (`lib/utils.ts` in the demo repo). A conflict path may not pass through a flagged file, so a shared helper that imports other code cannot chain all its callers into one conflict. In the demo repo `lib/utils.ts` imports nothing, so the rule changes no result there. We measured it against `algo.betweenness`; the numbers are under Limits.
 
 Why a lock table cannot do this: it cannot tell a file everyone imports from a file two agents really share, so a path through it would look like a dependency.
 
@@ -391,6 +401,35 @@ WITH f, mean, count(d) AS indegree
 SET f.hub = indegree >= $minDegree OR (indegree >= $floor AND f.rank >= $factor * mean)
 RETURN f.path AS path, f.rank AS rank, indegree, f.hub AS hub
 ORDER BY rank DESC, path
+```
+
+### Memory search (full-text)
+
+`SEARCH_DECISIONS` in [`packages/core/src/queries/search.ts`](packages/core/src/queries/search.ts). The full-text index on `Decision(text, why)`, so a word that only appears in the reason still finds the decision, with the files it affects. `SEARCH_LESSONS` does the same over `Lesson(text)`. The agent's words are cut to plain words joined by OR before they reach the index. `brief_me` with `about` and the `search_memory` tool use it.
+
+Why a lock table cannot do this: it holds names and owners, no text to search.
+
+```cypher
+CALL db.idx.fulltext.queryNodes('Decision', $q) YIELD node, score
+OPTIONAL MATCH (node)-[:AFFECTS]->(f:File)
+WITH node, score, collect(f.path) AS paths
+RETURN 'decision' AS kind, node.id AS id, node.text AS text, node.why AS why, node.status AS status, paths, score
+ORDER BY score DESC, id
+LIMIT $limit
+```
+
+### Refusal hotspots
+
+`HOTSPOTS` in [`packages/core/src/queries/history.ts`](packages/core/src/queries/history.ts). Every refusal is an `Event` linked by `VIA` to each file on its import path. This ranks the files that sat on the most refused paths since `$since`, including files in the middle of a path that nobody asked for.
+
+Why a lock table cannot do this: it forgets a refusal as soon as it answers it.
+
+```cypher
+MATCH (e:Event)-[:VIA]->(f:File)
+WHERE e.kind = 'conflict' AND e.at >= $since
+RETURN f.path AS path, count(DISTINCT e) AS refusals, max(e.at) AS lastAt
+ORDER BY refusals DESC, lastAt DESC, path
+LIMIT $limit
 ```
 
 ### Why
@@ -463,7 +502,7 @@ The plan starts at the live claims, through the index on `CLAIMS(until)`, and wa
 
 ### Why not `shortestPath()`
 
-FalkorDB allows `shortestPath()` only in `WITH` and `RETURN`, and it cannot carry the hub filter. So the query enumerates the paths (at most 3 hops by default, 4 at most) and TypeScript keeps the shortest one per file and agent. The hop bound is written into the query text because Cypher cannot take a parameter as a variable-length bound. It is checked to be an integer from 1 to 4 first.
+FalkorDB allows `shortestPath()` only in `WITH` and `RETURN`, and it cannot carry the hub filter. So the query enumerates the paths (3 hops by default, `SB_HOPS` up to 5) and TypeScript keeps the shortest one per file and agent. The hop bound is written into the query text because Cypher cannot take a parameter as a variable-length bound. It is checked to be an integer from 1 to 5 first.
 
 ## Architecture
 
@@ -535,8 +574,12 @@ Four things we hit, each with a fix in the code.
 
 - TypeScript only. The parser reads static imports, re-exports and `import("literal")`. It does not see `require()` or computed imports.
 - File-level. Two agents editing different functions in the same file still conflict. Two files that share only a database table or a config value do not.
-- At most 3 import hops by default. A collision four or more imports apart is not caught.
+- 3 import hops by default. A collision four or more imports apart is not caught. `SB_HOPS` sets 1 to 5: fewer hops means fewer refusals and more missed collisions.
+- `import type` edges do not count in the conflict check or the rounds, because a type-only import is erased at runtime and usually names a stable interface. A changed type can still break a type-only importer's build; `SB_TYPE_IMPORTS=1` counts them. The blast radius always counts them.
 - Paths do not pass through hubs. Editing a hub such as `lib/utils.ts` conflicts with its importers, but two files that merely share a hub do not conflict.
+- The hub rule is PageRank plus an in-degree floor, tuned on the 35-file demo repo. On this repo's `apps/web` (104 files, at commit `fc51788`) it flags 3 files and drops 13 of the 292 file pairs within 3 value-import hops (4.5%), or 99 of 400 (24.8%) when type-only imports count. We tried `algo.betweenness` with the same shape of rule: it flags 2 files and drops the same pairs there, but on the demo repo it also flags `api/notes.ts` and `api/users.ts` and drops 10 of 72 pairs, so we kept PageRank. A widely imported file that imports nothing, like `lib/utils.ts`, never sits inside a path, so only hubs that import other code change results. Precision and recall against real collisions are not measured.
+- Rounds come from greedy colouring, which is not always the fewest rounds. The interference is recomputed on every read, which costs one path query per pair of open tasks.
+- Memory search matches words of 3 or more letters, with English stemming. It finds words, not meaning.
 - The import graph is live per edit: each edit an agent makes re-parses that one file. Saves people make are picked up by `switchboard watch` (or `SB_WATCH=1` with `SB_REPO` on the server). A change made any other way waits for the next parse. To share one graph across machines, see [docs/CLOUD.md](docs/CLOUD.md).
 - A claim is advice unless the editor runs the hook. Claude Code and Cursor both hard-block a denied edit. An agent with no hook only follows the contract of calling `claim`.
 

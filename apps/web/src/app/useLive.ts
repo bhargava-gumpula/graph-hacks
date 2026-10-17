@@ -172,7 +172,7 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
     const open = () => {
       stop();
       if (polling) return startPolling();
-      const src = new EventSource(apiUrl(`/api/events?last=${lastSeq}`));
+      const src = new EventSource(apiUrl(`/api/events?last=${lastSeq}`), { withCredentials: true });
       es = src;
       // Some proxies (Cloudflare quick tunnels) hold SSE back. After 4 s of silence, ask /api/feed:
       // if it has events the stream never delivered, switch to polling for good; else it was just quiet.

@@ -139,7 +139,9 @@ async function json<T>(res: Response): Promise<T> {
 
 /** API origin; empty means same origin (the server serves the built site). */
 export const apiUrl = (path: string) => `${import.meta.env.VITE_API_URL ?? ""}${path}`;
-const get = <T,>(path: string) => fetch(apiUrl(path)).then((r) => json<T>(r));
+/** Send the visitor cookie even when the API is another origin (www, a split host): it picks this tab's demo graph. */
+const WITH_COOKIE = { credentials: "include" } as const;
+const get = <T,>(path: string) => fetch(apiUrl(path), WITH_COOKIE).then((r) => json<T>(r));
 
 /** Live GET, or the recorded answer in replay mode. */
 function read<T>(path: string, recorded: (r: Replay) => T | undefined): Promise<T> {
@@ -175,7 +177,7 @@ export const api = {
     return read<BriefReply>(`/api/brief${qs ? `?${qs}` : ""}`, (r) => r.brief[task ?? Object.keys(r.brief)[0] ?? ""]);
   },
   demo: () =>
-    replay.data ? replayDemo(replay.data) : fetch(apiUrl("/api/demo"), { method: "POST" }).then((r) => json<DemoReply>(r)),
+    replay.data ? replayDemo(replay.data) : fetch(apiUrl("/api/demo"), { method: "POST", ...WITH_COOKIE }).then((r) => json<DemoReply>(r)),
   claim: (agent: string, paths: string[], task?: string): Promise<ClaimResult> => {
     const r = replay.data;
     if (r) {
@@ -183,6 +185,7 @@ export const api = {
       return Promise.resolve({ ok: conflicts.length === 0, conflicts });
     }
     return fetch(apiUrl("/api/claims"), {
+      ...WITH_COOKIE,
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ agent, paths, task }),

@@ -127,6 +127,22 @@ describe("public server", { timeout: 60_000 }, () => {
     expect(feedB).toEqual([]);
   });
 
+  it("keeps answering after its visitor connection to FalkorDB drops", async () => {
+    const redis = await db.connection;
+    const list = (await redis.sendCommand(["CLIENT", "LIST"])) as string;
+    const ids = list
+      .split("\n")
+      .filter((line) => line.includes(` name=sb-visitors-${graph} `))
+      .map((line) => /\bid=(\d+)/.exec(line)![1]);
+    expect(ids.length).toBe(1);
+    await redis.sendCommand(["CLIENT", "KILL", "ID", ids[0]]);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(proc.exitCode).toBeNull();
+    const res = await fetch(`${base}/api/health`);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { visitor: string }).visitor).toBe("own"); // the client reconnected
+  });
+
   it("sweeps idle visitor graphs and nothing else", async () => {
     const res = await fetch(`${base}/api/health`);
     const name = prefix + cookieOf(res)!;

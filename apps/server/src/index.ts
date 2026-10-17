@@ -162,10 +162,18 @@ if (PUBLIC && repoDir === demoRepo) {
  * story above), named sb_visit_<hex> and swept after 30 idle minutes. Past 200 graphs, or 10 new ones from one IP in
  * 10 minutes, a visitor shares the template as before. Off the public link everyone uses the one graph.
  */
+async function visitorClient(): Promise<FalkorDB> {
+  // Named so an operator (and the test) can find it in CLIENT LIST.
+  const db = await FalkorDB.connect({ ...clientOptions(process.env.FALKORDB_URL ?? "redis://localhost:6379"), name: `sb-visitors-${g.name}` });
+  // As in core's connect(): a dropped connection emits 'error', which kills the process without a listener. The
+  // client reconnects on its own and the failing command rejects into the route's error handler.
+  db.on("error", () => undefined);
+  return db;
+}
 const visitors =
   PUBLIC && process.env.SB_ISOLATE !== "0"
     ? visitorGraphs({
-        db: await FalkorDB.connect(clientOptions(process.env.FALKORDB_URL ?? "redis://localhost:6379")),
+        db: await visitorClient(),
         template: g,
         location: g.location,
         idleMs: Number(process.env.SB_VISIT_IDLE_MS ?? 30 * 60_000),

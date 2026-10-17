@@ -14,12 +14,14 @@ import {
   formatBrief,
   handoff,
   heartbeat,
+  hotspots,
   parallelBatches,
   planTask,
   recordDecision,
   recordLesson,
   registerAgent,
   release,
+  searchMemory,
   status,
   summarizeBrief,
   SWITCHBOARD_VERSION,
@@ -38,7 +40,7 @@ export const INSTRUCTIONS =
   "collides. Paths are relative to the parsed repo (ui/LoginForm.tsx, not demo-repo/ui/LoginForm.tsx). ok=false or " +
   "a refusal names the file, who holds it, the import path and when it frees: do not edit it or work around it " +
   "with Bash; report the path, then pick a safe file or call brief_me. Call brief_me at the start, " +
-  "record_decision when you choose an approach, record_lesson for a gotcha others need, handoff to pass work on, " +
+  "search_memory to find earlier decisions and lessons by their words, record_decision when you choose an approach, record_lesson for a gotcha others need, handoff to pass work on, " +
   "release when done.";
 
 /** brief_me returns at most this many events: the newest per (kind, path, agent). */
@@ -123,7 +125,7 @@ export function createServer(): McpServer {
       title: "Claim files",
       description:
         "Call BEFORE editing files. Checks the import graph for other agents' claims on these files or on files they " +
-        "import / are imported by (up to 3 hops). ok=true: the files are yours until `until`. ok=false: do NOT edit; " +
+        "import / are imported by (up to 3 hops, or SB_HOPS). ok=true: the files are yours until `until`. ok=false: do NOT edit; " +
         "each conflict names the other agent and the import path that links your file to theirs. " +
         "`unknown` lists paths the parser never saw: they were not checked or claimed.",
       inputSchema: z.object({
@@ -264,16 +266,22 @@ export function createServer(): McpServer {
       title: "Brief me",
       description:
         "Call before starting a task or taking over someone else's. Returns nearby claims, active decisions, lessons, " +
-        "recent events and the latest handoff note for a task id or a directory prefix. With neither, the whole repo.",
+        "recent events and the latest handoff note for a task id or a directory prefix. With neither, the whole repo. " +
+        "Pass `about` to also get decisions and lessons anywhere in the repo that mention its words.",
       inputSchema: z.object({
         task: z.string().min(1).optional().describe("Task id"),
         prefix: z.string().optional().describe("Directory prefix, e.g. auth/ ('' or omitted: the whole repo)"),
+        about: z.string().max(500).optional().describe("What you are about to do, in a few words, e.g. 'shorter session ttl'"),
       }),
       outputSchema: z.object({ text: z.string(), summary: z.string().nullable(), brief: z.record(z.string(), z.unknown()) }),
       annotations: { readOnlyHint: true },
     },
-    async ({ task, prefix }) => {
-      const b = await brief(await graph(), { taskId: task, prefix: task === undefined && prefix === undefined ? "" : prefix });
+    async ({ task, prefix, about }) => {
+      const b = await brief(await graph(), {
+        taskId: task,
+        prefix: task === undefined && prefix === undefined ? "" : prefix,
+        text: about,
+      });
       const text = formatBrief(b);
       const summary = await summarizeBrief(text);
       // Events arrive newest first; keep the newest per (kind, path, agent).
@@ -287,6 +295,70 @@ export function createServer(): McpServer {
         })
         .slice(0, BRIEF_EVENTS);
       return reply(summary ? `${text}\n\nSummary: ${summary}` : text, { text, summary, brief: { ...b, events } });
+    },
+  );
+
+  server.registerTool(
+    "search_memory",
+    {
+      title: "Search memory",
+      description:
+        "Find recorded decisions (by their text or their reason) and lessons that mention any of these words, " +
+        "best match first, with the files they are about. Use it before choosing an approach someone may have ruled out.",
+      inputSchema: z.object({
+        words: z.string().min(1).max(500).describe("Plain words, e.g. 'session ttl mobile'. Punctuation is ignored."),
+        limit: z.number().int().min(1).max(20).optional().describe("Most hits to return (default 5)"),
+      }),
+      outputSchema: z.object({
+        hits: z.array(
+          z.object({
+            kind: z.enum(["decision", "lesson"]),
+            id: z.string(),
+            text: z.string(),
+            why: z.string().nullable(),
+            status: z.string().nullable(),
+            paths: z.array(z.string()),
+            score: z.number(),
+          }),
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ words, limit }) => {
+      const hits = await searchMemory(await graph(), words, limit);
+      const text =
+        hits.length === 0
+          ? `nothing recorded mentions: ${words}`
+          : hits
+              .map((h) => `${h.kind} ${h.id}: ${h.text}${h.why ? `. Why: ${h.why}` : ""}${h.paths.length ? ` (${h.paths.join(", ")})` : ""}`)
+              .join("\n");
+      return reply(text, { hits });
+    },
+  );
+
+  server.registerTool(
+    "hotspots",
+    {
+      title: "Refusal hotspots",
+      description:
+        "Files that sat on the most refused import paths in the last N days, most refused first. " +
+        "A file high on this list is where agents keep colliding: plan work around it or split it.",
+      inputSchema: z.object({
+        days: z.number().positive().max(365).optional().describe("Look back this many days (default 7)"),
+        limit: z.number().int().min(1).max(50).optional().describe("Most files to return (default 10)"),
+      }),
+      outputSchema: z.object({
+        hotspots: z.array(z.object({ path: z.string(), refusals: z.number(), lastAt: z.number() })),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ days, limit }) => {
+      const spots = await hotspots(await graph(), { days, limit });
+      const text =
+        spots.length === 0
+          ? "no refusals in that window"
+          : spots.map((h) => `${h.refusals} ${h.path} (last ${new Date(h.lastAt).toISOString()})`).join("\n");
+      return reply(text, { hotspots: spots });
     },
   );
 
@@ -313,7 +385,9 @@ export function createServer(): McpServer {
     "blast_radius",
     {
       title: "Blast radius",
-      description: "Files that import this one, directly or up to 3 hops away, with any agent claiming them. Check before changing an export.",
+      description:
+        "Files that import this one, directly or up to 3 hops away (SB_HOPS changes it), with any agent claiming them. " +
+        "Check before changing an export.",
       inputSchema: z.object({ path }),
       outputSchema: z.object({
         path: z.string(),

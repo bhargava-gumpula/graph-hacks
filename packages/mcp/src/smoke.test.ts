@@ -104,8 +104,15 @@ test("stdio server: tools list, register, status, claim conflict, bad input", as
         "plan_task",
         "parallel_batches",
         "handoff",
+        "search_memory",
+        "hotspots",
       ]),
     );
+    const schemaOf = (name: string) =>
+      (listed.result?.tools?.find((tool) => tool.name === name) as { inputSchema?: { properties?: object } } | undefined)
+        ?.inputSchema?.properties;
+    expect(Object.keys(schemaOf("search_memory") ?? {})).toEqual(["words", "limit"]);
+    expect(Object.keys(schemaOf("hotspots") ?? {})).toEqual(["days", "limit"]);
 
     for (const tool of listed.result?.tools ?? []) {
       expect(tool.description, tool.name).toBeTruthy();
@@ -151,6 +158,20 @@ test("stdio server: tools list, register, status, claim conflict, bad input", as
     const b = briefed.result?.structuredContent?.brief as { files: string[]; events: unknown[] };
     expect(b.files.length).toBeGreaterThan(30);
     expect(b.events.length).toBeLessThanOrEqual(5);
+
+    const spots = await call(12, "tools/call", { name: "hotspots", arguments: {} });
+    expect(spots.result?.structuredContent?.hotspots).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: "api/login.ts", refusals: 2 })]),
+    );
+
+    await call(13, "tools/call", {
+      name: "record_decision",
+      arguments: { text: "keep sessions short", why: "the auditors flagged idle tokens", affects: ["auth/session.ts"] },
+    });
+    const found = await call(14, "tools/call", { name: "search_memory", arguments: { words: "auditors" } });
+    expect(found.result?.structuredContent?.hits).toEqual([
+      expect.objectContaining({ kind: "decision", text: "keep sessions short", paths: ["auth/session.ts"] }),
+    ]);
 
     const bad = await call(7, "tools/call", { name: "claim", arguments: { paths: [] } });
     expect(bad.error ?? bad.result?.isError).toBeTruthy();

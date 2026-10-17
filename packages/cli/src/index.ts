@@ -17,7 +17,10 @@ import {
   ensureSchema,
   findConflicts,
   formatBrief,
+  formatHit,
   handoff,
+  hops,
+  hotspots,
   loadParse,
   markHubs,
   parallelBatches,
@@ -27,6 +30,7 @@ import {
   recordLiveEdit,
   recordLesson,
   release,
+  searchMemory,
   summarizeBrief,
   unknownPaths,
   watchRepo,
@@ -74,7 +78,10 @@ Planning
                                             by an agent or a person (default: the parsed repo)
   blast <file>                              files that import <file>, hop by hop
   plan <task> <file...> [--title text]      open a task with its files
-  batches                                   open tasks grouped into parallel-safe batches
+  batches                                   open tasks in rounds, one line each: tasks on a line can
+                                            run at the same time; run the first line first
+  search <words...>                         decisions and lessons that mention any of these words
+  hotspots [days]                           files on the most refused import paths (default: last 7 days)
 
 Agent id: --agent, else SB_AGENT, else the git branch of the current directory.
 Graph: SB_GRAPH (default sb_demo). FalkorDB: FALKORDB_URL (default redis://localhost:6379; a FalkorDB
@@ -181,6 +188,8 @@ const COMMANDS = new Set([
   "plan",
   "batches",
   "handoff",
+  "search",
+  "hotspots",
 ]);
 
 /** The parsed repo on disk, found the way the hook finds it: SB_REPO, else SB_ROOT or the git top level, plus SB_PREFIX. */
@@ -333,7 +342,7 @@ async function run(flags: Flags): Promise<number> {
       if (res.ok) {
         const checked = files.length - (res.unknown?.length ?? 0);
         if (checked > 0) {
-          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within 3 import hops)`);
+          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within ${plural(hops(), "import hop")})`);
         }
         return 0;
       }
@@ -360,7 +369,7 @@ async function run(flags: Flags): Promise<number> {
       }
       const unknown = await unknownPaths(g, [file]);
       if (unknown.length > 0) warnUnknown(unknown);
-      else console.log(`OK no claim within 3 import hops (${ms} ms)`);
+      else console.log(`OK no claim within ${plural(hops(), "import hop")} (${ms} ms)`);
       return 0;
     }
 
@@ -446,6 +455,23 @@ async function run(flags: Flags): Promise<number> {
       if (!taskId || !flags.to || !flags.note) throw new Error("handoff needs a task, --to, and --note");
       await handoff(g, { from: agent, to: flags.to, taskId, note: flags.note });
       console.log(`handed ${taskId} to ${flags.to}`);
+      return 0;
+    }
+
+    if (command === "search") {
+      if (files.length === 0) throw new Error("search needs words");
+      const hits = await searchMemory(g, files.join(" "), 10);
+      if (hits.length === 0) console.log(`nothing recorded mentions: ${files.join(" ")}`);
+      for (const h of hits) console.log(formatHit(h));
+      return 0;
+    }
+
+    if (command === "hotspots") {
+      const days = files[0] === undefined ? 7 : Number(files[0]);
+      if (!(days > 0)) throw new Error("hotspots takes a positive number of days");
+      const spots = await hotspots(g, { days });
+      if (spots.length === 0) console.log(`no refusals in the last ${days} days`);
+      for (const h of spots) console.log(`${h.refusals} ${h.path}`);
       return 0;
     }
 

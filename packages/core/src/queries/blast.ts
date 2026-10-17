@@ -1,7 +1,6 @@
 import type { SbGraph } from "../graph.js";
 import { normPath } from "../paths.js";
-
-const MAX_K = 4;
+import { hops } from "./conflict.js";
 
 export interface Dependent {
   path: string;
@@ -29,13 +28,15 @@ RETURN count(f) AS n
 /**
  * Q2. Files that import `$path` within k hops (reverse IMPORTS), nearest hop per file.
  * Paths that pass through a hub are skipped (the Q1 rule: only interior hubs are
- * skipped), so a hub's own importers are its blast radius.
+ * skipped), so a hub's own importers are its blast radius. Type-only importers DO
+ * count here, unlike in Q1: changing an exported type breaks them at compile time.
  * `$now` is re-bound with WITH: FalkorDB drops a parameter used inside a pattern
  * comprehension that follows an aggregation (verified on falkordb:latest, Oct 2026).
- * `k` is inlined because Cypher can't take a parameter as a variable-length bound.
+ * `k` is inlined because Cypher can't take a parameter as a variable-length bound;
+ * `hops(k)` validates it (1..5) and applies SB_HOPS.
  */
 export function blastQuery(k: number): string {
-  if (!Number.isInteger(k) || k < 1 || k > MAX_K) throw new Error(`k must be an integer 1..${MAX_K}, got ${k}`);
+  k = hops(k);
   return `
 MATCH p = (d:File)-[:IMPORTS*1..${k}]->(f:File {path: $path})
 WHERE d <> f AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
@@ -49,9 +50,9 @@ ORDER BY hops, path
  * Who would break if `path` changed. With `found: true`, an empty `dependents` is
  * the proof that nothing imports it within k hops: safe to change alone.
  */
-export async function blastRadius(g: SbGraph, file: string, k = 3, now = Date.now()): Promise<BlastRadius> {
+export async function blastRadius(g: SbGraph, file: string, k?: number, now = Date.now()): Promise<BlastRadius> {
   const path = normPath(file);
-  const query = blastQuery(k);
+  const query = blastQuery(hops(k));
   const [exists] = await g.roQuery(FILE_EXISTS, { path });
   if (Number(exists?.n ?? 0) === 0) return { path, found: false, dependents: [], byHop: [] };
 

@@ -4,15 +4,15 @@ Twelve questions, each answered in at most two sentences. Every answer was check
 
 ## 1. Why a graph and not SQL?
 
-Conflict, blast radius and the why-trace are paths of unknown length between moving sets of files. A recursive CTE can walk imports, but you write one per direction and build the path column yourself, while FalkorDB returns the path from `-[:IMPORTS*1..3]->` and runs `algo.WCC` and `algo.pageRank` in one call each.
+Conflict, blast radius and the why-trace are paths of unknown length between moving sets of files. A recursive CTE can walk imports, but you write one per direction and build the path column yourself, while FalkorDB returns the path from `-[:IMPORTS*1..3]->` and runs `algo.pageRank` and full-text search in one call each.
 
 ## 2. How does the conflict query work?
 
 For each file an agent asks for, it looks for another agent's live claim on the same file, on a file the request imports within 3 hops (UPSTREAM), or on a file that imports the request within 3 hops (DOWNSTREAM), and any row is a refusal that carries the path. A hub in the middle of a path is ignored, and an empty result means no live claim sits within 3 hops.
 
-## 3. What does WCC add?
+## 3. How are tasks split into rounds, and why not WCC?
 
-It groups the open tasks whose files can reach each other through imports, so you know which tasks must queue behind each other and which can run at the same time. FalkorDB computes the groups in one call over `INTERFERES` edges that come from the import graph, so nobody types them.
+One read query finds every pair of open tasks whose files sit within 3 import hops of each other, by the same rules as the claim check. The task with the most of those links goes first, and each task takes the lowest round its neighbours leave free. Tasks in a round can run at the same time; round 0 runs first. We used `algo.WCC` at first. A connected component runs a chain A-B-C in turn, though A and C never touch, and WCC needs stored `INTERFERES` edges, so reading the schedule had to write. Rounds put A and C together, and reading them writes nothing.
 
 ## 4. What is the exact hub rule?
 
@@ -32,7 +32,7 @@ AI coding agents wrote almost all of the code: Cursor with Claude Opus 5.5 and G
 
 ## 8. What breaks without FalkorDB?
 
-Everything the product does, because FalkorDB is the only store: the claim check, the event feed (the `seq` counter lives in the graph), the batches, the why-trace and the briefing all stop. The web app then shows a recorded run, labelled as a recording.
+Everything the product does, because FalkorDB is the only store: the claim check, the event feed (the `seq` counter lives in the graph), the rounds, the why-trace and the briefing all stop. The web app then shows a recorded run, labelled as a recording.
 
 ## 9. What happens when two agents claim at once?
 

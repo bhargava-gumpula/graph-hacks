@@ -3,9 +3,6 @@ import type { SbGraph } from "../graph.js";
 /** Range index: file lookups by repo-relative path. */
 export const INDEX_FILE_PATH = "CREATE INDEX FOR (f:File) ON (f.path)";
 
-/** Range index: symbol lookups by `path#name`. */
-export const INDEX_SYMBOL_FQN = "CREATE INDEX FOR (s:Symbol) ON (s.fqn)";
-
 /** Range index: agent lookups by id (usually the branch name). */
 export const INDEX_AGENT_ID = "CREATE INDEX FOR (a:Agent) ON (a.id)";
 
@@ -31,7 +28,7 @@ export const INDEX_CLAIMS_UNTIL = "CREATE INDEX FOR ()-[c:CLAIMS]-() ON (c.until
 export const INDEX_DECISION_FULLTEXT =
   "CREATE FULLTEXT INDEX FOR (d:Decision) ON (d.text, d.why)";
 
-/** Full-text index on Lesson `text`. Same syntax note as the Decision index. */
+/** Full-text index on Lesson `text`. Same syntax note as the Decision index. search.ts queries both. */
 export const INDEX_LESSON_FULLTEXT = "CREATE FULLTEXT INDEX FOR (l:Lesson) ON (l.text)";
 
 /**
@@ -42,7 +39,6 @@ export const SEQ_COUNTER = "MERGE (m:Meta {key:'seq'}) ON CREATE SET m.value = 0
 
 const INDEXES = [
   INDEX_FILE_PATH,
-  INDEX_SYMBOL_FQN,
   INDEX_AGENT_ID,
   INDEX_TASK_ID,
   INDEX_EVENT_SEQ,

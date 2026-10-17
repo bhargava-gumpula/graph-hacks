@@ -42,6 +42,17 @@ test("counts each pair once at its fewest hops, and sees nothing through a hub",
   });
 });
 
+test("a type-only import is skipped like the conflict check skips it, unless SB_TYPE_IMPORTS=1", async () => {
+  await g().query("CREATE (:File {path:'t0'})-[:IMPORTS {typeOnly: true}]->(:File {path:'t1'})");
+  try {
+    expect(await pairCensus(g())).toMatchObject({ files: 17, oneHop: 11, graph: 16 });
+    process.env.SB_TYPE_IMPORTS = "1";
+    expect(await pairCensus(g())).toMatchObject({ files: 17, oneHop: 12, graph: 17 });
+  } finally {
+    delete process.env.SB_TYPE_IMPORTS;
+  }
+});
+
 test("an empty graph has no pairs", async () => {
   await g().query("MATCH (n) DETACH DELETE n");
   expect(await pairCensus(g())).toEqual({ files: 0, pairs: 0, lock: 0, oneHop: 0, graph: 0, hidden: 0, byHop: [] });

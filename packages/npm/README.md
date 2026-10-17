@@ -22,7 +22,7 @@ switchboard init --cursor   # Cursor only
 
 Restart the editor in that repo. Every edit is now claimed for you. Nothing to call.
 
-- `switchboard mcp` (or the `switchboard-mcp` bin) is the stdio MCP server, 13 tools.
+- `switchboard mcp` (or the `switchboard-mcp` bin) is the stdio MCP server, 15 tools.
 - `switchboard status`, `check <file>`, `brief --prefix ""`, `why <file>`, `blast <file>` and more: `switchboard --help`.
 
 Claude Code users can install the plugin instead, which bundles the same hooks, the MCP server and a skill:

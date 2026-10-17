@@ -7,7 +7,7 @@ export { normPath } from "./paths.js";
 
 export { ensureSchema } from "./queries/schema.js";
 
-export { recordEvent } from "./queries/events.js";
+export { recordEvent, viaPaths } from "./queries/events.js";
 export type { EventInput, EventKind } from "./queries/events.js";
 
 export { DEFAULT_FEED_LIMIT, feedSince, latestSeq } from "./queries/feed.js";
@@ -22,7 +22,7 @@ export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
 export { codeGraphCounts, hubMarker, isRepoOf, loadParse, missingFiles, recordLiveEdit, resetDemo, updateFile, watchRepo } from "./queries/loader.js";
 export type { FileUpdate } from "./queries/loader.js";
 
-export { findConflicts, conflictQuery, conflictGuard } from "./queries/conflict.js";
+export { findConflicts, conflictQuery, conflictGuard, hops, MAX_HOPS } from "./queries/conflict.js";
 export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.js";
 
 export { claim, claimQuery, release, unknownPaths, DEFAULT_TTL_MS } from "./queries/claims.js";
@@ -55,3 +55,9 @@ export { summarizeBrief } from "./summarize.js";
 
 export { brief, formatBrief, handoff, NEAR_FILES, recordLesson } from "./queries/brief.js";
 export type { Brief } from "./queries/brief.js";
+
+export { formatHit, fulltextQuery, searchMemory, SEARCH_DECISIONS, SEARCH_LESSONS } from "./queries/search.js";
+export type { MemoryHit } from "./queries/search.js";
+
+export { hotspots, HOTSPOTS } from "./queries/history.js";
+export type { Hotspot } from "./queries/history.js";

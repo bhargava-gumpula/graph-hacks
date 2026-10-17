@@ -38,14 +38,15 @@ Don't work around this with Bash. Pick another file or call brief_me.
 
 ## Leave memory for the next agent
 
-The MCP server `switchboard` has 13 tools. The ones worth calling yourself:
+The MCP server `switchboard` has 15 tools. The ones worth calling yourself:
 
 - `brief_me`: who is working near a file or task, decisions and lessons about it. Call it before a big change.
 - `record_decision`: when you choose an approach others must respect (text, why, affected files).
 - `record_lesson`: a gotcha about a file that the next agent needs.
 - `handoff`: pass a task to another agent with a note.
 - `blast_radius`: the files that import a file, hop by hop, before you change its exports.
-- `status`, `why`, `parallel_batches`, `plan_task`, `release`.
+- `search_memory`: find past decisions and lessons by words, such as "session ttl".
+- `status`, `why`, `hotspots`, `parallel_batches`, `plan_task`, `release`.
 
 Paths are repo-relative, such as `src/db.ts`.
 

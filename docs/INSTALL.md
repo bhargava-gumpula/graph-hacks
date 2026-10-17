@@ -38,7 +38,7 @@ The plugin lives in [`plugins/switchboard`](../plugins/switchboard) and the mark
 | Part | File | What it does |
 | --- | --- | --- |
 | Hooks | `hooks/hooks.json` | `SessionStart`: register the agent, re-parse the repo in the background, add a brief to the context. `PreToolUse` on `Edit\|MultiEdit\|Write\|NotebookEdit`: claim the file, or deny with the import path. `PostToolUse`: record the edit and refresh the import graph in the background. `SessionEnd`: release this agent's claims. |
-| MCP server | `.mcp.json` | `switchboard`, 13 tools (`claim`, `brief_me`, `record_decision`, `handoff`, ...). |
+| MCP server | `.mcp.json` | `switchboard`, 15 tools (`claim`, `brief_me`, `record_decision`, `search_memory`, `hotspots`, ...). |
 | Skill | `skills/switchboard/SKILL.md` | What Switchboard is, how to read a refusal, what to do next. |
 | Runtime | `dist/*.mjs` | The hook, the MCP server and the CLI, bundled with esbuild by `npm run build:plugin`. |
 
@@ -91,7 +91,7 @@ switchboard --help
 
 | Bin | What it is |
 | --- | --- |
-| `switchboard` (also `switchboard-agents`) | The CLI: `init`, `status`, `claim`, `check`, `brief`, `why`, `blast`, `parse`, `decide`, `lesson`, `handoff`, `plan`, `batches`, plus `mcp` and `hook`. |
+| `switchboard` (also `switchboard-agents`) | The CLI: `init`, `status`, `claim`, `check`, `brief`, `why`, `blast`, `parse`, `decide`, `lesson`, `handoff`, `plan`, `batches`, `search`, `hotspots`, plus `mcp` and `hook`. |
 | `switchboard-mcp` | The stdio MCP server. |
 
 `switchboard init [dir] [--cursor] [--claude] [--dry-run]` writes `.cursor/hooks.json` and `.cursor/mcp.json`
@@ -113,6 +113,8 @@ All optional, as environment variables.
 | `SB_URL` | none | A running Switchboard dashboard (from source: `npm run server`), linked in the session brief. |
 | `SWITCHBOARD_OFF` | unset | `1` lets every edit through. |
 | `SB_HOOK_LOG` | `$TMPDIR/switchboard-hook.log` | One line per hook decision. |
+| `SB_HOPS` | `3` | How many import hops the conflict check, blast radius and rounds follow, 1 to 5. Fewer hops means fewer refusals and more missed collisions. |
+| `SB_TYPE_IMPORTS` | unset | `1` counts `import type` edges in conflict paths and rounds. By default they are skipped. |
 
 For the Claude Code plugin, put them in your shell environment or in the `env` block of `~/.claude/settings.json`.
 

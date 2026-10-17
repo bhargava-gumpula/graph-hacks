@@ -254,7 +254,7 @@ app.get("/api/check", async (c) => {
   return c.json({ conflicts: await findConflicts(g, { agent: q.agent, paths: [q.path] }) });
 });
 
-// parallelBatches rebuilds INTERFERES edges, so it is rate limited like the other writes.
+// parallelBatches writes nothing, but it runs a path query over every pair of open tasks, so it is rate limited.
 app.get("/api/batches", limit(60), async (c) => c.json(await parallelBatches(g)));
 
 app.get("/api/decisions", async (c) => c.json(await listDecisions(g)));

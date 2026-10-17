@@ -60,9 +60,9 @@ describe("waits", () => {
     const res = await claim(g(), { agent: CURSOR, paths: [LOGIN] });
     if (res.ok) throw new Error("expected a conflict");
     const waitsBefore = (await events("wait")).length;
-    expect(await recordWaits(g(), { agent: CURSOR, wanted: LOGIN, conflicts: res.conflicts })).toBe(1);
+    expect(await recordWaits(g(), { agent: CURSOR, conflicts: res.conflicts })).toBe(1);
     // A second refusal on the same file is the same wait: no new event.
-    expect(await recordWaits(g(), { agent: CURSOR, wanted: LOGIN, conflicts: res.conflicts })).toBe(0);
+    expect(await recordWaits(g(), { agent: CURSOR, conflicts: res.conflicts })).toBe(0);
     expect((await events("wait")).slice(waitsBefore)).toEqual([
       { agent: CURSOR, path: SESSION, holder: CLAUDE, via: [LOGIN, "api/login.ts", SESSION] },
     ]);
@@ -95,7 +95,7 @@ describe("waits", () => {
     await claim(g(), { agent: CLAUDE, paths: [SESSION], ttlMs: 1000, now: t0 });
     const res = await claim(g(), { agent: CURSOR, paths: [LOGIN], now: t0 + 10 });
     if (res.ok) throw new Error("expected a conflict");
-    await recordWaits(g(), { agent: CURSOR, wanted: LOGIN, conflicts: res.conflicts, now: t0 + 10 });
+    await recordWaits(g(), { agent: CURSOR, conflicts: res.conflicts, now: t0 + 10 });
     const freesBefore = (await events("free")).length;
     const n = await waitNotices(g(), CURSOR, t0 + 5000);
     expect(n.freed).toEqual([{ held: SESSION, wanted: LOGIN }]);
@@ -107,7 +107,7 @@ describe("waits", () => {
     await claim(g(), { agent: CLAUDE, paths: [SESSION] });
     const res = await claim(g(), { agent: CURSOR, paths: [LOGIN] });
     if (res.ok) throw new Error("expected a conflict");
-    await recordWaits(g(), { agent: CURSOR, wanted: LOGIN, conflicts: res.conflicts });
+    await recordWaits(g(), { agent: CURSOR, conflicts: res.conflicts });
     await release(g(), { agent: CURSOR });
     expect(await waitEdges()).toEqual([]);
   });

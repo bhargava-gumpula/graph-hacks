@@ -56,7 +56,7 @@ export function isSourcePath(path: string): boolean {
  * ponytail: a subset of git's rules; `git ls-files` would be exact but needs git and a checkout.
  */
 export function gitignore(root: string): (path: string) => boolean {
-  let text = "";
+  let text: string;
   try {
     text = readFileSync(join(root, ".gitignore"), "utf8");
   } catch {

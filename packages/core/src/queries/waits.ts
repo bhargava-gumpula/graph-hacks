@@ -77,18 +77,15 @@ async function event(g: SbGraph, kind: "wait" | "free", payload: unknown, agentI
   return readSeq(rows, kind);
 }
 
-/** A refused agent waits on each claimed file that blocked `wanted`. Records a `wait` event per new wait. */
-export async function recordWaits(
-  g: SbGraph,
-  input: { agent: string; wanted: string; conflicts: Conflict[]; now?: number },
-): Promise<number> {
+/** A refused agent waits on each claimed file that blocked it. Records a `wait` event per new wait. */
+export async function recordWaits(g: SbGraph, input: { agent: string; conflicts: Conflict[]; now?: number }): Promise<number> {
   const now = input.now ?? Date.now();
   let started = 0;
   const seen = new Set<string>();
   for (const c of input.conflicts) {
     if (c.agent === input.agent || seen.has(c.claimed)) continue;
     seen.add(c.claimed);
-    const rows = await g.query(WAIT_FOR, { agent: input.agent, held: c.claimed, wanted: input.wanted, holder: c.agent, via: c.path, at: now });
+    const rows = await g.query(WAIT_FOR, { agent: input.agent, held: c.claimed, wanted: c.file, holder: c.agent, via: c.path, at: now });
     if (rows[0]?.fresh !== true) continue;
     started++;
     await event(g, "wait", { agent: input.agent, path: c.claimed, holder: c.agent, via: c.path }, input.agent, c.claimed, now);

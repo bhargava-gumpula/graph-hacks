@@ -60,8 +60,8 @@ export function Query() {
     <section className="mx-auto max-w-7xl px-5 py-20 md:px-8 md:py-28">
       <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="min-w-0">
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One query decides.</h2>
-          <p className="mt-5 max-w-[52ch] text-lg leading-relaxed text-[var(--muted)]">
+          <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One query decides.</h2>
+          <p className="mt-5 max-w-[52ch] text-pretty text-lg leading-relaxed text-[var(--muted)]">
             The check is one Cypher query in FalkorDB: three path matches joined by UNION ALL. Point at a line to see what it does.
           </p>
         </div>
@@ -85,14 +85,15 @@ export function Query() {
           })}
         </pre>
         <div className="lg:col-start-2 lg:row-start-2">
-          <div className="min-h-[11rem] lg:sticky lg:top-32 lg:min-h-0" aria-live="polite">
-            <AnimatePresence mode="wait" initial={false}>
+          <div className="relative min-h-[11rem] lg:sticky lg:top-32 lg:min-h-0" aria-live="polite">
+            {/* popLayout: the new note enters while the old one leaves, so it is readable in about 150 ms. */}
+            <AnimatePresence mode="popLayout" initial={false}>
               <motion.p
                 key={active}
-                initial={reduce ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduce ? undefined : { opacity: 0, y: -8 }}
-                transition={{ duration: 0.25 }}
+                initial={reduce ? false : { opacity: 0, transform: "translateY(4px)" }}
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.1 } }}
+                transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
                 className="text-xl font-medium leading-snug tracking-tight md:text-2xl"
               >
                 {NOTES[active]}

@@ -221,8 +221,8 @@ export function Breakdown() {
   return (
     <section id="how" ref={ref} className="mx-auto max-w-7xl px-5 py-24 md:px-8 md:py-32">
       <div className="max-w-2xl">
-        <h2 className="text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One graph, four layers.</h2>
-        <p className="mt-5 max-w-[56ch] text-lg leading-relaxed text-[var(--muted)]">
+        <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One graph, four layers.</h2>
+        <p className="mt-5 max-w-[56ch] text-pretty text-lg leading-relaxed text-[var(--muted)]">
           Claims live next to the code they touch, so a collision is just a path between two of them.
         </p>
       </div>
@@ -273,14 +273,14 @@ export function Breakdown() {
               <l.Icon size={22} weight="duotone" className="mt-1 shrink-0 text-[var(--signal-text)]" />
               <div className="min-w-0">
                 <h3 className={`text-lg font-medium transition-colors ${active === i ? "text-[var(--signal-text)]" : ""}`}>{l.name}</h3>
-                <div className="mt-1 min-h-[3.25rem] max-w-[48ch]">
-                  <AnimatePresence mode="wait" initial={false}>
+                <div className="relative mt-1 min-h-[3.25rem] max-w-[48ch]">
+                  <AnimatePresence mode="popLayout" initial={false}>
                     <motion.p
                       key={active === i ? "can" : "body"}
-                      initial={reduce ? false : { opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={reduce ? undefined : { opacity: 0, y: -6 }}
-                      transition={{ duration: 0.18 }}
+                      initial={reduce ? false : { opacity: 0, transform: "translateY(4px)" }}
+                      animate={{ opacity: 1, transform: "translateY(0px)" }}
+                      exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.1 } }}
+                      transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
                       className={active === i ? "font-mono text-[15px] leading-relaxed text-[var(--fg)]" : "leading-relaxed text-[var(--muted)]"}
                     >
                       {active === i ? l.can : l.body}

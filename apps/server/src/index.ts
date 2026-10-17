@@ -1,6 +1,8 @@
 // Switchboard HTTP server: read routes for the web UI, a few demo/hook writes, and the SSE feed.
 // Contract: docs/api.md. FalkorDB is the only store; the server keeps no state beyond a rate-limit window.
 // SB_PUBLIC=1 locks the write routes down for a public link (see the claims and edits routes).
+// The graph is live per edit: POST /api/edits re-parses that one file first. SB_REPO is the parsed repo
+// on disk (default demo-repo); SB_WATCH=1 also watches it, so a person's saves update the graph too.
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import {
@@ -18,20 +20,26 @@ import {
   findConflicts,
   formatBrief,
   graphSnapshot,
+  hubMarker,
   interfereQuery,
+  isRepoOf,
   latestSeq,
   listClaims,
   listDecisions,
   MARK_HUBS,
   missingFiles,
   NEAR_FILES,
+  normPath,
   parallelBatches,
   recordEdit,
   resetDemo,
   runMvpScenario,
+  updateFile,
+  watchRepo,
   WCC_BATCHES,
   WHY_TRACE,
   whyTrace,
+  type FileUpdate,
   type SbGraph,
 } from "@switchboard/core";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
@@ -39,7 +47,7 @@ import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { z } from "zod";
 
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
@@ -54,12 +62,18 @@ const RESEED_EVERY_MS = 20 * 60_000;
 const IDLE_MS = 10 * 60_000; // claims live 30 min, so an idle demo graph is replayed before it empties
 const webDist = join(import.meta.dirname, "../../web/dist");
 const demoRepo = join(import.meta.dirname, "../../../demo-repo");
+const repoDir = process.env.SB_REPO ? resolve(process.env.SB_REPO) : demoRepo;
 const startedAt = Date.now();
 let lastWrite = 0;
 let lastResetAt: number | null = null;
 
 const g: SbGraph = await connect();
 await ensureSchema(g);
+const remarkHubs = hubMarker(g);
+
+/** One line per live graph change, e.g. `graph updated ui/A.tsx +lib/b.ts -lib/c.ts (3.1 ms)`. */
+const updateLine = (u: FileUpdate) =>
+  `graph ${u.status} ${u.path}${u.added.map((t) => ` +${t}`).join("")}${u.removed.map((t) => ` -${t}`).join("")} (${u.ms} ms)`;
 
 interface DemoReply {
   sentence: string;
@@ -97,6 +111,10 @@ async function storyIntact(): Promise<boolean> {
 
 // A fresh graph (first start, or FalkorDB lost its data) gets the demo right away; so does a public start with a broken story.
 if ((await codeGraphCounts(g)).files === 0 || (PUBLIC && !(await storyIntact()))) await runDemo();
+// Per-edit re-parse only against the repo this graph came from (see isRepoOf); else edits are just recorded.
+const liveRepo = (await isRepoOf(g, repoDir)) ? repoDir : null;
+if (!liveRepo) console.warn(`${repoDir} is not the repo in graph ${g.name}: edits are recorded, not re-parsed. Set SB_REPO to the repo's directory.`);
+
 if (PUBLIC) {
   // Checked every minute, not on idle time: steady claim traffic must not starve the replay.
   setInterval(() => {
@@ -169,7 +187,9 @@ app.get("/api/health", async (c) => {
   const { files } = await codeGraphCounts(g);
   const dbMs = Math.round((performance.now() - started) * 10) / 10;
   const uptimeS = Math.round((Date.now() - startedAt) / 1000);
-  return c.json({ ok: true, graph: g.name, seq: await latestSeq(g), files, dbMs, uptimeS, lastResetAt });
+  // Where the graph lives (local, cloud or remote). The host only off the public link, never credentials.
+  const db = PUBLIC ? { where: g.location.where } : { where: g.location.where, host: g.location.host };
+  return c.json({ ok: true, graph: g.name, db, seq: await latestSeq(g), files, dbMs, uptimeS, lastResetAt });
 });
 
 /** The Cypher behind each feature, exactly as the server runs it (k = 3), for the "show the query" panels. */
@@ -258,7 +278,11 @@ app.post("/api/claims", limit(20), async (c) => {
   return c.json(await claim(g, { agent: body.agent, paths: body.paths, ttlMs: PUBLIC_TTL_MS }));
 });
 
-/** Editor hook: POST { agent, path, task? } after a file edit. Off in public mode. */
+/**
+ * Editor hook: POST { agent, path, task? } after a file edit. Off in public mode.
+ * Re-parses that file first, so the edit's own collision check and the dashboard's refetch (on the
+ * `edit` event) already see its new imports. A failed re-parse never loses the edit.
+ */
 app.post("/api/edits", limit(60), async (c) => {
   if (PUBLIC) return c.json({ error: "not found" }, 404);
   const body = parse(
@@ -268,7 +292,15 @@ app.post("/api/edits", limit(60), async (c) => {
   );
   if (body instanceof Response) return body;
   lastWrite = Date.now();
-  return c.json({ seq: await recordEdit(g, { agentId: body.agent, path: body.path, taskId: body.task }) });
+  const path = normPath(body.path);
+  const graph = liveRepo
+    ? await updateFile(g, liveRepo, path, { agentId: body.agent }).catch((err: unknown) => {
+        console.error(`re-parse ${path} failed:`, err instanceof Error ? err.message : err);
+        return null;
+      })
+    : null;
+  if (graph?.seq) remarkHubs();
+  return c.json({ seq: await recordEdit(g, { agentId: body.agent, path, taskId: body.task }), graph });
 });
 
 /** Where a feed starts: after `from` when the client says, else the last REPLAY events. */
@@ -335,10 +367,16 @@ app.get("*", (c) => {
 });
 
 const server = serve({ fetch: app.fetch, port: PORT, hostname: HOST }, () => {
-  console.log(`switchboard server http://${HOST}:${PORT} graph=${g.name}${PUBLIC ? " public" : ""}`);
+  console.log(`switchboard server http://${HOST}:${PORT} graph=${g.name} db=${g.location.where}${PUBLIC ? " public" : ""}`);
 });
 
+// Human saves too. Never on the public link: visitors do not edit files.
+const watcher =
+  process.env.SB_WATCH === "1" && !PUBLIC && liveRepo ? watchRepo(g, liveRepo, { onUpdate: (u) => console.log(updateLine(u)) }) : null;
+if (watcher) console.log(`watching ${liveRepo} for saves`);
+
 const shutdown = async () => {
+  watcher?.close();
   server.close();
   await g.close();
   process.exit(0);

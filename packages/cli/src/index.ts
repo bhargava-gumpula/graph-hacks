@@ -7,6 +7,7 @@ import {
   agentId,
   blastRadius,
   heartbeat,
+  isRepoOf,
   registerAgent,
   status,
   brief,
@@ -18,6 +19,8 @@ import {
   formatBrief,
   handoff,
   loadParse,
+  markHubs,
+  normPath,
   parallelBatches,
   parseRepo,
   planTask,
@@ -27,9 +30,13 @@ import {
   release,
   summarizeBrief,
   unknownPaths,
+  updateFile,
+  watchRepo,
   whyTrace,
   type AgentKind,
   type Conflict,
+  type FileUpdate,
+  type SbGraph,
 } from "@switchboard/core";
 import { applyInit, lineDiff, planInit, SWITCHBOARD_ROOT } from "./init.js";
 
@@ -49,7 +56,7 @@ Agents and claims
                                             Paths are repo-relative; demo-repo/, ./ and absolute
                                             paths are normalised. A file the parser never saw
                                             prints a WARNING: nothing was checked.
-  edited <file> [--task T]                  record that you edited <file>
+  edited <file> [--task T]                  record that you edited <file> and re-parse its imports
 
 Memory
   decide <text> --why <why> --affects <file> [--affects <file>...] [--task T]
@@ -65,12 +72,16 @@ Setup
 
 Planning
   parse [dir]                               load a repo's import graph (default demo-repo)
+  watch [dir]                               keep the graph live: re-parse each file as it is saved,
+                                            by an agent or a person (default: the parsed repo)
   blast <file>                              files that import <file>, hop by hop
   plan <task> <file...> [--title text]      open a task with its files
   batches                                   open tasks grouped into parallel-safe batches
 
 Agent id: --agent, else SB_AGENT, else the git branch of the current directory.
-Graph: SB_GRAPH (default sb_demo). FalkorDB: FALKORDB_URL (default redis://localhost:6379).
+Graph: SB_GRAPH (default sb_demo). FalkorDB: FALKORDB_URL (default redis://localhost:6379; a FalkorDB
+Cloud rediss:// URL works too, see docs/CLOUD.md). Repo on disk: SB_REPO, else the git top level plus
+SB_PREFIX (default demo-repo).
 Exit codes: 0 ok, 1 error or bad usage, 2 conflict.`;
 
 interface Flags {
@@ -159,6 +170,7 @@ const COMMANDS = new Set([
   "heartbeat",
   "status",
   "parse",
+  "watch",
   "claim",
   "release",
   "check",
@@ -172,6 +184,38 @@ const COMMANDS = new Set([
   "batches",
   "handoff",
 ]);
+
+/** The parsed repo on disk, found the way the hook finds it: SB_REPO, else SB_ROOT or the git top level, plus SB_PREFIX. */
+function repoDir(): string {
+  if (process.env.SB_REPO) return resolve(process.env.SB_REPO);
+  const git = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  const top = process.env.SB_ROOT ?? (git.status === 0 ? git.stdout.trim() : process.cwd());
+  return join(top, process.env.SB_PREFIX ?? "demo-repo");
+}
+
+/** `+lib/a.ts -lib/b.ts`, the imports a file gained and lost. */
+const importDelta = (u: FileUpdate) => [...u.added.map((t) => `+${t}`), ...u.removed.map((t) => `-${t}`)].join(" ");
+
+/** `watch`: one line per graph change until Ctrl-C. */
+async function watchCmd(g: SbGraph, dir: string): Promise<number> {
+  if (!existsSync(dir)) throw new Error(`no such directory: ${dir}`);
+  const counts = await codeGraphCounts(g);
+  const where = g.location.where === "local" ? "local FalkorDB" : `${g.location.where} FalkorDB at ${g.location.host}`;
+  console.log(`watching ${dir} -> graph ${g.name} on ${where} (${counts.files} files, ${counts.imports} imports). Ctrl-C stops.`);
+  if (counts.files === 0) console.log(`The graph is empty. Load the repo once first: switchboard parse ${dir}`);
+  else if (!(await isRepoOf(g, dir))) console.log(`WARNING ${dir} does not look like the repo in graph ${g.name}. Check SB_GRAPH.`);
+  const time = () => new Date().toTimeString().slice(0, 8);
+  const watcher = watchRepo(g, dir, {
+    onUpdate: (u) => console.log(`${time()} ${u.status} ${u.path}${u.added.length + u.removed.length ? ` ${importDelta(u)}` : ""} (${u.ms} ms)`),
+    onError: (err) => console.error(`${time()} ${err instanceof Error ? err.message : err}`),
+  });
+  await new Promise<void>((done) => {
+    process.once("SIGINT", done);
+    process.once("SIGTERM", done);
+  });
+  watcher.close();
+  return 0;
+}
 
 /** `init`: write the merged configs, parse the repo into its graph, print what to do next. */
 async function init(flags: Flags): Promise<number> {
@@ -210,7 +254,7 @@ async function init(flags: Flags): Promise<number> {
   const steps = [
     `cd ${SWITCHBOARD_ROOT}`,
     ...(existsSync(join(SWITCHBOARD_ROOT, "apps/web/dist/index.html")) ? [] : ["npm run build -w @switchboard/web"]),
-    `SERVER_PORT=${plan.port} SB_GRAPH=${plan.graph} npm run server`,
+    `SERVER_PORT=${plan.port} SB_GRAPH=${plan.graph} SB_REPO=${/\s/.test(plan.repo) ? `"${plan.repo}"` : plan.repo} SB_WATCH=1 npm run server`,
   ];
   console.log(`
 Next steps:
@@ -218,7 +262,7 @@ Next steps:
        ${steps.join(" && ")}
   2. Open http://localhost:${plan.port}/app to watch claims and conflicts.
   3. Run claude or cursor in ${plan.repo}. Approve the switchboard MCP server when asked.
-     Re-parse after big changes: ${parseCmd}`);
+     The graph updates on every save (SB_WATCH=1). After a branch switch or a big refactor: ${parseCmd}`);
   if (spawnSync("jq", ["--version"]).status !== 0) {
     console.log("\nWarning: jq is not installed, so the hooks let every edit through. Install it (brew install jq).");
   }
@@ -279,6 +323,11 @@ async function run(flags: Flags): Promise<number> {
       return 0;
     }
 
+    if (command === "watch") {
+      if (files.length > 1) throw new Error("watch takes one directory");
+      return await watchCmd(g, resolve(files[0] ?? repoDir()));
+    }
+
     if (command === "claim") {
       if (files.length === 0) throw new Error("claim needs at least one file");
       const res = await claim(g, { agent, paths: files, taskId: flags.task, intent: flags.intent });
@@ -320,8 +369,12 @@ async function run(flags: Flags): Promise<number> {
     if (command === "edited") {
       const file = files[0];
       if (!file || files.length !== 1) throw new Error("edited needs one file");
+      // Re-parse first so the edit's collision check sees the file's new imports.
+      const dir = repoDir();
+      const u = (await isRepoOf(g, dir)) ? await updateFile(g, dir, normPath(file), { agentId: agent }) : null;
+      if (u?.seq) await markHubs(g);
       const seq = await recordEdit(g, { agentId: agent, path: file, taskId: flags.task });
-      console.log(`edited ${file} seq=${seq}`);
+      console.log(`edited ${file} seq=${seq}${u?.seq ? ` imports ${importDelta(u) || u.status}` : ""}`);
       return 0;
     }
 

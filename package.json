@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "quickstart": "node scripts/quickstart.mjs",
+    "app": "node scripts/app.mjs",
     "test": "vitest run",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",

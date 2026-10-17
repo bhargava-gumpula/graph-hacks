@@ -29,7 +29,7 @@ describe("project", () => {
     const b = project(wt, "cursor");
     expect(a.graph).toBe("sb_my_app");
     expect(b.graph).toBe("sb_my_app");
-    expect(a.agent).toBe("claude-code@main");
+    expect(a.agent).toBe("claude@main");
     expect(b.agent).toBe("cursor@feature");
     expect(a.git && b.git).toBe(true);
   });

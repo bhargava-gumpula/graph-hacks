@@ -2,6 +2,7 @@
 // The repo's own scripts set SB_GRAPH, SB_PREFIX and SB_ROOT themselves; this only fills what is unset.
 import { execFileSync } from "node:child_process";
 import { basename, dirname, resolve } from "node:path";
+import { agentId, editorName } from "../../core/src/agent-id.js";
 import { graphName } from "../../cli/src/init.js";
 
 function git(dir: string, ...args: string[]): string | undefined {
@@ -28,15 +29,16 @@ export interface Project {
 /**
  * The project an agent works in, from its directory. Every worktree of one repo shares one graph:
  * the name comes from the main checkout (the git common dir), not the worktree folder.
- * The agent id is `<editor>@<branch>`, so Claude Code and Cursor on the same branch are two agents.
+ * The agent id is `<editor>@<branch>` from core's agentId (so `claude-code` reads as `claude`, as in the
+ * hook and packages/mcp), and Claude Code and Cursor on the same branch are two agents.
  */
 export function project(dir: string, editor?: string): Project {
   const top = git(dir, "rev-parse", "--show-toplevel");
   const root = top ?? resolve(dir);
   const common = git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir");
   const main = common ? (basename(common) === ".git" ? dirname(common) : common.replace(/\.git$/, "")) : root;
-  const branch = git(dir, "rev-parse", "--abbrev-ref", "HEAD");
-  const agent = editor ? (branch && branch !== "HEAD" ? `${editor}@${branch}` : editor) : undefined;
+  const ed = editorName(editor);
+  const agent = ed ? agentId(dir, ed) : undefined;
   return { git: top !== undefined, root, graph: graphName(main), agent };
 }
 

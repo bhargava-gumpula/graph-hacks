@@ -49,6 +49,8 @@ export interface StatusIslandProps {
   onDismiss?: (id: string) => void;
   /** Milliseconds a done task stays. Paused while the island is open. */
   dismissAfter?: number;
+  /** A quiet resting line shown when no task is in flight (e.g. connection status). */
+  rest?: string;
   className?: string;
 }
 
@@ -94,7 +96,7 @@ function TaskIcon({ task }: { task: IslandTask }) {
     return (
       <svg
         aria-hidden="true"
-        className="size-4 shrink-0 text-emerald-400"
+        className="size-4 shrink-0 text-white/80"
         fill="none"
         viewBox="0 0 16 16"
       >
@@ -116,7 +118,7 @@ function TaskIcon({ task }: { task: IslandTask }) {
     return (
       <svg
         aria-hidden="true"
-        className="size-4 shrink-0 text-red-400"
+        className="size-4 shrink-0 text-[var(--color-signal)]"
         fill="none"
         viewBox="0 0 16 16"
       >
@@ -221,6 +223,7 @@ export function StatusIsland({
   tasks,
   onDismiss,
   dismissAfter = 4000,
+  rest,
   className,
 }: StatusIslandProps) {
   const [open, setOpen] = useState(false);
@@ -418,6 +421,18 @@ export function StatusIsland({
                   </button>
                 )}
               </motion.div>
+            </motion.div>
+          ) : rest ? (
+            <motion.div
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              className="flex h-8 items-center gap-2 rounded-full bg-zinc-950/90 px-3.5 text-[12px] text-white/70 ring-1 ring-white/10 backdrop-blur"
+              exit={{ opacity: 0, y: -6, filter: "blur(4px)" }}
+              initial={{ opacity: 0, y: -6, filter: "blur(4px)" }}
+              key="rest"
+              transition={SWAP}
+            >
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-white/70" />
+              <span className="whitespace-nowrap tabular-nums">{rest}</span>
             </motion.div>
           ) : null}
         </AnimatePresence>

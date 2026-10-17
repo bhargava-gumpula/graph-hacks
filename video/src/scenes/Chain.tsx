@@ -1,10 +1,11 @@
 import {Interactive, useCurrentFrame} from 'remotion';
-import {CHAIN, GraphView, NodeTag, buildCounts, layoutGraph} from '../Graph';
+import bench from '../../../bench/results.json';
+import {CLAIMED, GraphView, NodeTag, PATH, WANTED, buildCounts, layoutGraph} from '../Graph';
 import {C, MONO, SANS, arrive, prog} from '../theme';
 import {Head, Seam, VoCue, useIsVertical, type SceneProps} from '../ui';
 
-const FULL = {build: 6, tags: 112, cap1: 124, dim: 160, hop: [168, 186, 204], hopDur: 13, cap2: 226};
-const FAST = {build: -10, tags: 44, cap1: 999, dim: 58, hop: [62, 72, 82], hopDur: 10, cap2: 96};
+const FULL = {build: 6, tags: 112, cap1: 124, dim: 160, hop: [168, 192], hopDur: 17, cap2: 226};
+const FAST = {build: -10, tags: 44, cap1: 999, dim: 58, hop: [62, 76], hopDur: 13, cap2: 96};
 
 const ChainInner: React.FC<SceneProps> = ({compact, guides, vo}) => {
 	const f = useCurrentFrame();
@@ -17,7 +18,7 @@ const ChainInner: React.FC<SceneProps> = ({compact, guides, vo}) => {
 	// Hops light one after another; each target node lights the frame its stroke arrives.
 	const lit = T.hop.reduce((acc, h) => acc + prog(f, h, T.hopDur, (x) => x), 0);
 	const bump = (id: string) => {
-		const i = CHAIN.indexOf(id);
+		const i = PATH.indexOf(id);
 		if (i < 1) return 0;
 		const arrival = T.hop[i - 1] + T.hopDur;
 		return f >= arrival ? 0.12 * (1 - prog(f, arrival, 9)) : 0;
@@ -29,8 +30,8 @@ const ChainInner: React.FC<SceneProps> = ({compact, guides, vo}) => {
 				<Head n="03" kicker="the hidden chain" title="The repo is a graph." />
 				<div style={{position: 'absolute', inset: 0}}>
 					<GraphView g={g} t={t} fast={compact} dim={dim} lit={lit} target={f >= T.tags ? 1 : 0} bump={bump} />
-					<NodeTag g={g} id="lib/crypto.ts" text="A · editing" color={C.accent} style={arrive(f, T.tags, 5, 24)} />
-					<NodeTag g={g} id="ui/LoginForm.tsx" text="B · editing" color={C.text} style={arrive(f, T.tags + 3, 5, 24)} />
+					<NodeTag g={g} id={CLAIMED} text="A · editing" color={C.accent} style={arrive(f, T.tags, 5, 24)} />
+					<NodeTag g={g} id={WANTED} text="B · editing" color={C.text} style={arrive(f, T.tags + 3, 5, 24)} />
 				</div>
 				<div
 					style={{
@@ -64,7 +65,7 @@ const ChainInner: React.FC<SceneProps> = ({compact, guides, vo}) => {
 						...arrive(f, T.cap2, 6, 44),
 					}}
 				>
-					3 imports apart. <span style={{color: C.muted, fontWeight: 500}}>{v ? <br /> : null}A file lock sees nothing.</span>
+					{bench.conflict.hops} imports apart. <span style={{color: C.muted, fontWeight: 500}}>{v ? <br /> : null}A file lock sees nothing.</span>
 				</div>
 			</Seam>
 			<VoCue show={guides} text={vo} />

@@ -42,22 +42,22 @@
       "refused"
     ]
   },
-  "checkMsMedian": 1.01,
-  "checkMsMin": 0.71,
-  "checkMsMax": 3.72,
+  "checkMsMedian": 0.69,
+  "checkMsMin": 0.56,
+  "checkMsMax": 1.35,
   "checkMsSamples": [
-    2.31,
-    1.33,
-    0.79,
-    0.82,
-    3.72,
-    1.45,
-    1.2,
-    0.71,
-    0.81,
-    0.81
+    1.35,
+    0.7,
+    0.56,
+    0.69,
+    0.7,
+    0.63,
+    0.74,
+    0.62,
+    0.62,
+    0.69
   ],
-  "claimMsMedian": 4.24,
+  "claimMsMedian": 3.64,
   "claim": {
     "agent": "A",
     "file": "auth/session.ts"
@@ -81,7 +81,7 @@
   },
   "tsc": "Version 5.9.3",
   "node": "v26.9.0",
-  "loadAvg1m": 29.98,
+  "loadAvg1m": 4.84,
   "cpus": 10,
-  "ranAt": "2026-10-17T09:16:24.733Z"
+  "ranAt": "2026-10-17T09:47:30.725Z"
 }

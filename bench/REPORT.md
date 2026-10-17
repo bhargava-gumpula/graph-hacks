@@ -1,6 +1,6 @@
 # Benchmark
 
-scripted agents, two edits that each typecheck alone, real tsc, real FalkorDB claims. Reproduce with `npm run bench` (FalkorDB on localhost:6379; `BENCH_N` sets the run count; the graph is `sb_bench_n7`, dropped afterwards).
+scripted agents, two edits that each typecheck alone, real tsc, real FalkorDB claims. Reproduce with `npm run bench` (FalkorDB on localhost:6379; `BENCH_N` sets the run count; the graph is `sb_bench`, dropped afterwards).
 
 ## The scenario
 
@@ -32,11 +32,11 @@ Neither agent touches the other's file and neither edit is wrong on its own. The
 
 ## Check latency
 
-`findConflicts`, the read-only path query inside every claim: median **1.01 ms**, range 0.71–3.72 ms over 10 runs. The whole refused `claim()` call (check, a conflict event written to the graph) has a median of 4.24 ms.
+`findConflicts`, the read-only path query inside every claim: median **0.69 ms**, range 0.56–1.35 ms over 10 runs. The whole refused `claim()` call (check, a conflict event written to the graph) has a median of 3.64 ms.
 
 ## What this does and does not show
 
 - The run is deterministic. Every trial repeats the same steps on the same files, so 10 runs show repeatability (the same result every time, a latency range), not a statistic.
 - The agents are scripted, not live LLM sessions. B "waits" and A "releases" by direct calls in sequence, not real concurrency.
-- The latency is the one measured, noisy number (this run: 1-minute load average 29.98 on 10 cores). The build counts are the same every run by construction; what they prove is that the two edits really do collide under the real compiler and that the claim graph really does refuse the second one.
+- The latency is the one measured, noisy number (this run: 1-minute load average 4.84 on 10 cores). The build counts are the same every run by construction; what they prove is that the two edits really do collide under the real compiler and that the claim graph really does refuse the second one.
 - Without Switchboard the collision would eventually show up in CI or on the next build. What it costs is a red main branch and a debugging session, not lost data. The benchmark does not model that cost, or the rework B does after its tsc fails.

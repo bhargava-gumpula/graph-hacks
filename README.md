@@ -181,19 +181,19 @@ UNWIND $paths AS want
 MATCH (f:File {path: want})<-[c:CLAIMS]-(o:Agent)
 WHERE o.id <> $agent AND c.until > $now
 RETURN want AS file, 'SAME' AS type, f.path AS claimed, [f.path] AS path, 0 AS hops,
-       o.id AS agent, c.taskId AS taskId, c.intent AS intent
+       o.id AS agent, c.taskId AS taskId, c.intent AS intent, c.until AS until, coalesce(f.hub, false) AS hub
 UNION ALL
 UNWIND $paths AS want
 MATCH p = (f:File {path: want})-[:IMPORTS*1..3]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p) WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 RETURN want AS file, 'UPSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n.path] AS path, length(p) AS hops,
-       o.id AS agent, c.taskId AS taskId, c.intent AS intent
+       o.id AS agent, c.taskId AS taskId, c.intent AS intent, c.until AS until, coalesce(f.hub, false) OR coalesce(g.hub, false) AS hub
 UNION ALL
 UNWIND $paths AS want
 MATCH p = (g:File)-[:IMPORTS*1..3]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p) WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 RETURN want AS file, 'DOWNSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n.path] AS path, length(p) AS hops,
-       o.id AS agent, c.taskId AS taskId, c.intent AS intent
+       o.id AS agent, c.taskId AS taskId, c.intent AS intent, c.until AS until, coalesce(f.hub, false) OR coalesce(g.hub, false) AS hub
 ```
 
 ### Conflict guard
@@ -208,10 +208,10 @@ OPTIONAL MATCH (f:File {path: want})<-[c:CLAIMS]-(o:Agent)
 WHERE o.id <> $agent AND c.until > $now
 WITH want, count(c) AS same
 OPTIONAL MATCH p = (f:File {path: want})-[:IMPORTS*1..3]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p) WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 WITH want, same, count(c) AS up
 OPTIONAL MATCH p = (g:File)-[:IMPORTS*1..3]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p) WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 WITH want, same, up, count(c) AS down
 WITH sum(same + up + down) AS blocked
 WITH blocked WHERE blocked = 0
@@ -229,10 +229,10 @@ OPTIONAL MATCH (f:File {path: want})<-[c:CLAIMS]-(o:Agent)
 WHERE o.id <> $agent AND c.until > $now
 WITH want, count(c) AS same
 OPTIONAL MATCH p = (f:File {path: want})-[:IMPORTS*1..3]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p) WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 WITH want, same, count(c) AS up
 OPTIONAL MATCH p = (g:File)-[:IMPORTS*1..3]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p) WHERE coalesce(n.hub, false))
+WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 WITH want, same, up, count(c) AS down
 WITH sum(same + up + down) AS blocked
 WITH blocked WHERE blocked = 0
@@ -273,7 +273,7 @@ Why a lock table cannot do this: it has no idea who depends on a file.
 
 ```cypher
 MATCH p = (d:File)-[:IMPORTS*1..3]->(f:File {path: $path})
-WHERE d <> f AND none(n IN nodes(p) WHERE coalesce(n.hub, false) AND n <> f)
+WHERE d <> f AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 WITH d, min(length(p)) AS hops, $now AS now
 RETURN d.path AS path, hops, [(a:Agent)-[c:CLAIMS]->(d) WHERE c.until > now | a.id] AS agents
 ORDER BY hops, path
@@ -293,9 +293,9 @@ UNWIND a.paths AS p1
 UNWIND b.paths AS p2
 MATCH (f1:File {path: p1}), (f2:File {path: p2})
 OPTIONAL MATCH up = (f1)-[:IMPORTS*1..3]->(f2)
-WHERE none(n IN nodes(up) WHERE coalesce(n.hub, false))
+WHERE none(n IN nodes(up)[1..-1] WHERE coalesce(n.hub, false))
 OPTIONAL MATCH down = (f2)-[:IMPORTS*1..3]->(f1)
-WHERE none(n IN nodes(down) WHERE coalesce(n.hub, false))
+WHERE none(n IN nodes(down)[1..-1] WHERE coalesce(n.hub, false))
 WITH a, b, f1, f2, min(length(up)) AS u, min(length(down)) AS d
 WITH a, b, f1.path AS via,
      CASE WHEN f1 = f2 THEN 0 WHEN u IS NULL THEN d WHEN d IS NULL THEN u WHEN u < d THEN u ELSE d END AS hops
@@ -350,10 +350,23 @@ OPTIONAL MATCH (e)-[:UNDER]->(t:Task)
 OPTIONAL MATCH (t)-[:CAUSED_BY]->(d:Decision)
 OPTIONAL MATCH (da:Agent)-[:MADE]->(d)
 OPTIONAL MATCH (d)<-[:SUPERSEDES*1..5]-(newer:Decision {status: 'active'})
-RETURN e.seq AS seq, a.id AS agent, t.id AS task,
+WITH f, a, t, d, da, collect(DISTINCT newer)[0] AS newer, max(e.seq) AS seq, count(DISTINCT e) AS edits
+RETURN seq, edits, a.id AS agent, t.id AS task,
        d.id AS decisionId, d.text AS decision, d.why AS why, da.id AS decidedBy,
-       newer.id AS latestId, newer.text AS latestText
+       newer.id AS latestId, newer.text AS latestText,
+       [x IN [f, a, t, d] WHERE x IS NOT NULL | {label: labels(x)[0], id: coalesce(x.path, x.id)}] AS nodes
 ORDER BY seq DESC, decisionId
+LIMIT $limit
+UNION ALL
+MATCH (d:Decision {status: 'active'})-[:AFFECTS]->(f:File {path: $path})
+OPTIONAL MATCH (da:Agent)-[:MADE]->(d)
+OPTIONAL MATCH (t:Task)-[:CAUSED_BY]->(d)
+WITH f, d, da, collect(t)[0] AS t
+RETURN 0 AS seq, 0 AS edits, null AS agent, t.id AS task,
+       d.id AS decisionId, d.text AS decision, d.why AS why, da.id AS decidedBy,
+       null AS latestId, null AS latestText,
+       [x IN [f, t, d] WHERE x IS NOT NULL | {label: labels(x)[0], id: coalesce(x.path, x.id)}] AS nodes
+ORDER BY d.at DESC, decisionId
 LIMIT $limit
 ```
 
@@ -367,7 +380,7 @@ Why a lock table cannot do this: it can list who holds what, not what the neighb
 UNWIND $paths AS path
 MATCH (f:File {path: path})
 MATCH p = (f)-[:IMPORTS*0..2]-(g:File)
-WHERE length(p) = 0 OR none(n IN nodes(p) WHERE coalesce(n.hub, false))
+WHERE none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 RETURN g.path AS path, min(length(p)) AS hops
 ```
 
@@ -431,7 +444,7 @@ Agent A holds `auth/session.ts` and changes what `sessionLabel` returns. Agent B
 
 - Agent A holds `auth/session.ts`. Agent B edits `ui/LoginForm.tsx`. The refusal: UPSTREAM, 2 hops, ui/LoginForm.tsx → api/login.ts → auth/session.ts.
 - The untouched repo, A's edit alone and B's edit alone all pass `tsc`. Merged, `tsc` fails: `ui/LoginForm.tsx(9,67): error TS2339: Property 'toUpperCase' does not exist on type '{ user: string; at: string; }'.`
-- The conflict check (`findConflicts`, one FalkorDB query from Node) took a median of 1.01 ms (range 0.71 to 3.72 ms) over 10 runs. The machine was busy: 1-minute load average 29.98 on 10 cores.
+- The conflict check (`findConflicts`, one FalkorDB query from Node) took a median of 0.69 ms (range 0.56 to 1.35 ms) over 10 runs. The machine was busy: 1-minute load average 4.84 on 10 cores.
 - Last run: 2026-10-17, TypeScript 5.9.3, Node v26.9.0.
 
 Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once. A file lock collides only on the same path, so by definition it catches none of them:
@@ -439,7 +452,7 @@ Pair census, one query over the parsed import graph (`npm run pairs`). A pair is
 | Repo | Files | Pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |
 |---|---|---|---|---|---|---|
 | `demo-repo/` | 35 | 595 | 0 | 51 | 78 | 27 |
-| `apps/web/` | 103 | 5253 | 0 | 185 | 321 | 136 |
+| `apps/web/` | 101 | 5050 | 0 | 184 | 293 | 109 |
 
 <!-- bench:end -->
 

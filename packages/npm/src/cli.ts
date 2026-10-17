@@ -17,7 +17,7 @@ Installed package
                                             wire a repo: Cursor (.cursor/hooks.json, .cursor/mcp.json) and/or
                                             Claude Code (.claude/settings.json hooks, .mcp.json); both by default.
                                             Then parse it into its graph (sb_<repo name>).
-  mcp                                       run the stdio MCP server (13 tools)
+  mcp                                       run the stdio MCP server (15 tools)
   hook <claude|cursor> <start|pre|post|end> run the editor hook (JSON event on stdin)
 
 Defaults outside a Switchboard checkout: the graph is sb_<repo name> (shared by every worktree), paths

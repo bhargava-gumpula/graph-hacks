@@ -172,7 +172,7 @@ const LAYERS: { name: string; body: string; can: string; Icon: typeof Robot; Art
   {
     name: "Agents",
     body: "Claude Code and Cursor sessions check in through MCP and editor hooks.",
-    can: "WCC over INTERFERES → safe parallel batches",
+    can: "INTERFERES edges → rounds of tasks that run in parallel",
     Icon: Robot,
     Art: AgentsArt,
   },
@@ -185,14 +185,14 @@ const LAYERS: { name: string; body: string; can: string; Icon: typeof Robot; Art
   },
   {
     name: "Memory",
-    body: "Decisions, lessons and every edit, kept so a replacement agent gets a briefing.",
+    body: "Decisions, lessons and every edit a connected agent makes, kept so a replacement agent gets a briefing.",
     can: "why(path) traces File → Event → Task → Decision → Agent",
     Icon: Brain,
     Art: MemoryArt,
   },
   {
     name: "Code graph",
-    body: "Every file and import, parsed from your repo with ts-morph.",
+    body: "Every TypeScript file and import, parsed from your repo with ts-morph.",
     can: "PageRank → paths never pass through hubs",
     Icon: TreeStructure,
     Art: CodeArt,

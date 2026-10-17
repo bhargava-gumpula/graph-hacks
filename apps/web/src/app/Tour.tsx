@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowLeft, ArrowRight, X } from "@phosphor-icons/react";
-import type { Snapshot } from "./api";
 
 export interface TourStep {
   id: string;
@@ -32,22 +31,6 @@ export function markTourSeen() {
   } catch {
     /* storage blocked */
   }
-}
-
-/** Shortest chain of imports from one file to another (BFS over IMPORTS edges); [] if none. */
-export function importPath(g: Snapshot, from: string, to: string): string[] {
-  const out = new Map<string, string[]>();
-  for (const e of g.edges) if (e.kind === "IMPORTS") out.set(e.source, [...(out.get(e.source) ?? []), e.target]);
-  const prev = new Map<string, string>([[from, from]]);
-  const queue = [from];
-  while (queue.length && !prev.has(to)) {
-    const n = queue.shift()!;
-    for (const m of out.get(n) ?? []) if (!prev.has(m)) (prev.set(m, n), queue.push(m));
-  }
-  if (!prev.has(to)) return [];
-  const path = [to];
-  while (path[0] !== from) path.unshift(prev.get(path[0])!);
-  return path;
 }
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -132,12 +115,20 @@ export function Tour({
   const [hover, setHover] = useState(false);
   const [kbFocus, setKbFocus] = useState(false);
   const [held, setHeld] = useState(false);
+  // A step that never gets ready (the demo stalled) still moves on after a while.
+  const [stalled, setStalled] = useState(false);
   const total = step.id === "refuse" ? READ_MS : STEP_MS;
-  const paused = hover || kbFocus || held || !ready;
+  const paused = hover || kbFocus || held || (!ready && !stalled);
   useEffect(() => {
     setElapsed(0);
     setHeld(false);
+    setStalled(false);
   }, [index]);
+  useEffect(() => {
+    if (ready) return;
+    const t = window.setTimeout(() => setStalled(true), 15000);
+    return () => clearTimeout(t);
+  }, [ready, index]);
   useEffect(() => {
     if (paused) return;
     const t = window.setInterval(() => setElapsed((e) => e + TICK_MS), TICK_MS);
@@ -192,7 +183,7 @@ export function Tour({
       ? { left: anchorBox.x + 16, bottom: window.innerHeight - (anchorBox.y + anchorBox.h) + 16, width: 380 }
       : low
         ? { left: 8, right: 8, top: 8 }
-        : { left: 8, right: 8, bottom: 8 };
+        : { left: 8, right: 8, bottom: "calc(8px + env(safe-area-inset-bottom))" };
 
   return (
     <>
@@ -272,7 +263,7 @@ export function Tour({
             <button
               type="button"
               onClick={() => onClose(false)}
-              className="-mr-1.5 inline-flex touch-manipulation items-center gap-1 rounded-full px-2 py-1 text-xs text-[var(--muted)] transition-colors hover:text-[var(--fg)] focus-visible:outline-2 focus-visible:outline-[var(--color-signal)] pointer-coarse:py-2"
+              className="-mr-1.5 inline-flex touch-manipulation items-center gap-1 rounded-full px-2 py-1 text-xs text-[var(--muted)] transition-[color,transform] duration-150 hover:text-[var(--fg)] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-[var(--color-signal)] pointer-coarse:py-2"
             >
               Skip <X size={12} aria-hidden />
             </button>
@@ -287,7 +278,7 @@ export function Tour({
                 exit={{ opacity: 0, y: reduce ? 0 : -4, filter: reduce ? "none" : "blur(2px)", transition: { duration: 0.12 } }}
                 transition={{ duration: 0.24, ease: EASE_OUT }}
               >
-                <h2 id="tour-title" className="text-[15px] font-medium leading-snug tracking-tight text-[var(--fg)]">
+                <h2 id="tour-title" className="text-balance text-[15px] font-medium leading-snug tracking-tight text-[var(--fg)]">
                   {step.title}
                 </h2>
                 <div id="tour-body" className="mt-1.5 text-[13px] leading-relaxed text-[var(--fg)]/75">
@@ -306,6 +297,7 @@ export function Tour({
                   type="button"
                   aria-label={`Step ${i + 1}: ${s.title}`}
                   aria-current={i === index ? "step" : undefined}
+                  tabIndex={-1}
                   onClick={() => go(i)}
                   className="group grid h-6 w-4 touch-manipulation place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-[var(--color-signal)] pointer-coarse:h-9 pointer-coarse:w-[18px]"
                 >

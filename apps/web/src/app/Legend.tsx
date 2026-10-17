@@ -20,7 +20,7 @@ const ROWS: { glyph: ReactNode; label: string }[] = [
   { glyph: <circle cx="12" cy="8" r="6" fill="var(--fg)" fillOpacity={0.3} />, label: "Parallel group (tint)" },
 ];
 
-/** A small collapsible key for the canvas. It opens above its button, from the corner it sits in. */
+/** A small collapsible key for the canvas. It opens above the control bar, from the corner it sits in. */
 export function Legend() {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -36,7 +36,8 @@ export function Legend() {
     };
   }, [open]);
   return (
-    <div ref={wrap} className="relative">
+    // Not positioned: the panel anchors to the control bar around it, so it lines up with its right edge.
+    <div ref={wrap}>
       <button
         type="button"
         aria-expanded={open}

@@ -398,8 +398,9 @@ export function GraphView(props: GraphViewProps) {
                     transition={{ duration: 0.7, delay: at, ease: [0.77, 0, 0.175, 1] }}
                   />
                   <motion.g initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25, delay: at + 0.55 }}>
-                    <rect x={mx - 23} y={my - 10} width={46} height={20} rx={10} fill="var(--surface)" stroke="var(--color-signal)" strokeOpacity={0.6} />
-                    <text x={mx} y={my + 3.5} textAnchor="middle" className="fill-[var(--fg)] font-mono text-[10px]">
+                    {/* Under the line, so it never sits on a file label of the same row. */}
+                    <rect x={mx - 23} y={my + 8} width={46} height={20} rx={10} fill="var(--surface)" stroke="var(--color-signal)" strokeOpacity={0.6} />
+                    <text x={mx} y={my + 21.5} textAnchor="middle" className="fill-[var(--fg)] font-mono text-[10px]">
                       hop {i + 1}
                     </text>
                   </motion.g>

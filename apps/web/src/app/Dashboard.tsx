@@ -8,8 +8,8 @@ import { api, type Batch, type Blast, type Conflict, type DemoReply, type Health
 import { GraphView } from "./GraphView";
 import { AgentsPanel, Brief, CypherDisclosure, Feed, Inspect, Memory, PathChips, blockedBy, conflictParams, hops, splitRuns, useCypher } from "./Panels";
 import { useLive, type LiveStatus } from "./useLive";
-import { layoutGraph } from "./layoutGraph";
-import { Tour, importPath, markTourSeen, tourSeen, type TourStep } from "./Tour";
+import { importPath, layoutGraph } from "./layoutGraph";
+import { Tour, markTourSeen, tourSeen, type TourStep } from "./Tour";
 
 type Tab = "feed" | "inspect" | "memory" | "brief";
 const TABS: { id: Tab; label: string }[] = [
@@ -595,7 +595,7 @@ export function Dashboard() {
 
             {live.graph && tour == null && (
               <div className="pointer-events-none absolute bottom-4 left-4 z-10 hidden w-[min(440px,calc(100%-10rem))] sm:block">
-                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} />
+                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
               </div>
             )}
           </main>
@@ -603,7 +603,7 @@ export function Dashboard() {
           <aside data-tour="panels" className="flex min-h-0 flex-col border-t border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-sm lg:border-l lg:border-t-0">
             {live.graph && tour == null && (
               <div className="shrink-0 border-b border-[var(--border)] p-3 sm:hidden">
-                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} />
+                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
               </div>
             )}
             <div
@@ -681,7 +681,7 @@ function ServerSentence({ text }: { text: string }) {
   );
 }
 
-function StoryCaption({ demo, hold = false, run, cypher }: { demo: DemoReply | null; hold?: boolean; run: number; cypher?: string }) {
+function StoryCaption({ demo, hold = false, run, cypher, onTour }: { demo: DemoReply | null; hold?: boolean; run: number; cypher?: string; onTour: () => void }) {
   const want = demo?.path[0];
   // The last sentence is the point: a lock on the file itself would have said yes.
   const cut = demo ? demo.sentence.lastIndexOf("A file lock") : -1;
@@ -732,7 +732,16 @@ function StoryCaption({ demo, hold = false, run, cypher }: { demo: DemoReply | n
             <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-[var(--color-signal-soft)] text-[var(--color-signal)]">
               <Play size={11} weight="fill" />
             </span>
-            <p className="text-[13px] leading-relaxed text-[var(--fg)]/85">{COACH}</p>
+            <div className="text-[13px] leading-relaxed text-[var(--fg)]/85">
+              <p>{COACH}</p>
+              <button
+                type="button"
+                onClick={onTour}
+                className="mt-1 inline-flex touch-manipulation items-center gap-1 rounded-sm text-[var(--signal-text)] underline decoration-[var(--color-signal)]/40 underline-offset-4 transition-[text-decoration-color] duration-150 hover:decoration-[var(--color-signal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-signal)]"
+              >
+                New here? Take the guided tour
+              </button>
+            </div>
           </motion.section>
         )}
       </AnimatePresence>

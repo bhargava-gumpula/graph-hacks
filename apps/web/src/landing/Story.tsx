@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { pulse } from "./AsciiField";
 import { motion, useReducedMotion } from "motion/react";
 import { StoryGraph } from "./StoryGraph";
 
@@ -25,12 +26,20 @@ const STEPS = [
 export function Story() {
   const reduce = useReducedMotion();
   const [stage, setStage] = useState(0);
+  const graphRef = useRef<HTMLDivElement>(null);
+
+  // The collision (stage 2) and the refusal (stage 3) each send a shockwave through the ASCII field.
+  useEffect(() => {
+    if (stage < 2 || reduce || !graphRef.current) return;
+    const r = graphRef.current.getBoundingClientRect();
+    pulse(r.left + r.width * (stage === 2 ? 0.12 : 0.9), r.top + r.height * (stage === 2 ? 0.4 : 0.32));
+  }, [stage, reduce]);
 
   return (
     <section id="story" className="relative mx-auto max-w-7xl px-5 md:px-8" aria-label="How a collision happens">
       <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
         <div className="sticky top-16 z-10 order-first -mx-5 bg-[var(--bg)]/90 px-5 py-4 backdrop-blur-sm lg:order-last lg:mx-0 lg:flex lg:h-[calc(100dvh-4rem)] lg:items-center lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
-          <div className="w-full">
+          <div ref={graphRef} className="w-full">
             <StoryGraph stage={stage} />
           </div>
         </div>

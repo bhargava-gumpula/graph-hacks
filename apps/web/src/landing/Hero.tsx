@@ -1,4 +1,6 @@
+import { useEffect, useRef } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { animate, splitText, stagger } from "animejs";
 import { ArrowRight } from "@phosphor-icons/react";
 import { HeroGraph } from "./HeroGraph";
 
@@ -6,15 +8,34 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 
 export function Hero() {
   const reduce = useReducedMotion();
+  const h1 = useRef<HTMLHeadingElement>(null);
+
+  // Waterfall entry (cut-the-curve §6): words rise from below a clipped line, staggered, with anime.js.
+  useEffect(() => {
+    if (reduce || !h1.current) return;
+    const split = splitText(h1.current, { words: { wrap: "clip" } });
+    const a = animate(split.words, {
+      y: ["105%", "0%"],
+      opacity: [0, 1],
+      duration: 900,
+      delay: stagger(70, { start: 150 }),
+      ease: "outExpo",
+    });
+    return () => {
+      a.revert();
+      split.revert();
+    };
+  }, [reduce]);
+
   const rise = (delay: number) =>
     reduce ? {} : { initial: { opacity: 0, y: 18 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.8, delay, ease: EASE } };
 
   return (
     <section className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-7xl items-center gap-10 px-5 pb-16 pt-12 md:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-6 lg:pt-16">
       <div className="max-w-xl">
-        <motion.h1 {...rise(0)} className="text-4xl font-semibold leading-[1.05] tracking-tighter md:text-5xl lg:text-6xl">
+        <h1 ref={h1} className="text-4xl font-semibold leading-[1.05] tracking-tighter md:text-5xl lg:text-6xl">
           Agents can't see each other. <span className="text-[var(--muted)]">Switchboard can.</span>
-        </motion.h1>
+        </h1>
         <motion.p {...rise(0.12)} className="mt-6 max-w-[46ch] text-lg leading-relaxed text-[var(--muted)]">
           One FalkorDB graph checks every edit against your code's real dependencies, and stops two agents before they collide.
         </motion.p>

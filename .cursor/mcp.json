@@ -3,7 +3,7 @@
     "switchboard": {
       "command": "npx",
       "args": ["tsx", "${workspaceFolder}/packages/mcp/src/index.ts"],
-      "env": { "SB_EDITOR": "cursor" }
+      "env": { "SB_EDITOR": "cursor", "SB_PROJECT_DIR": "${workspaceFolder}" }
     }
   }
 }

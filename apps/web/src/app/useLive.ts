@@ -90,7 +90,6 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
         freshHit = true;
         setHit({ id: item.seq, conflict: c });
       }
-      if (CHANGES.has(item.kind)) scheduleRefresh();
     };
 
     // Fresh events play one per beat (immediately under reduced motion).
@@ -113,7 +112,11 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
       if (cancelled || item.seq <= lastSeq) return;
       lastSeq = item.seq;
       // Freshness is by seq, not by clock: the server's and the viewer's clocks differ.
-      if (item.seq > loadSeq) return pace(item);
+      if (item.seq > loadSeq) {
+        // Refetch on arrival, so a burst costs one refetch however slowly its beats play.
+        if (CHANGES.has(item.kind)) scheduleRefresh();
+        return pace(item);
+      }
       list(item);
       // After the history burst, show the newest conflict's path (quietly) unless a fresh one played.
       const c = conflictOf(item);
@@ -150,16 +153,17 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
     };
 
     const startPolling = () => {
-      poll = setInterval(() => {
+      const id = setInterval(() => {
         api
           .feed(lastSeq)
           .then((items) => {
-            if (cancelled || !poll) return;
+            if (cancelled || poll !== id) return;
             setStatus("live");
             items.forEach(onItem);
           })
-          .catch(lost);
+          .catch(() => poll === id && lost()); // ignore a late failure from a stopped poll
       }, FEED_POLL_MS);
+      poll = id;
     };
 
     const open = () => {
@@ -180,7 +184,7 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
               polling = true;
               open();
             })
-            .catch(lost);
+            .catch(() => es === src && lost());
         }, SSE_SILENT_MS);
       };
       arm();
@@ -204,6 +208,7 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
           begin(Math.max(0, ...r.events.map((e) => e.seq)));
           lastSeq = 0;
           setReplayAt(r.capturedAt);
+          setGraphName(""); // the recording is not the live graph
           setStatus("replay");
           await refresh();
           r.events.forEach(onItem);

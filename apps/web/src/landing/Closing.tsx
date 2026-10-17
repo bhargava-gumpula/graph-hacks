@@ -10,7 +10,7 @@ export function Closing() {
         </h2>
         <div className="mt-10 flex flex-wrap gap-3">
           <a
-            href="/app"
+            href="/app?play=1"
             className="inline-flex items-center gap-2 rounded-full bg-[var(--color-signal)] px-5 py-3 text-sm font-medium text-[#1a0d08] transition active:scale-[0.98]"
           >
             Open the live graph

@@ -10,7 +10,7 @@ import { Story } from "./landing/Story";
 
 export function Landing() {
   return (
-    <div className="grain relative min-h-[100dvh]">
+    <div className="grain relative min-h-[100dvh] overflow-x-clip">
       <AsciiField />
       <Nav />
       <main className="relative z-10">

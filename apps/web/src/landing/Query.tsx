@@ -16,7 +16,7 @@ export function Query() {
   return (
     <section className="mx-auto max-w-7xl px-5 py-20 md:px-8 md:py-28">
       <div className="grid gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-end">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One query decides.</h2>
           <p className="mt-5 max-w-[52ch] text-lg leading-relaxed text-[var(--muted)]">
             The check is a single Cypher path match in FalkorDB. Point at a line to see what it does.

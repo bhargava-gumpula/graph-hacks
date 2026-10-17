@@ -44,7 +44,7 @@ Episodic memory is `Event` nodes (`BY`, `ON`, `UNDER`) numbered by a gap-free `s
 
 ## 11. What are the limits?
 
-It reads TypeScript only (static imports, re-exports and `import("literal")`), works at file level, looks at most 3 import hops by default, and ignores a path that runs through a hub. The import graph is a snapshot from the last parse, and a claim blocks an edit only where the editor runs the hook.
+It reads TypeScript only (static imports, re-exports and `import("literal")`), works at file level, looks at most 3 import hops by default, and ignores a path that runs through a hub. Each agent edit re-parses that one file, and `switchboard watch` catches saves people make, so the graph stays live without a full parse. A claim blocks an edit only where the editor runs the hook.
 
 ## 12. How is it deployed?
 

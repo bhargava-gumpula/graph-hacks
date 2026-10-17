@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 // @ts-expect-error plain .mjs script, no types
-import { buildPlan, parseArgs } from "./quickstart.mjs";
+import { buildPlan, parseArgs, redactUrl } from "./quickstart.mjs";
 
 type Step = { do: string; say: string };
 const base = {
@@ -54,4 +54,25 @@ test("friendly errors carry the fix", () => {
   expect(() => buildPlan({ ...base, falkorUp: false, docker: "missing" })).toThrow(/Docker isn't installed/);
   expect(() => buildPlan({ ...base, falkorUp: false, falkorUrl: "redis://db.example:6379" })).toThrow(/Nothing answers at FALKORDB_URL/);
   expect(() => buildPlan({ ...base, falkorUp: false, falkorUrl: "redis://localhost:6390" })).toThrow(/serves FalkorDB on 6379/);
+});
+
+test("no message prints the FalkorDB password", () => {
+  const cloud = "rediss://default:Secret789@r-nothere.invalid:6380";
+  expect(redactUrl(cloud)).toBe("rediss://default:***@r-nothere.invalid:6380");
+  expect(redactUrl("redis://localhost:6379")).toBe("redis://localhost:6379");
+  expect(redactUrl("not a url")).toBe("(invalid URL)");
+  const messages = [
+    () => buildPlan({ ...base, falkorUrl: cloud })[0].say,
+    () => buildPlan({ ...base, falkorUp: false, falkorUrl: cloud }),
+    () => buildPlan({ ...base, falkorUp: false, falkorUrl: "redis://:Secret789@localhost:6390" }),
+    () => buildPlan({ ...base, falkorUp: false, docker: "ok", falkorUrl: "redis://:Secret789@localhost:6379" })[0].say,
+  ].map((f) => {
+    try {
+      return String(f());
+    } catch (err) {
+      return (err as Error).message;
+    }
+  });
+  expect(messages.join("\n")).not.toContain("Secret789");
+  expect(messages[1]).toContain("FALKORDB_URL=rediss://default:***@r-nothere.invalid:6380");
 });

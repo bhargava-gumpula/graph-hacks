@@ -2,6 +2,7 @@
 //   <!-- cypher:start --> ... <!-- cypher:end -->   the query texts in packages/core/src/queries
 //   <!-- bench:start --> ... <!-- bench:end -->     bench/results.json, and bench/pairs.json when it exists
 //   <!-- quickstart:start --> ... <!-- quickstart:end -->   the Quick start section, written below
+//   <!-- install:start --> ... <!-- install:end -->         the Install section, written below
 // Idempotent: a second run changes nothing. It needs no database; it only imports the query strings.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -244,6 +245,52 @@ function quickstartBlock(): string {
   ].join("\n");
 }
 
+// ---- install -----------------------------------------------------------------------------------
+
+/** Cursor's MCP install link: the server config as base64 JSON (https://cursor.com/docs/context/mcp/install-links). */
+export const CURSOR_MCP_CONFIG = {
+  command: "npx",
+  args: ["-y", "switchboard-agents", "mcp"],
+  env: { SB_EDITOR: "cursor", SB_PROJECT_DIR: "${workspaceFolder}" },
+};
+export const CURSOR_INSTALL_URL = `https://cursor.com/install-mcp?name=switchboard&config=${Buffer.from(
+  JSON.stringify(CURSOR_MCP_CONFIG),
+).toString("base64")}`;
+
+/** How to install Switchboard without cloning this repo. Details and doc links: docs/INSTALL.md. */
+function installBlock(): string {
+  return [
+    "## Install",
+    "",
+    "Switchboard needs Node 22 or newer and a FalkorDB it can reach. One command starts FalkorDB locally:",
+    "",
+    "```bash",
+    "docker run -d -p 6379:6379 falkordb/falkordb",
+    "```",
+    "",
+    "After that the agents never have to be told to use it. Hooks claim every edit, refuse one that collides with another agent's work, record it, and release the claims when the session ends. Each repo gets its own graph, `sb_<repo name>`, shared by all its worktrees.",
+    "",
+    "**Claude Code (plugin: hooks, MCP server and a skill).** In Claude Code:",
+    "",
+    "```",
+    "/plugin marketplace add bhargava-gumpula/graph-hacks",
+    "/plugin install switchboard@switchboard",
+    "```",
+    "",
+    "**Cursor.** The button adds the MCP server. The hooks that claim each edit come from `init`, run in your repo (a global install keeps the hook path stable):",
+    "",
+    `[![Add switchboard MCP server to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](${CURSOR_INSTALL_URL})`,
+    "",
+    "```bash",
+    "npm i -g switchboard-agents && switchboard init --cursor",
+    "```",
+    "",
+    "**npm (any MCP client).** After `npm i -g switchboard-agents`, `switchboard init` in a repo wires both Cursor and Claude Code. For another client, run `switchboard-mcp` (or `npx -y switchboard-agents mcp`) as a stdio MCP server from the repo.",
+    "",
+    "**From source.** The quick start below runs the demo and the live dashboard. [docs/INSTALL.md](docs/INSTALL.md) has every option, the settings and the limits.",
+  ].join("\n");
+}
+
 // ---- splice into README ----------------------------------------------------------------------
 
 function splice(text: string, name: string, body: string): string {
@@ -256,7 +303,8 @@ function splice(text: string, name: string, body: string): string {
 }
 
 const before = readFileSync(README, "utf8");
-let after = splice(before, "quickstart", quickstartBlock());
+let after = splice(before, "install", installBlock());
+after = splice(after, "quickstart", quickstartBlock());
 after = splice(after, "cypher", await cypherBlock());
 after = splice(after, "bench", benchBlock());
 if (after !== before) writeFileSync(README, after);

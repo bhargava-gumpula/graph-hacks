@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "quickstart": "node scripts/quickstart.mjs",
+    "app": "node scripts/app.mjs",
     "test": "vitest run",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
@@ -26,7 +27,9 @@
     "bench": "tsx scripts/bench.ts",
     "pairs": "tsx scripts/pairs.ts",
     "readme": "tsx scripts/readme-gen.ts",
-    "self": "SB_GRAPH=sb_self tsx packages/cli/src/index.ts"
+    "self": "SB_GRAPH=sb_self tsx packages/cli/src/index.ts",
+    "build:plugin": "node scripts/build-plugin.mjs",
+    "check:plugin": "node scripts/build-plugin.mjs --check"
   },
   "bin": {
     "switchboard": "packages/cli/src/index.ts"
@@ -35,6 +38,7 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.1",
     "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

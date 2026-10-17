@@ -33,10 +33,13 @@ const KINDS = ["cursor", "claude", "human"] as const;
 
 /** Sent once at initialize; clients put it in the agent's context. */
 export const INSTRUCTIONS =
-  "Switchboard coordinates agents on this repo. Call claim before editing any file; paths are relative to the " +
-  "parsed repo (ui/LoginForm.tsx, not demo-repo/ui/LoginForm.tsx). ok=false means do not edit: report the import " +
-  "path, then pick another task or call brief_me. Call brief_me at the start, record_decision when you choose an " +
-  "approach, release when done.";
+  "Switchboard coordinates the agents on this repo through a shared graph of its imports. Call claim before " +
+  "editing any file, unless the Switchboard hooks are installed: they claim each edit for you and refuse one that " +
+  "collides. Paths are relative to the parsed repo (ui/LoginForm.tsx, not demo-repo/ui/LoginForm.tsx). ok=false or " +
+  "a refusal names the file, who holds it, the import path and when it frees: do not edit it or work around it " +
+  "with Bash; report the path, then pick a safe file or call brief_me. Call brief_me at the start, " +
+  "record_decision when you choose an approach, record_lesson for a gotcha others need, handoff to pass work on, " +
+  "release when done.";
 
 /** brief_me returns at most this many events: the newest per (kind, path, agent). */
 const BRIEF_EVENTS = 5;

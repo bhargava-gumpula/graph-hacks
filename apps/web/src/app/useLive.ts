@@ -12,7 +12,7 @@ export interface Hit {
 }
 
 /** Event kinds that change the snapshot or the lists, so they trigger a (coalesced) refetch. */
-const CHANGES = new Set(["claim", "release", "conflict", "decision", "edit", "register", "collision", "lesson", "handoff"]);
+const CHANGES = new Set(["claim", "release", "conflict", "decision", "edit", "register", "collision", "lesson", "handoff", "graph"]);
 const HISTORY = 40; // events of history to show on connect
 const BEAT_MS = 600; // one fresh event per beat, so a burst reads as a story
 const RECONNECT_MS = 3000;
@@ -45,6 +45,7 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
   const [replayAt, setReplayAt] = useState<string | null>(null);
   const [seqAtLoad, setSeqAtLoad] = useState(0);
   const retryRef = useRef<() => void>(() => undefined);
+  const flushRef = useRef<(upTo: number) => Promise<void>>(async () => undefined);
 
   // Each call keeps its last good value when it fails: one 429 must not blank the canvas.
   const refresh = useCallback(async () => {
@@ -65,6 +66,7 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
     let lastSeq = 0;
     let loadSeq = 0; // events up to here are history: listed, never animated
     let freshHit = false;
+    let fastUntil = 0; // fresh events up to here skip the beat (see flush)
     let quiet: Hit | null = null;
     const queue: FeedItem[] = [];
     let refetch: ReturnType<typeof setTimeout> | undefined;
@@ -116,7 +118,7 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
       if (item.seq > loadSeq) {
         // Refetch on arrival, so a burst costs one refetch however slowly its beats play.
         if (CHANGES.has(item.kind)) scheduleRefresh();
-        return pace(item);
+        return item.seq <= fastUntil ? apply(item) : pace(item);
       }
       list(item);
       // After the history burst, show the newest conflict's path (quietly) unless a fresh one played.
@@ -243,6 +245,12 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
 
     replay.emit = (item) => onItem({ ...item, seq: lastSeq + 1 });
     retryRef.current = () => void connect();
+    flushRef.current = async (upTo) => {
+      fastUntil = upTo;
+      while (queue.length && queue[0].seq <= upTo) apply(queue.shift()!);
+      // Fetch what the stream has not delivered yet, so the caller sees every event up to upTo on return.
+      if (lastSeq < upTo && !inReplay) await api.feed(lastSeq).then((items) => items.forEach(onItem), () => undefined);
+    };
     void connect();
 
     return () => {
@@ -255,11 +263,17 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
       replay.emit = () => undefined;
       replay.data = null;
       retryRef.current = () => undefined;
+      flushRef.current = async () => undefined;
     };
   }, [refresh]);
 
   /** Check health now instead of waiting for the next poll. */
   const retry = useCallback(() => retryRef.current(), []);
+  /**
+   * Show fresh events up to seq `upTo` at once instead of one per beat: those already queued, and those
+   * that arrive later. Resolves once they are all applied.
+   */
+  const flush = useCallback((upTo: number) => flushRef.current(upTo), []);
 
-  return { graph, claims, decisions, batches, events, status, graphName, hit, refresh, retry, replayAt, seqAtLoad };
+  return { graph, claims, decisions, batches, events, status, graphName, hit, refresh, retry, flush, replayAt, seqAtLoad };
 }

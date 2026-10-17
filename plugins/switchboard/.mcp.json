@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "switchboard": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/switchboard-mcp.mjs"],
+      "env": { "SB_EDITOR": "claude-code" }
+    }
+  }
+}

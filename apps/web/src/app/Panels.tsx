@@ -12,6 +12,7 @@ import {
   Prohibit,
   Robot,
   SignOut,
+  TreeStructure,
 } from "@phosphor-icons/react";
 import { api, type Blast, type Claim, type Conflict, type Decision, type FeedItem, type GNode } from "./api";
 import type { Hit, LiveStatus } from "./useLive";
@@ -320,6 +321,7 @@ const ICON: Record<string, JSX.Element> = {
   edit: <ArrowBendDownRight size={15} />,
   register: <Robot size={15} />,
   handoff: <Lightning size={15} />,
+  graph: <TreeStructure size={15} />,
 };
 
 function describe(e: FeedItem): string {
@@ -346,6 +348,16 @@ function describe(e: FeedItem): string {
     case "register": {
       const tool = TOOL[String(p.kind ?? "")];
       return `${who} checked in${tool ? ` from ${tool}` : ""}`;
+    }
+    case "graph": {
+      const u = p as { path?: string; status?: string; added?: string[]; removed?: string[] };
+      const file = u.path ?? on ?? "A file";
+      const names = (xs: string[]) => (xs.length > 3 ? `${xs.slice(0, 2).join(", ")} and ${xs.length - 2} more` : xs.join(", "));
+      if (u.status === "deleted") return `${file} was deleted`;
+      const adds = u.added?.length ? `imports ${names(u.added)}` : "";
+      if (u.status === "created") return `New file ${file}${adds ? ` ${adds}` : ""}`;
+      const parts = [adds && `now ${adds}`, u.removed?.length ? `no longer imports ${names(u.removed)}` : ""].filter(Boolean);
+      return parts.length ? `${file} ${parts.join(" and ")}` : `${file} changed`;
     }
     case "parse": {
       const n = p as { files?: number; imports?: number };

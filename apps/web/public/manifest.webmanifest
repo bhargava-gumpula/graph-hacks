@@ -1,0 +1,16 @@
+{
+  "id": "/app",
+  "name": "Switchboard",
+  "short_name": "Switchboard",
+  "description": "A FalkorDB graph that checks every agent edit against the code's real dependencies.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0b0b0d",
+  "background_color": "#0b0b0d",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -8,6 +8,39 @@ Switchboard stops AI coding agents from breaking each other's code. It checks ev
 
 [![uptime](https://github.com/bhargava-gumpula/graph-hacks/actions/workflows/uptime.yml/badge.svg)](https://github.com/bhargava-gumpula/graph-hacks/actions/workflows/uptime.yml)
 
+<!-- install:start -->
+
+## Install
+
+Switchboard needs Node 22 or newer and a FalkorDB it can reach. One command starts FalkorDB locally:
+
+```bash
+docker run -d -p 6379:6379 falkordb/falkordb
+```
+
+After that the agents never have to be told to use it. Hooks claim every edit, refuse one that collides with another agent's work, record it, and release the claims when the session ends. Each repo gets its own graph, `sb_<repo name>`, shared by all its worktrees.
+
+**Claude Code (plugin: hooks, MCP server and a skill).** In Claude Code:
+
+```
+/plugin marketplace add bhargava-gumpula/graph-hacks
+/plugin install switchboard@switchboard
+```
+
+**Cursor.** The button adds the MCP server. The hooks that claim each edit come from `init`, run in your repo (a global install keeps the hook path stable):
+
+[![Add switchboard MCP server to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=switchboard&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInN3aXRjaGJvYXJkLWFnZW50cyIsIm1jcCJdLCJlbnYiOnsiU0JfRURJVE9SIjoiY3Vyc29yIiwiU0JfUFJPSkVDVF9ESVIiOiIke3dvcmtzcGFjZUZvbGRlcn0ifX0=)
+
+```bash
+npm i -g switchboard-agents && switchboard init --cursor
+```
+
+**npm (any MCP client).** After `npm i -g switchboard-agents`, `switchboard init` in a repo wires both Cursor and Claude Code. For another client, run `switchboard-mcp` (or `npx -y switchboard-agents mcp`) as a stdio MCP server from the repo.
+
+**From source.** The quick start below runs the demo and the live dashboard. [docs/INSTALL.md](docs/INSTALL.md) has every option, the settings and the limits.
+
+<!-- install:end -->
+
 <!-- quickstart:start -->
 
 ## Quick start
@@ -504,7 +537,7 @@ Four things we hit, each with a fix in the code.
 - File-level. Two agents editing different functions in the same file still conflict. Two files that share only a database table or a config value do not.
 - At most 3 import hops by default. A collision four or more imports apart is not caught.
 - Paths do not pass through hubs. Editing a hub such as `lib/utils.ts` conflicts with its importers, but two files that merely share a hub do not conflict.
-- The import graph is a snapshot from the last `npm run parse`. It does not update when files change.
+- The import graph is live per edit: each edit an agent makes re-parses that one file. Saves people make are picked up by `switchboard watch` (or `SB_WATCH=1` with `SB_REPO` on the server). A change made any other way waits for the next parse. To share one graph across machines, see [docs/CLOUD.md](docs/CLOUD.md).
 - A claim is advice unless the editor runs the hook. Claude Code and Cursor both hard-block a denied edit. An agent with no hook only follows the contract of calling `claim`.
 
 ## Competitors

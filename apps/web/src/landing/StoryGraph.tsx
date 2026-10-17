@@ -312,7 +312,7 @@ function Readout({ stage, beat, reduce }: { stage: number; beat: number; reduce:
           ? "tsc: build broken in ui/LoginForm.tsx"
           : result
             ? RESULT
-            : "claim ui/LoginForm.tsx ...";
+            : "claim ui/LoginForm.tsx …";
   return (
     <div className="relative mt-3 h-12" aria-hidden="true">
       <AnimatePresence initial={false} mode="wait">

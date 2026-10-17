@@ -3,7 +3,7 @@ import { nowIso } from "../lib/utils";
 
 export interface LoginResult {
   ok: boolean;
-  label: string;
+  label: ReturnType<typeof sessionLabel>;
   at: string;
 }
 

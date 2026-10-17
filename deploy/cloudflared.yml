@@ -1,0 +1,14 @@
+# Cloudflare Tunnel config for the public host (the always-on Mac).
+# Copy to ~/.cloudflared/config.yml and replace both <UUID> with the id that
+# `cloudflared tunnel create switchboard` prints (deploy/RUNBOOK.md, step 3).
+# The tunnel name is `switchboard`; the tunnel plist runs it by that name.
+tunnel: <UUID>
+credentials-file: /Users/bhargavagumpula/.cloudflared/<UUID>.json
+
+ingress:
+  # PLACEHOLDER DOMAIN: swap switchboard-api.bhargava-gumpula.com when the final domain is decided.
+  - hostname: switchboard-api.bhargava-gumpula.com
+    service: http://127.0.0.1:8788
+    originRequest:
+      connectTimeout: 5s
+  - service: http_status:404

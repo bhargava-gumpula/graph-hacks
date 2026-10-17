@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { beforeAll, expect, test } from "vitest";
 import { parseRepo } from "../parser.js";
 import { useTestGraph } from "../test-helpers.js";
+import { registerAgent } from "./agents.js";
 import { claim } from "./claims.js";
 import { loadParse } from "./loader.js";
 import { graphSnapshot, listClaims } from "./snapshot.js";
@@ -39,4 +40,38 @@ test("listClaims returns the active claim", async () => {
   expect(claims).toEqual([
     expect.objectContaining({ agent: "A", path: "lib/crypto.ts", taskId: "T1" }),
   ]);
+});
+
+test("nodes have exactly the docs/api.md fields", async () => {
+  const snap = await graphSnapshot(g());
+  expect(snap.nodes.find((n) => n.id === "lib/crypto.ts")).toEqual({
+    id: "lib/crypto.ts",
+    label: "crypto.ts",
+    kind: "file",
+    hub: false,
+    claimedBy: ["A"],
+  });
+  expect(snap.nodes.find((n) => n.id === "agent:A")).toEqual({
+    id: "agent:A",
+    label: "A",
+    kind: "agent",
+    status: "active",
+  });
+  const keys = new Set(snap.edges.map((e) => `${e.kind} ${e.source} ${e.target}`));
+  expect(keys.size).toBe(snap.edges.length);
+});
+
+test("expired claims are left out of the snapshot and listClaims", async () => {
+  const later = Date.now() + 365 * 24 * 3600 * 1000;
+  const snap = await graphSnapshot(g(), later);
+  expect(snap.edges.filter((e) => e.kind === "CLAIMS")).toEqual([]);
+  expect(snap.nodes.find((n) => n.id === "lib/crypto.ts")?.claimedBy).toEqual([]);
+  expect(await listClaims(g(), later)).toEqual([]);
+});
+
+test("an agent node carries the kind registerAgent stored, as agentKind", async () => {
+  await registerAgent(g(), { id: "cur", kind: "cursor" });
+  const snap = await graphSnapshot(g());
+  expect(snap.nodes.find((n) => n.id === "agent:cur")).toMatchObject({ kind: "agent", agentKind: "cursor" });
+  expect(snap.nodes.find((n) => n.id === "agent:A")).not.toHaveProperty("agentKind");
 });

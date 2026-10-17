@@ -22,13 +22,17 @@
     "web": "npm run dev -w @switchboard/web",
     "switchboard": "tsx packages/cli/src/index.ts",
     "scenario": "tsx scripts/scenario.ts",
-    "bench": "tsx scripts/bench.ts"
+    "bench": "tsx scripts/bench.ts",
+    "pairs": "tsx scripts/pairs.ts",
+    "readme": "tsx scripts/readme-gen.ts",
+    "self": "SB_GRAPH=sb_self tsx packages/cli/src/index.ts"
   },
   "bin": {
     "switchboard": "packages/cli/src/index.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.20.5",
     "eslint": "^10.12.0",
     "tsx": "^4.23.15",

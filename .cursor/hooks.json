@@ -3,6 +3,7 @@
   "hooks": {
     "sessionStart": [{ "command": "packages/hooks/hook.sh cursor start" }],
     "preToolUse": [{ "command": "packages/hooks/hook.sh cursor pre", "matcher": "Write" }],
-    "afterFileEdit": [{ "command": "packages/hooks/hook.sh cursor post" }]
+    "afterFileEdit": [{ "command": "packages/hooks/hook.sh cursor post" }],
+    "sessionEnd": [{ "command": "packages/hooks/hook.sh cursor end" }]
   }
 }

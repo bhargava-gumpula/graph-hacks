@@ -29,11 +29,14 @@ export interface EventInput {
  * writer allocates `seq` the same way.
  *
  * FalkorDB runs writes to a graph one at a time. Keeping the bump and the
- * CREATE in one query is what makes `seq` gap-free under concurrency.
+ * CREATE in one query is what makes `seq` gap-free under concurrency: a
+ * failed query rolls back both, and no reader sees the counter ahead of
+ * its Event. MERGE (not MATCH) so a graph without ensureSchema() still works.
  * After this fragment, `e` (the new Event) and `m` (the counter) are in scope.
  */
 export const ALLOCATE_EVENT = `
-MATCH (m:Meta {key:'seq'})
+MERGE (m:Meta {key:'seq'})
+ON CREATE SET m.value = 0
 SET m.value = m.value + 1
 WITH m
 CREATE (e:Event {seq: m.value, kind: $kind, at: $at, payload: $payload})
@@ -44,14 +47,17 @@ WITH e, m
  * Record one event and its optional BY / ON / UNDER links.
  * FOREACH over a one-element list is the optional link: a null id skips it.
  * Still one query, so the links share the Event's seq.
+ * New File nodes get `hub = false` so Q1's `none(n.hub)` filter never sees null.
  */
 export const RECORD_EVENT = `${ALLOCATE_EVENT}
 FOREACH (_ IN CASE WHEN $agentId IS NULL THEN [] ELSE [1] END |
   MERGE (a:Agent {id: $agentId})
+  ON CREATE SET a.status = 'active', a.startedAt = $at
   CREATE (e)-[:BY]->(a)
 )
 FOREACH (_ IN CASE WHEN $onPath IS NULL THEN [] ELSE [1] END |
   MERGE (f:File {path: $onPath})
+  ON CREATE SET f.hub = false, f.rank = 0.0
   CREATE (e)-[:ON]->(f)
 )
 FOREACH (_ IN CASE WHEN $taskId IS NULL THEN [] ELSE [1] END |

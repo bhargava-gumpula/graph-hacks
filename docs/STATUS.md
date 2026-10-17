@@ -19,7 +19,7 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | B12 AI summary | F20 | Grok 4.7 | done | `hack/B11` → main | Haiku summary on brief only when ANTHROPIC_API_KEY is set; otherwise the graph text alone |
 | B13 Routes+panels | C10–C12 | Grok 4.7 | done | `hack/B11` → main | /api/brief, why, blast, batches, decisions; side panel; click a file for blast |
 | B14 Scenario+dogfood | C13,C14 | Grok 4.7 | done | `hack/B11` → main | scenario prints batches and the argon2 why-trace; rules say claim first |
-| B15 Benchmark | F23 | Grok 4.7 | done | `hack/ship` → main | 10/10 builds broke without the check, 0/10 when it blocked the edit; median 1 ms |
+| B15 Benchmark | F23 | Grok 4.7 | done | `hack/ship` → main | superseded by N7: a real tsc merge collision on session.ts (2 hops), 10/10 broke without, 0/10 with; see bench/REPORT.md |
 | B16 Core tag v0.2 + goal check | C16 | Grok 4.7 | done | tag `v0.2-core` | goal check in DEVLOG |
 | B17 Mockups | V0 | — | cut | | the live dark page is the direction; three throwaway mockups were not made |
 | B18 Visual polish | V1–V7 | Grok 4.7 | done | `hack/ship` → main | story bar, landing, judge page. No path animation |
@@ -29,6 +29,16 @@ States: todo · doing · done · cut. Next up is the first `todo` whose dependen
 | B22 Docs/README | D3,D4 | Grok 4.7 | done | README, `docs/DEMO.md` | setup, model, queries, benchmark, AI disclosure |
 | B23 Blog | D5 | Grok 4.7 | done | `docs/blog.md` | draft, not published |
 | B24 Video+submit v1.0 | D6,D7 | owner | todo | | owner records from `docs/DEMO.md` and submits |
+| R1–R5 Engine rebuild | all engine | Opus 5.5 | done | `rebuild/r1..r5` → ui/rebuild (Oct 17 01:22–01:31) | every engine feature re-implemented and re-tested; atomic claim guard, gapless seq |
+| U1 UI rebuild | landing + /app | Opus 5.5 | done | ui/rebuild | from the 9 reels (docs/UI-REELS.md); ASCII field, causal hero, scroll story, dashboard |
+| N1 Demo can't fail | reset, Play, public mode | Opus 5.5 | done | `night/n1` → ui/rebuild | SB_PUBLIC=1, /api/cypher, /api/feed |
+| N2 Live data | SSE, replay | Opus 5.5 | done | `night/n2` → ui/rebuild | reconnect, polling fallback, labelled FalkorDB replay; /judge → /app |
+| N3 Semantics + agents | paths, hooks | Opus 5.5 | done | `night/n3` → ui/rebuild | hooks claim on edit, interior-hub rule, brief prefix, safe-now hints |
+| N4 README + docs | README, Q&A, deploy | Sonnet 5.5 | done | `night/n4` → ui/rebuild | `npm run readme` generates the Cypher; deploy files prepared, not run |
+| N5 Dashboard story | /app | Opus 5.5 | doing | `night/n5` | |
+| N6 Landing shell | landing | Opus 5.5 | done | `night/n6` → ui/rebuild | no phone overflow, ASCII ~4x cheaper, real Breakdown, share cards |
+| N7 Benchmark | bench, Proof | Sonnet 5.5 | done | `night/n7` → ui/rebuild | real merge collision, pair census (27 hidden pairs in demo-repo) |
+| N8 Landing story | hero, story | Opus 5.5 | done | `night/n8` → ui/rebuild | one scenario, scroll-driven stages, hero starts in view |
 
 ## Goal checks (PLAN §17.8)
 | When | Graph essential | Track fit | Differentiation | Demo runs | Proof | Owner can explain | On schedule | Drift | Actions |

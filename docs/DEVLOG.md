@@ -121,3 +121,22 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Not done:** the owner's voice on the video, publishing the blog, and submitting the form.
 - **Goal check:** the conflict, the batches, the why-trace, and the briefing are FalkorDB queries. Memory is events, decisions, and lessons in that graph. Coordination is claims and conflicts. The demo plays from one button. The benchmark is reproducible from `npm run bench`. The owner can say: a path means two agents will collide; no path means they will not. We are inside the Friday window. The landing page and the benchmark were in the plan. The three mockups were cut because the demo was already on this layout.
 - **Tests:** 43/43. Typecheck and lint clean.
+
+## 2026-10-17 01:20 PT: UI rebuild started (owner decision)
+- **Owner's decision:** keep the tested engine, rebuild all UI/UX from scratch following 9 Instagram reels (docs/UI-REELS.md). The old UI is saved at tags `archive/cursor-v1` and `archive/cursor-v1-ui-reels`. Plan in docs/UI-REBUILD.md (U1–U4, freeze Sat 10 PM).
+- **U1:** Tailwind v4 + Motion + GSAP + Phosphor + Geist; one accent (signal orange). The new hero is the **real demo-repo graph drawn in code** (folder columns ui → api → auth → lib): agent A edits crypto.ts, agent B reaches for LoginForm.tsx, the 3-hop path lights up and the edit is refused. Reduced motion shows the final frame. The web tsconfig moved to Bundler resolution (Vite).
+
+## 2026-10-17 02:15 PT: engine rebuilt, council critique, night packages (autonomous run)
+- **Engine rebuild (R1–R5, merged):** every engine feature was re-implemented and re-tested in five branches. Real races were found and fixed (the atomic claim guard, gapless event seq). 22 files, 137 tests pass, typecheck clean.
+- **UI:** the landing page (ASCII field, causal hero, scroll story, breakdown, Cypher reveal, proof, compare) and the dashboard `/app` (pan/zoom graph, claim rings, conflict packet animation, feed/inspect/decisions/brief tabs, Bklit charts, Kokonut status island) were rebuilt from the reels.
+- **Video:** `video/` (Remotion 4) renders a 71 s explainer and a 15 s vertical short to `video/out/` (git-ignored). The tsc error shown in it is real output from the demo repo.
+- **Deploy attempt:** the $0.00 .xyz checkout (promo code) reached the final page at gen.xyz but needs the owner's gen.xyz login; no account was created and nothing was paid. A Cloudflare quick tunnel serves the local server meanwhile. Quick tunnels buffer SSE, so the dashboard now polls a new `GET /api/feed?last=N` after 4 s of stream silence (verified through the public URL).
+- **Council:** six blind part-councils (landing, dashboard, engine, agent integration, judging/submission, deploy) and a chair produced 8 file-disjoint packages (N1–N8), now running in parallel worktrees `../gh-night-n1..8` from a shared web-contract commit. Test graphs take an `SB_TEST_NS` suffix so the worktrees can share one FalkorDB.
+- **Lint:** clean after ignoring `.claude/**` and `video/**`.
+
+## 2026-10-17 02:50 PT: night packages merged (N1–N8)
+- **Merged into ui/rebuild** in this order: N1, N7, N2, N8, N4, N3, N6, N5. One conflict (`packages/core/src/index.ts`, both N1 and N3 exported the query texts; kept N3's lines). Fixes during merge: `agents.test` seeds File nodes (claim() no longer creates them), `events.test` honours `SB_TEST_NS`, the landing Query shows N3's new `until`/`hub` columns (checked equal to `conflictQuery(3)`), and toggling batches no longer restarts the live stream.
+- **Regenerated on a quiet machine:** bench (median check 0.69 ms, range in REPORT.md), replay.json, pair census, README, og.png (session.ts story; the old one still showed crypto.ts), app-conflict.png, hero GIF.
+- **Public link:** now runs `SB_PUBLIC=1` (agents A–D only, paths must be in the code graph, no /api/edits). One outage: an agent's `pkill -f apps/server/src/index.ts` also killed the public server; it now runs in a restart loop and agents were told to stop processes by port only.
+- **Gates:** typecheck and lint clean; 23 files, 155 tests pass; web build clean.
+- **Submission form** is open (fields recorded in docs/SUBMISSION.md with draft answers).

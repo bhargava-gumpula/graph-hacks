@@ -2,15 +2,21 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { afterAll, expect, test } from "vitest";
-import { connect } from "@switchboard/core";
+import { claim, connect, ensureSchema, loadParse, parseRepo } from "@switchboard/core";
 
 const root = join(import.meta.dirname, "../../..");
 const tsx = join(root, "node_modules/.bin/tsx");
-const GRAPH = "sb_test_mcp";
+const GRAPH = `sb_test_mcp_${process.pid}`;
 
 interface Rpc {
   id?: number;
-  result?: { tools?: { name: string }[]; content?: { text?: string }[] };
+  result?: {
+    instructions?: string;
+    tools?: { name: string; description?: string; outputSchema?: object }[];
+    content?: { text?: string }[];
+    structuredContent?: Record<string, unknown>;
+    isError?: boolean;
+  };
   error?: { message?: string };
 }
 
@@ -33,7 +39,13 @@ afterAll(async () => {
   await g.close();
 });
 
-test("stdio server lists claim, and register then status shows the agent", async () => {
+test("stdio server: tools list, register, status, claim conflict, bad input", async () => {
+  const g = await connect({ graph: GRAPH });
+  await ensureSchema(g);
+  await loadParse(g, parseRepo(join(root, "demo-repo")));
+  await claim(g, { agent: "A", paths: ["lib/crypto.ts"] });
+  await g.close();
+
   const child = start();
   let stderr = "";
   child.stderr?.setEncoding("utf8");
@@ -71,6 +83,7 @@ test("stdio server lists claim, and register then status shows the agent", async
       clientInfo: { name: "smoke", version: "0" },
     });
     expect(init.error, stderr).toBeUndefined();
+    expect(init.result?.instructions).toContain("Call claim before editing any file");
     child.stdin?.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
 
     const listed = await call(2, "tools/list", {});
@@ -94,6 +107,11 @@ test("stdio server lists claim, and register then status shows the agent", async
       ]),
     );
 
+    for (const tool of listed.result?.tools ?? []) {
+      expect(tool.description, tool.name).toBeTruthy();
+      expect(tool.outputSchema, tool.name).toBeTruthy();
+    }
+
     const registered = await call(3, "tools/call", {
       name: "register_agent",
       arguments: { kind: "cursor" },
@@ -104,6 +122,38 @@ test("stdio server lists claim, and register then status shows the agent", async
     const snapshot = await call(4, "tools/call", { name: "status", arguments: {} });
     expect(snapshot.error, stderr).toBeUndefined();
     expect(snapshot.result?.content?.[0]?.text).toContain("smoke cursor active");
+    expect(snapshot.result?.structuredContent?.agents).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "smoke", kind: "cursor" })]),
+    );
+
+    const blocked = await call(5, "tools/call", { name: "claim", arguments: { paths: ["ui/LoginForm.tsx"] } });
+    expect(blocked.error, stderr).toBeUndefined();
+    expect(blocked.result?.content?.[0]?.text).toContain(
+      "UPSTREAM ui/LoginForm.tsx ← A via ui/LoginForm.tsx → api/login.ts → auth/session.ts → lib/crypto.ts",
+    );
+    expect(blocked.result?.structuredContent).toMatchObject({
+      ok: false,
+      conflicts: [{ agent: "A", hops: 3, claimed: "lib/crypto.ts" }],
+    });
+
+    const prefixed = await call(9, "tools/call", { name: "claim", arguments: { paths: ["demo-repo/ui/LoginForm.tsx"] } });
+    expect(prefixed.result?.structuredContent).toMatchObject({ ok: false, conflicts: [{ file: "ui/LoginForm.tsx" }] });
+
+    const free = await call(6, "tools/call", { name: "claim", arguments: { paths: ["ui/AboutPage.tsx"] } });
+    expect(free.result?.structuredContent).toMatchObject({ ok: true, conflicts: [], unknown: [] });
+
+    const fresh = await call(10, "tools/call", { name: "claim", arguments: { paths: ["ui/Brand.tsx"] } });
+    expect(fresh.result?.structuredContent).toMatchObject({ ok: true, unknown: ["ui/Brand.tsx"] });
+    expect(fresh.result?.content?.[0]?.text).toBe("WARNING not in the parsed graph, no dependency check: ui/Brand.tsx");
+
+    const briefed = await call(11, "tools/call", { name: "brief_me", arguments: {} });
+    expect(briefed.error ?? briefed.result?.isError, stderr).toBeFalsy();
+    const b = briefed.result?.structuredContent?.brief as { files: string[]; events: unknown[] };
+    expect(b.files.length).toBeGreaterThan(30);
+    expect(b.events.length).toBeLessThanOrEqual(5);
+
+    const bad = await call(7, "tools/call", { name: "claim", arguments: { paths: [] } });
+    expect(bad.error ?? bad.result?.isError).toBeTruthy();
   } finally {
     child.stdin?.end();
     child.kill();

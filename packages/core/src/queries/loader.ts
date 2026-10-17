@@ -6,21 +6,37 @@ import { markHubs } from "./hubs.js";
 const BATCH = 500;
 
 /**
- * Upsert File nodes. `hub` and `rank` start as false/0 so queries can filter on
+ * Upsert File nodes. `hub` and `rank` default to false/0 so queries can filter on
  * `NOT f.hub` (a missing property would be null, and `NOT null` filters the row out).
- * The PageRank job (Q6) sets the real values later.
+ * coalesce, not ON CREATE: a claim or an edit may have created the node first.
+ * The PageRank job (Q6) sets the real values right after the load.
  */
 export const UPSERT_FILES = `
 UNWIND $rows AS row
 MERGE (f:File {path: row.path})
-ON CREATE SET f.hub = false, f.rank = 0.0
-SET f.lang = row.lang, f.loc = row.loc, f.hash = row.hash
+SET f.lang = row.lang, f.loc = row.loc, f.hash = row.hash,
+    f.hub = coalesce(f.hub, false), f.rank = coalesce(f.rank, 0.0)
 `;
 
-/** Drop the outgoing imports of re-parsed files, so a removed import disappears. */
-export const CLEAR_IMPORTS = `
-UNWIND $paths AS p
-MATCH (:File {path: p})-[r:IMPORTS]->()
+/**
+ * Remove files a previous parse loaded (they have a hash) that this parse no longer has.
+ * Files created only by a claim or an edit have no hash and stay: an agent may claim
+ * a file before it exists.
+ */
+export const DELETE_STALE_FILES = `
+MATCH (f:File)
+WHERE f.hash IS NOT NULL AND NOT f.path IN $paths
+DETACH DELETE f
+`;
+
+/**
+ * Drop the imports a re-parsed file no longer has. Edges that are still there are
+ * kept (and updated by UPSERT_IMPORTS), so a reader never sees a file lose all its imports.
+ */
+export const DELETE_STALE_IMPORTS = `
+UNWIND $rows AS row
+MATCH (:File {path: row.path})-[r:IMPORTS]->(t:File)
+WHERE NOT t.path IN row.targets
 DELETE r
 `;
 
@@ -47,14 +63,20 @@ function batches<T>(rows: T[]): T[][] {
 }
 
 /**
- * Load a parse into the graph. Idempotent: loading the same parse twice leaves the
- * same nodes and edges. Runs files first, then clears and re-adds imports, then
- * records one `parse` event. The passes are separate queries, so a reader can
- * briefly see a file with no imports while a re-parse runs.
+ * Load a full parse of the repo into the graph, replacing the previous one.
+ * Idempotent: loading the same parse twice leaves the same nodes and edges.
+ * Order: upsert files, delete files that are gone, delete imports that are gone,
+ * upsert imports, recompute hubs, record one `parse` event. Each step is its own
+ * query (batches of 500), so the whole load is not one transaction.
  */
 export async function loadParse(g: SbGraph, parsed: ParseResult): Promise<{ files: number; imports: number }> {
+  const targets = new Map<string, string[]>(parsed.files.map((f) => [f.path, []]));
+  for (const i of parsed.imports) targets.get(i.from)?.push(i.to);
+
   for (const rows of batches(parsed.files)) await g.query(UPSERT_FILES, { rows });
-  for (const rows of batches(parsed.files)) await g.query(CLEAR_IMPORTS, { paths: rows.map((f) => f.path) });
+  await g.query(DELETE_STALE_FILES, { paths: [...targets.keys()] });
+  const importRows = [...targets].map(([path, to]) => ({ path, targets: to }));
+  for (const rows of batches(importRows)) await g.query(DELETE_STALE_IMPORTS, { rows });
   for (const rows of batches(parsed.imports)) await g.query(UPSERT_IMPORTS, { rows });
   await markHubs(g);
 
@@ -63,16 +85,46 @@ export async function loadParse(g: SbGraph, parsed: ParseResult): Promise<{ file
   return counts;
 }
 
-/** Drop files and agents that are not part of the demo repo. Hook edits of this checkout must not appear on the demo canvas. */
-export const RESET_DEMO_EXTRAS = `
+/**
+ * Put the demo graph back to its starting state before the scenario replays, one
+ * query per step: a chained `... WITH 1 AS _ MATCH ...` stops as soon as one step
+ * matches nothing, which is how stray agents used to survive a reset.
+ * Kept: the demo repo's File nodes and IMPORTS edges, agents A and B, and the
+ * Meta seq counter, so seq never goes backwards for a live feed.
+ * Dropped: files outside the demo repo (hook edits of this checkout), every claim,
+ * every other agent, and the memory the scenario writes again (edits, events,
+ * decisions, lessons, tasks).
+ */
+export const RESET_DEMO = [
+  `MATCH (f:File)
+   WHERE NOT (f.path STARTS WITH 'ui/' OR f.path STARTS WITH 'api/' OR f.path STARTS WITH 'auth/' OR f.path STARTS WITH 'lib/')
+   DETACH DELETE f`,
+  "MATCH ()-[c:CLAIMS]->() DELETE c",
+  "MATCH (a:Agent) WHERE NOT a.id IN ['A', 'B'] DETACH DELETE a",
+  "MATCH ()-[r:EDITED]->() DELETE r",
+  "MATCH (e:Event) DETACH DELETE e",
+  "MATCH (d:Decision) DETACH DELETE d",
+  "MATCH (l:Lesson) DETACH DELETE l",
+  "MATCH (t:Task) DETACH DELETE t",
+];
+
+export async function resetDemo(g: SbGraph): Promise<void> {
+  for (const query of RESET_DEMO) await g.query(query);
+}
+
+/** Which of these paths are File nodes already. */
+export const FOUND_FILES = `
 MATCH (f:File)
-WHERE NOT (f.path STARTS WITH 'ui/' OR f.path STARTS WITH 'api/' OR f.path STARTS WITH 'auth/' OR f.path STARTS WITH 'lib/')
-DETACH DELETE f
-WITH 1 AS _
-MATCH (a:Agent)
-WHERE NOT a.id IN ['A', 'B']
-DETACH DELETE a
+WHERE f.path IN $paths
+RETURN collect(f.path) AS paths
 `;
+
+/** The paths that are not in the code graph, in input order. */
+export async function missingFiles(g: SbGraph, paths: string[]): Promise<string[]> {
+  const [row] = await g.roQuery(FOUND_FILES, { paths });
+  const found = new Set((row?.paths as string[] | undefined) ?? []);
+  return paths.filter((p) => !found.has(p));
+}
 
 /** Count File nodes and IMPORTS edges currently in the graph. */
 export async function codeGraphCounts(g: SbGraph): Promise<{ files: number; imports: number }> {

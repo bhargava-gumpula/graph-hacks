@@ -8,3 +8,8 @@ coverage/
 .DS_Store
 .vite/
 bench/runs/
+
+# Local screenshots and per-machine Claude Code files
+shots/
+.claude/settings.local.json
+.claude/skills/

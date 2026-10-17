@@ -1,113 +1,87 @@
+import { randomUUID } from "node:crypto";
 import type { SbGraph } from "../graph.js";
+import { normPath } from "../paths.js";
 import { recordEvent } from "./events.js";
 
 /**
- * Q5. An edit of a file, the task it was under, and the decision that caused the task.
- * The path is that chain. `latest` is a decision that superseded it, when one exists.
+ * Write a decision in one query: who made it, the files it affects, the task it
+ * caused (optional) and the older decisions it replaces (optional).
+ * FOREACH over a 0/1-element list is the optional part, as in RECORD_EVENT.
+ * Paths that are not File nodes are skipped; `affected` counts the ones linked.
  */
-export const WHY_TRACE = `
-MATCH (f:File {path: $path})<-[:ON]-(e:Event {kind: 'edit'})-[:BY]->(a:Agent),
-      (e)-[:UNDER]->(t:Task)
-OPTIONAL MATCH (t)-[:CAUSED_BY]->(d:Decision)<-[:MADE]-(da:Agent)
-OPTIONAL MATCH (d)<-[:SUPERSEDES]-(newer:Decision)
-RETURN e.seq AS seq, a.id AS agent, t.id AS task,
-       d.id AS decisionId, d.text AS decision, d.why AS why, da.id AS decidedBy,
-       newer.id AS latestId, newer.text AS latestText
-ORDER BY seq DESC
-LIMIT 5
-`;
-
-/** Write the decision node, who made it, and the files it affects. */
 export const RECORD_DECISION = `
 MERGE (a:Agent {id: $agent})
-ON CREATE SET a.status = 'active'
+ON CREATE SET a.status = 'active', a.startedAt = $at
 MERGE (d:Decision {id: $id})
-SET d.text = $text, d.why = $why, d.status = 'active', d.at = $at
+ON CREATE SET d.status = 'active'
+SET d.text = $text, d.why = $why, d.at = $at
 MERGE (a)-[:MADE]->(d)
+FOREACH (_ IN CASE WHEN $taskId IS NULL THEN [] ELSE [1] END |
+  MERGE (t:Task {id: $taskId})
+  ON CREATE SET t.status = 'open', t.createdAt = $at
+  MERGE (t)-[:CAUSED_BY]->(d)
+)
 WITH d
-UNWIND $paths AS path
-MATCH (f:File {path: path})
-MERGE (d)-[:AFFECTS]->(f)
+OPTIONAL MATCH (old:Decision)
+WHERE old.id IN $supersedes AND old <> d
+FOREACH (o IN CASE WHEN old IS NULL THEN [] ELSE [old] END |
+  SET o.status = 'superseded'
+  MERGE (d)-[s:SUPERSEDES]->(o)
+  ON CREATE SET s.at = $at
+)
+WITH DISTINCT d
+OPTIONAL MATCH (f:File)
+WHERE f.path IN $paths
+FOREACH (x IN CASE WHEN f IS NULL THEN [] ELSE [f] END |
+  MERGE (d)-[:AFFECTS]->(x)
+)
+RETURN d.id AS id, count(f) AS affected
 `;
 
-/** A new decision replaces any other active decision on the same file. */
-export const SUPERSEDE_OLDER = `
-MATCH (d:Decision {id: $id})-[:AFFECTS]->(f)<-[:AFFECTS]-(old:Decision {status: 'active'})
-WHERE old.id <> d.id
-SET old.status = 'superseded'
-MERGE (d)-[s:SUPERSEDES]->(old)
-SET s.at = $at
+/**
+ * Q5. Why does this file look like this? One row per chain (editing agent, task,
+ * decision): its newest edit seq and how many edits it covers, the decision that
+ * caused the task, who made it, and `latest`, the active decision that replaced
+ * it (following SUPERSEDES up to 5 steps). Edits with no task still show who edited.
+ * `nodes` are the chain's real graph nodes in order: File, Agent, Task, Decision.
+ * The second arm answers for a file an active decision governs but no tracked
+ * edit touched (the caller drops it when an edit chain already names that decision).
+ * Each arm is ordered and limited on its own; the caller merges them.
+ * All matches come before the aggregation: in FalkorDB an OPTIONAL MATCH with a
+ * property filter right after it found nothing (falkordb:latest, Oct 2026).
+ */
+export const WHY_TRACE = `
+MATCH (f:File {path: $path})<-[:ON]-(e:Event {kind: 'edit'})
+OPTIONAL MATCH (e)-[:BY]->(a:Agent)
+OPTIONAL MATCH (e)-[:UNDER]->(t:Task)
+OPTIONAL MATCH (t)-[:CAUSED_BY]->(d:Decision)
+OPTIONAL MATCH (da:Agent)-[:MADE]->(d)
+OPTIONAL MATCH (d)<-[:SUPERSEDES*1..5]-(newer:Decision {status: 'active'})
+WITH f, a, t, d, da, collect(DISTINCT newer)[0] AS newer, max(e.seq) AS seq, count(DISTINCT e) AS edits
+RETURN seq, edits, a.id AS agent, t.id AS task,
+       d.id AS decisionId, d.text AS decision, d.why AS why, da.id AS decidedBy,
+       newer.id AS latestId, newer.text AS latestText,
+       [x IN [f, a, t, d] WHERE x IS NOT NULL | {label: labels(x)[0], id: coalesce(x.path, x.id)}] AS nodes
+ORDER BY seq DESC, decisionId
+LIMIT $limit
+UNION ALL
+MATCH (d:Decision {status: 'active'})-[:AFFECTS]->(f:File {path: $path})
+OPTIONAL MATCH (da:Agent)-[:MADE]->(d)
+OPTIONAL MATCH (t:Task)-[:CAUSED_BY]->(d)
+WITH f, d, da, collect(t)[0] AS t
+RETURN 0 AS seq, 0 AS edits, null AS agent, t.id AS task,
+       d.id AS decisionId, d.text AS decision, d.why AS why, da.id AS decidedBy,
+       null AS latestId, null AS latestText,
+       [x IN [f, t, d] WHERE x IS NOT NULL | {label: labels(x)[0], id: coalesce(x.path, x.id)}] AS nodes
+ORDER BY d.at DESC, decisionId
+LIMIT $limit
 `;
-
-/** Attach an existing decision as the cause of a task. */
-export const CAUSE_TASK = `
-MERGE (t:Task {id: $taskId})
-ON CREATE SET t.status = 'open'
-WITH t
-MATCH (d:Decision {id: $id})
-MERGE (t)-[:CAUSED_BY]->(d)
-`;
-
-/** Arrange a decision for a test or the record_decision tool. */
-export const LINK_DECISION = `
-MATCH (t:Task {id: $taskId}), (a:Agent {id: $agent})
-MERGE (d:Decision {id: $decisionId})
-SET d.text = $text, d.why = $why, d.status = 'active', d.at = $at
-MERGE (a)-[:MADE]->(d)
-MERGE (t)-[:CAUSED_BY]->(d)
-WITH d
-UNWIND $paths AS path
-MATCH (f:File {path: path})
-MERGE (d)-[:AFFECTS]->(f)
-`;
-
-export interface WhyHit {
-  seq: number;
-  agent: string;
-  task: string;
-  decisionId: string | null;
-  decision: string | null;
-  why: string | null;
-  decidedBy: string | null;
-  latestId: string | null;
-  latestText: string | null;
-  /** File, editing agent, task, decision. The chain a judge can read. */
-  path: string[];
-}
-
-/** Record a decision and, when a task id is given, mark that task as caused by it. */
-export async function recordDecision(
-  g: SbGraph,
-  input: { agent: string; text: string; why: string; paths: string[]; taskId?: string; id?: string; now?: number },
-): Promise<string> {
-  const id = input.id ?? `d-${Date.now()}`;
-  const at = input.now ?? Date.now();
-  await g.query(RECORD_DECISION, {
-    agent: input.agent,
-    id,
-    text: input.text,
-    why: input.why,
-    at,
-    paths: input.paths,
-  });
-  await g.query(SUPERSEDE_OLDER, { id, at });
-  if (input.taskId) await g.query(CAUSE_TASK, { taskId: input.taskId, id });
-  await recordEvent(g, {
-    kind: "decision",
-    agentId: input.agent,
-    taskId: input.taskId,
-    onPath: input.paths[0],
-    payload: { id, text: input.text, why: input.why, paths: input.paths },
-    now: at,
-  });
-  return id;
-}
 
 export const LIST_DECISIONS = `
 MATCH (d:Decision)
 OPTIONAL MATCH (a:Agent)-[:MADE]->(d)
 RETURN d.id AS id, d.text AS text, d.why AS why, d.status AS status, a.id AS agent
-ORDER BY d.at DESC
+ORDER BY d.at DESC, id
 `;
 
 export interface DecisionRow {
@@ -118,35 +92,108 @@ export interface DecisionRow {
   agent: string | null;
 }
 
+export interface WhyHit {
+  /** Newest edit in this chain; 0 for a decision with no tracked edit. */
+  seq: number;
+  /** How many edits this chain covers. */
+  edits: number;
+  agent: string;
+  task: string;
+  decisionId: string | null;
+  decision: string | null;
+  why: string | null;
+  decidedBy: string | null;
+  latestId: string | null;
+  latestText: string | null;
+  /** File, editing agent, task, decision. The chain a judge can read. */
+  path: string[];
+  /** The same chain as real graph nodes (missing links left out). */
+  nodes: { label: string; id: string }[];
+}
+
+const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+
+/**
+ * Record a decision. `taskId` marks that task as caused by it (the why-trace link);
+ * `supersedes` lists decision ids it replaces, which become `superseded`.
+ * Returns the decision id.
+ */
+export async function recordDecision(
+  g: SbGraph,
+  input: {
+    agent: string;
+    text: string;
+    why: string;
+    paths: string[];
+    taskId?: string;
+    supersedes?: string[];
+    id?: string;
+    now?: number;
+  },
+): Promise<string> {
+  const id = input.id ?? `d-${randomUUID()}`;
+  const at = input.now ?? Date.now();
+  const supersedes = input.supersedes ?? [];
+  await g.query(RECORD_DECISION, {
+    agent: input.agent,
+    id,
+    text: input.text,
+    why: input.why,
+    at,
+    paths: input.paths,
+    taskId: input.taskId ?? null,
+    supersedes,
+  });
+  await recordEvent(g, {
+    kind: "decision",
+    agentId: input.agent,
+    taskId: input.taskId,
+    onPath: input.paths[0],
+    payload: { id, text: input.text, why: input.why, paths: input.paths, supersedes },
+    now: at,
+  });
+  return id;
+}
+
+/** Every decision, newest first, superseded ones included (see `status`). */
 export async function listDecisions(g: SbGraph): Promise<DecisionRow[]> {
   const rows = await g.roQuery(LIST_DECISIONS);
   return rows.map((row) => ({
     id: String(row.id),
     text: String(row.text),
-    why: typeof row.why === "string" ? row.why : null,
-    status: typeof row.status === "string" ? row.status : null,
-    agent: typeof row.agent === "string" ? row.agent : null,
+    why: str(row.why),
+    status: str(row.status),
+    agent: str(row.agent),
   }));
 }
 
-/** Why does this file look like this? Newest edits first. */
-export async function whyTrace(g: SbGraph, path: string): Promise<WhyHit[]> {
-  const rows = await g.roQuery(WHY_TRACE, { path });
-  return rows.map((row) => {
-    const decision = typeof row.decision === "string" ? row.decision : null;
-    const agent = String(row.agent);
-    const task = String(row.task);
+/**
+ * Why does this file look like this? Edit chains newest first, then active
+ * decisions on the file that no edit chain reached. Empty when neither exists.
+ */
+export async function whyTrace(g: SbGraph, file: string, limit = 5): Promise<WhyHit[]> {
+  const path = normPath(file);
+  const rows = await g.roQuery(WHY_TRACE, { path, limit });
+  const hits = rows.map((row): WhyHit => {
+    const edited = Number(row.edits) > 0;
+    const agent = str(row.agent) ?? (edited ? "(unknown agent)" : "(no tracked edit)");
+    const task = str(row.task) ?? "(no task)";
+    const decision = str(row.decision);
     return {
       seq: Number(row.seq),
+      edits: Number(row.edits),
       agent,
       task,
-      decisionId: typeof row.decisionId === "string" ? row.decisionId : null,
+      decisionId: str(row.decisionId),
       decision,
-      why: typeof row.why === "string" ? row.why : null,
-      decidedBy: typeof row.decidedBy === "string" ? row.decidedBy : null,
-      latestId: typeof row.latestId === "string" ? row.latestId : null,
-      latestText: typeof row.latestText === "string" ? row.latestText : null,
+      why: str(row.why),
+      decidedBy: str(row.decidedBy),
+      latestId: str(row.latestId),
+      latestText: str(row.latestText),
       path: [path, agent, task, decision ?? "(no decision)"],
+      nodes: (row.nodes as { label: unknown; id: unknown }[]).map((n) => ({ label: String(n.label), id: String(n.id) })),
     };
   });
+  const traced = new Set(hits.filter((h) => h.edits > 0).map((h) => h.decisionId));
+  return hits.filter((h) => h.edits > 0 || !traced.has(h.decisionId)).slice(0, limit);
 }

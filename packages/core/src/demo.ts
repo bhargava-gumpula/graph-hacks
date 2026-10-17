@@ -1,12 +1,12 @@
 import type { ClaimResult } from "./queries/claims.js";
 import { claim } from "./queries/claims.js";
 import { findConflicts } from "./queries/conflict.js";
-import { MARK_FILE_HUB } from "./queries/hubs.js";
 import { loadParse } from "./queries/loader.js";
 import { SET_TASK_STATUS, parallelBatches, planTask } from "./queries/schedule.js";
 import { recordEdit } from "./queries/edits.js";
 import { recordDecision, whyTrace } from "./queries/why.js";
 import { registerAgent } from "./queries/agents.js";
+import { recordLesson } from "./queries/brief.js";
 import { release } from "./queries/claims.js";
 import { ensureSchema } from "./queries/schema.js";
 import { parseRepo } from "./parser.js";
@@ -34,7 +34,6 @@ export interface MvpScenarioResult {
 export async function runMvpScenario(g: SbGraph, demoRoot: string): Promise<MvpScenarioResult> {
   await ensureSchema(g);
   const counts = await loadParse(g, parseRepo(demoRoot));
-  await g.query(MARK_FILE_HUB, { path: "lib/utils.ts" });
   await release(g, { agent: A });
   await release(g, { agent: B });
   await registerAgent(g, { id: A, kind: "cursor" });
@@ -70,6 +69,20 @@ export async function runMvpScenario(g: SbGraph, demoRoot: string): Promise<MvpS
   });
   await recordEdit(g, { agentId: A, path: "lib/crypto.ts", taskId: "T3" });
   await g.query(SET_TASK_STATUS, { id: "T3", status: "done" });
+
+  // A's own work on the file it holds: a decision under T1 and an edit, so
+  // whyTrace(auth/session.ts) reads file → A → T1 → decision. Plus one lesson
+  // (procedural memory) near session.ts, so brief(T1) carries it.
+  await recordDecision(g, {
+    agent: A,
+    text: "session ttl 30m",
+    why: "security review asked for shorter sessions",
+    paths: [SESSION],
+    taskId: "T1",
+    id: "D-session-ttl",
+  });
+  await recordEdit(g, { agentId: A, path: SESSION, taskId: "T1" });
+  await recordLesson(g, { text: "run codegen before tsc", paths: ["lib/crypto.ts"], agent: A, id: "L-codegen" });
   const why = (await whyTrace(g, "lib/crypto.ts"))[0]?.path ?? [];
   const hit = b.conflicts[0]!;
   const sentence =

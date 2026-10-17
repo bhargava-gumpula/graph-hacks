@@ -1,13 +1,87 @@
 {
   "n": 10,
-  "kind": "scripted agents, same edit, real tsc, real FalkorDB conflict check",
+  "kind": "scripted agents, two edits that each typecheck alone, real tsc, real FalkorDB claims",
+  "baselineOk": true,
+  "aAloneOk": true,
+  "bAloneOk": true,
+  "mergedOk": false,
+  "mergedError": "ui/LoginForm.tsx(9,67): error TS2339: Property 'toUpperCase' does not exist on type '{ user: string; at: string; }'.",
   "without": {
     "brokenBuilds": 10,
     "editsApplied": 10
   },
   "with": {
     "brokenBuilds": 0,
-    "blocked": 10
+    "blocked": 10,
+    "caught": 10,
+    "editsApplied": 0
   },
-  "checkMsMedian": 1
+  "runs": {
+    "without": [
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail"
+    ],
+    "with": [
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused"
+    ]
+  },
+  "checkMsMedian": 0.69,
+  "checkMsMin": 0.56,
+  "checkMsMax": 1.35,
+  "checkMsSamples": [
+    1.35,
+    0.7,
+    0.56,
+    0.69,
+    0.7,
+    0.63,
+    0.74,
+    0.62,
+    0.62,
+    0.69
+  ],
+  "claimMsMedian": 3.64,
+  "claim": {
+    "agent": "A",
+    "file": "auth/session.ts"
+  },
+  "edit": {
+    "agent": "B",
+    "file": "ui/LoginForm.tsx"
+  },
+  "conflict": {
+    "type": "UPSTREAM",
+    "hops": 2,
+    "path": [
+      "ui/LoginForm.tsx",
+      "api/login.ts",
+      "auth/session.ts"
+    ]
+  },
+  "graph": {
+    "files": 35,
+    "imports": 51
+  },
+  "tsc": "Version 5.9.3",
+  "node": "v26.9.0",
+  "loadAvg1m": 4.84,
+  "cpus": 10,
+  "ranAt": "2026-10-17T09:47:30.725Z"
 }

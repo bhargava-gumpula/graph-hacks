@@ -25,3 +25,6 @@ Agent A claims `lib/crypto.ts`. Agent B asks for `ui/LoginForm.tsx`, a different
 
 ## 2026-10-15 17:15 — Which tasks can run together is a graph algorithm
 Five open tasks. FalkorDB connects two when one's files can reach the other's through imports, skipping the hub everyone imports. Weakly connected components then returns three batches: the login chain together, the settings island together, and the about page alone. Nobody listed the batches. The import graph did.
+
+## 2026-10-17 01:20 — Drawing the hero in code, not pixels
+We threw away the first UI and rebuilt it around one idea from a reel: "code places, it doesn't predict." The hero isn't a video or a mockup. It's the real demo repo laid out in folder columns, with the actual 3-hop path FalkorDB returns, drawn as SVG and animated hop by hop. Asset: docs/blog-assets/hero-u1.png (to capture).

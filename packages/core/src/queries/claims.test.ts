@@ -1,11 +1,15 @@
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { connect } from "../graph.js";
 import { parseRepo } from "../parser.js";
 import { useTestGraph } from "../test-helpers.js";
-import { claim, release } from "./claims.js";
+import { heartbeat } from "./agents.js";
+import { claim, release, unknownPaths } from "./claims.js";
+import { recordEdit } from "./edits.js";
 import { findConflicts } from "./conflict.js";
 import { feedSince, latestSeq } from "./feed.js";
 import { loadParse } from "./loader.js";
+import { planTask, SET_TASK_STATUS } from "./schedule.js";
 
 const g = useTestGraph("sb_test_claims");
 const HUB = "lib/utils.ts";
@@ -38,6 +42,7 @@ describe("Q1 conflicts on the demo repo", () => {
         agent: "A",
         taskId: "T1",
         intent: null,
+        until: expect.any(Number),
       },
     ]);
   });
@@ -65,12 +70,20 @@ describe("Q1 conflicts on the demo repo", () => {
     ]);
   });
 
-  test("no path = provably safe: unrelated file, hub-only link, separate island", async () => {
-    await claim(g(), { agent: "A", paths: ["lib/crypto.ts", HUB] });
+  test("no path = provably safe: files that only share the hub, separate island", async () => {
+    // session.ts and AboutPage.tsx both import the hub; no path runs through it.
+    await claim(g(), { agent: "A", paths: ["lib/crypto.ts", "auth/session.ts"] });
     expect(await findConflicts(g(), { agent: "B", paths: ["ui/AboutPage.tsx"] })).toEqual([]);
     expect((await claim(g(), { agent: "B", paths: ["ui/SettingsPanel.tsx", "api/settings.ts", "lib/prefs.ts"] })).ok).toBe(true);
   });
 
+  test("the hub itself conflicts with a claimed importer (DOWNSTREAM, hub: true)", async () => {
+    await claim(g(), { agent: "A", paths: ["auth/session.ts"] });
+    const res = await findConflicts(g(), { agent: "B", paths: [HUB] });
+    expect(res.map((c) => [c.type, c.hops, c.path.join(" → "), c.hub])).toEqual([
+      ["DOWNSTREAM", 1, `auth/session.ts → ${HUB}`, true],
+    ]);
+  });
   test("own claims and expired claims never conflict", async () => {
     const now = Date.now();
     await claim(g(), { agent: "A", paths: ["lib/crypto.ts"], ttlMs: 1000, now });
@@ -110,4 +123,112 @@ describe("claims and the event bus", () => {
     expect((await release(g(), { agent: "A" })).released).toBe(1);
     expect((await claim(g(), { agent: "B", paths: ["ui/LoginForm.tsx"] })).ok).toBe(true);
   });
+});
+
+describe("atomic claim under concurrency", () => {
+  // Two connections, so the requests really are in flight together. With a
+  // separate read-then-write, both checks could pass before either write lands.
+  test("racing claims on linked files: exactly one wins, every round", async () => {
+    const other = await connect({ graph: g().name });
+    try {
+      for (let round = 0; round < 20; round++) {
+        await release(g(), { agent: "A" });
+        await release(g(), { agent: "B" });
+        const [a, b] = await Promise.all([
+          claim(g(), { agent: "A", paths: ["lib/crypto.ts"] }),
+          claim(other, { agent: "B", paths: ["ui/LoginForm.tsx"] }),
+        ]);
+        expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+        const loser = a.ok ? b : a;
+        if (!loser.ok) expect(loser.conflicts[0]?.hops).toBe(3);
+      }
+    } finally {
+      await other.close();
+    }
+  });
+
+  test("ten agents race for the same file: one holder", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) => claim(g(), { agent: `R${i}`, paths: ["auth/session.ts"] })),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    const [holders] = await g().roQuery(
+      "MATCH (a:Agent)-[:CLAIMS]->(:File {path: 'auth/session.ts'}) RETURN count(a) AS n",
+    );
+    expect(holders?.n).toBe(1);
+    for (let i = 0; i < 10; i++) await release(g(), { agent: `R${i}` });
+  });
+});
+
+describe("TTL and release", () => {
+  test("release frees the file for the next agent", async () => {
+    await claim(g(), { agent: "A", paths: ["auth/session.ts"] });
+    expect((await claim(g(), { agent: "B", paths: ["auth/session.ts"] })).ok).toBe(false);
+    await release(g(), { agent: "A", paths: ["auth/session.ts"] });
+    expect((await claim(g(), { agent: "B", paths: ["auth/session.ts"] })).ok).toBe(true);
+  });
+
+  test("a claim expires after its TTL; a heartbeat extends it", async () => {
+    const now = Date.now();
+    await claim(g(), { agent: "A", paths: ["lib/crypto.ts"], ttlMs: 1000, now });
+    expect((await heartbeat(g(), { id: "A", now: now + 900 })).extended).toBe(1);
+    // until is now + 900 + 1000: still held at +1500, gone at +1900.
+    expect(await findConflicts(g(), { agent: "B", paths: ["lib/crypto.ts"], now: now + 1500 })).toHaveLength(1);
+    expect((await claim(g(), { agent: "B", paths: ["lib/crypto.ts"], now: now + 1900 })).ok).toBe(true);
+  });
+
+  test("re-claiming your own file extends it instead of conflicting", async () => {
+    const now = Date.now();
+    await claim(g(), { agent: "A", paths: ["lib/crypto.ts"], ttlMs: 1000, now });
+    const again = await claim(g(), { agent: "A", paths: ["lib/crypto.ts", "lib/crypto.ts"], ttlMs: 5000, now });
+    expect(again).toMatchObject({ ok: true, until: now + 5000 });
+  });
+
+  test("an empty claim is rejected", async () => {
+    await expect(claim(g(), { agent: "A", paths: [] })).rejects.toThrow(/at least one path/);
+  });
+});
+
+describe("path normalisation and unknown files", () => {
+  const ghosts = async () =>
+    (await g().roQuery("MATCH (f:File) WHERE f.path STARTS WITH 'demo-repo/' RETURN count(f) AS n"))[0]?.n;
+
+  test("demo-repo/, ./ and absolute paths conflict like the repo-relative path, and no ghost File appears", async () => {
+    await claim(g(), { agent: "A", paths: ["auth/session.ts"], taskId: "T1" });
+    const root = join(import.meta.dirname, "../../../..");
+    for (const p of ["demo-repo/ui/LoginForm.tsx", "./ui/LoginForm.tsx", `${root}/demo-repo/ui/LoginForm.tsx`]) {
+      const res = await claim(g(), { agent: "B", paths: [p] });
+      expect(res.ok, p).toBe(false);
+      if (!res.ok) expect(res.conflicts[0]).toMatchObject({ file: "ui/LoginForm.tsx", type: "UPSTREAM", hops: 2 });
+    }
+    expect(await findConflicts(g(), { agent: "B", paths: ["demo-repo/ui/LoginForm.tsx"] })).toHaveLength(1);
+    await recordEdit(g(), { agentId: "B", path: "demo-repo/ui/AboutPage.tsx" });
+    expect(await ghosts()).toBe(0);
+  });
+
+  test("an unknown path is returned as unknown, not claimed, and creates no File", async () => {
+    const files = async () => (await g().roQuery("MATCH (f:File) RETURN count(f) AS n"))[0]?.n;
+    const before = await files();
+    const res = await claim(g(), { agent: "B", paths: ["ui/NewThing.tsx"] });
+    expect(res).toMatchObject({ ok: true, unknown: ["ui/NewThing.tsx"] });
+    expect(await files()).toBe(before);
+
+    // Known paths in the same request are still checked and claimed.
+    const mixed = await claim(g(), { agent: "B", paths: ["ui/AboutPage.tsx", "demo-repo/ui/Nope.tsx"] });
+    expect(mixed).toMatchObject({ ok: true, unknown: ["ui/Nope.tsx"] });
+    const [held] = await g().roQuery("MATCH (:Agent {id:'B'})-[:CLAIMS]->(f:File) RETURN collect(f.path) AS paths");
+    expect(held?.paths).toEqual(["ui/AboutPage.tsx"]);
+    expect(await files()).toBe(before);
+    expect(await unknownPaths(g(), ["./lib/utils.ts", "x/y.ts"])).toEqual(["x/y.ts"]);
+  });
+});
+
+test("a denied claim lists open-task files that are safe right now", async () => {
+  await planTask(g(), { id: "t-about", paths: ["ui/AboutPage.tsx"] });
+  await planTask(g(), { id: "t-api", paths: ["api/login.ts", "ui/LoginForm.tsx"] });
+  await claim(g(), { agent: "A", paths: ["auth/session.ts"] });
+  const res = await claim(g(), { agent: "B", paths: ["ui/LoginForm.tsx"] });
+  // api/login.ts imports session.ts and LoginForm.tsx was asked for: only AboutPage.tsx is free.
+  expect(res).toMatchObject({ ok: false, safe: ["ui/AboutPage.tsx"] });
+  for (const id of ["t-about", "t-api"]) await g().query(SET_TASK_STATUS, { id, status: "done" });
 });

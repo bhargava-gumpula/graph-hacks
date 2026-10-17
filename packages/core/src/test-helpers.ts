@@ -10,6 +10,10 @@ const MISSING_GRAPH = "empty key";
  * `beforeAll` and `afterAll` both delete, so a failed run can be re-run.
  */
 export function useTestGraph(name: string): () => SbGraph {
+  // The helper deletes the graph, so refuse anything that could be real data.
+  if (!name.startsWith("sb_test_")) throw new Error(`test graph names must start with sb_test_ (got ${name})`);
+  // Parallel checkouts sharing one FalkorDB set SB_TEST_NS so their graphs don't collide.
+  name += process.env.SB_TEST_NS ?? "";
   let graph: SbGraph | undefined;
 
   beforeAll(async () => {

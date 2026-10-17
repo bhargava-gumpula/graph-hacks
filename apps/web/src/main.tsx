@@ -1,11 +1,18 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App.js";
-import { Judge } from "./Judge.js";
-import { Landing } from "./Landing.js";
-import "./style.css";
 
 const path = window.location.pathname;
-const page = path.startsWith("/judge") ? <Judge /> : path.startsWith("/app") ? <App /> : <Landing />;
+const root = createRoot(document.getElementById("root")!);
 
-createRoot(document.getElementById("root")!).render(<StrictMode>{page}</StrictMode>);
+// /judge was the old button page; the dashboard replaced it.
+if (path.startsWith("/judge")) {
+  window.location.replace("/app");
+} else if (path.startsWith("/app")) {
+  void Promise.all([import("./app/Dashboard"), import("./theme.css")]).then(([{ Dashboard }]) =>
+    root.render(<StrictMode><Dashboard /></StrictMode>),
+  );
+} else {
+  void Promise.all([import("./Landing.js"), import("./theme.css")]).then(([{ Landing }]) =>
+    root.render(<StrictMode><Landing /></StrictMode>),
+  );
+}

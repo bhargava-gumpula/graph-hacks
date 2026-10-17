@@ -1,3 +1,5 @@
+// Switchboard MCP server (stdio). Every tool returns a one-screen text answer
+// plus the same data as `structuredContent`, validated by its `outputSchema`.
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -20,8 +22,8 @@ import {
   release,
   status,
   summarizeBrief,
+  SWITCHBOARD_VERSION,
   whyTrace,
-  type AgentKind,
   type Conflict,
   type SbGraph,
 } from "@switchboard/core";
@@ -29,243 +31,357 @@ import { z } from "zod";
 
 const KINDS = ["cursor", "claude", "human"] as const;
 
-function text(body: string) {
-  return { content: [{ type: "text" as const, text: body }] };
+/** Sent once at initialize; clients put it in the agent's context. */
+export const INSTRUCTIONS =
+  "Switchboard coordinates agents on this repo. Call claim before editing any file; paths are relative to the " +
+  "parsed repo (ui/LoginForm.tsx, not demo-repo/ui/LoginForm.tsx). ok=false means do not edit: report the import " +
+  "path, then pick another task or call brief_me. Call brief_me at the start, record_decision when you choose an " +
+  "approach, release when done.";
+
+/** brief_me returns at most this many events: the newest per (kind, path, agent). */
+const BRIEF_EVENTS = 5;
+
+const path = z.string().min(1).describe("Repo-relative file path, e.g. auth/session.ts");
+const paths = z.array(path).min(1);
+const agentArg = z
+  .string()
+  .min(1)
+  .optional()
+  .describe("Agent id. Omit it: defaults to SB_AGENT, else the git branch of this checkout.");
+
+const conflictSchema = z.object({
+  file: z.string(),
+  type: z.enum(["SAME", "UPSTREAM", "DOWNSTREAM"]),
+  claimed: z.string(),
+  path: z.array(z.string()),
+  hops: z.number(),
+  agent: z.string(),
+  taskId: z.string().nullable(),
+  intent: z.string().nullable(),
+  until: z.number().optional(),
+  hub: z.boolean().optional(),
+});
+
+function unknownText(paths: string[] | undefined): string[] {
+  return (paths ?? []).map((p) => `WARNING not in the parsed graph, no dependency check: ${p}`);
 }
 
-function conflictText(c: Conflict): string {
+/** Text for humans and older clients, structured data for agents. */
+function reply<T extends Record<string, unknown>>(text: string, data: T) {
+  return { content: [{ type: "text" as const, text }], structuredContent: data };
+}
+
+export function conflictText(c: Conflict): string {
   return `${c.type} ${c.file} ← ${c.agent} via ${c.path.join(" → ")}`;
 }
 
 let graphPromise: Promise<SbGraph> | undefined;
 
-/** One connection for the process. Opened on the first tool call, not at startup. */
+/** One connection per process, opened on the first tool call so `tools/list` works without FalkorDB. */
 function graph(): Promise<SbGraph> {
-  if (!graphPromise) {
-    graphPromise = connect()
-      .then(async (g) => {
-        await ensureSchema(g);
-        return g;
-      })
-      .catch((err: unknown) => {
-        graphPromise = undefined;
-        throw err;
-      });
-  }
+  graphPromise ??= connect()
+    .then(async (g) => {
+      await ensureSchema(g);
+      return g;
+    })
+    .catch((err: unknown) => {
+      graphPromise = undefined; // retry on the next call
+      throw err;
+    });
   return graphPromise;
 }
 
-function isKind(value: string | undefined): value is AgentKind {
-  return value !== undefined && (KINDS as readonly string[]).includes(value);
-}
-
-/** The five tools agents call. Agent id is `agentId()` (SB_AGENT, else the git branch). */
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "switchboard", version: "0.0.0" });
+  const server = new McpServer({ name: "switchboard", version: SWITCHBOARD_VERSION }, { instructions: INSTRUCTIONS });
+  const who = (agent?: string) => agent ?? agentId();
 
   server.registerTool(
     "register_agent",
     {
-      description: "Register this agent. Id is SB_AGENT or the git branch of this checkout.",
+      title: "Register agent",
+      description:
+        "Call once at the start of a session. Marks you active in the shared Switchboard graph so other agents see you.",
       inputSchema: z.object({
-        kind: z.enum(KINDS).optional().describe("cursor, claude, or human"),
+        kind: z.enum(KINDS).optional().describe("Which tool you are: cursor, claude, or human"),
+        agent: agentArg,
       }),
+      outputSchema: z.object({ agent: z.string(), kind: z.string().nullable(), seq: z.number() }),
     },
-    async ({ kind }) => {
-      const id = agentId();
-      await registerAgent(await graph(), { id, kind: isKind(kind) ? kind : undefined });
-      return text(`registered ${id}${kind ? ` kind=${kind}` : ""}`);
+    async ({ kind, agent }) => {
+      const id = who(agent);
+      const { seq } = await registerAgent(await graph(), { id, kind });
+      return reply(`registered ${id}${kind ? ` kind=${kind}` : ""}`, { agent: id, kind: kind ?? null, seq });
     },
   );
 
   server.registerTool(
     "claim",
     {
-      description: "Claim files before editing. OK until=<iso>, or CONFLICT plus the import path.",
+      title: "Claim files",
+      description:
+        "Call BEFORE editing files. Checks the import graph for other agents' claims on these files or on files they " +
+        "import / are imported by (up to 3 hops). ok=true: the files are yours until `until`. ok=false: do NOT edit; " +
+        "each conflict names the other agent and the import path that links your file to theirs. " +
+        "`unknown` lists paths the parser never saw: they were not checked or claimed.",
       inputSchema: z.object({
-        paths: z.array(z.string()).min(1).describe("Repo-relative paths"),
-        task: z.string().optional().describe("Task id"),
-        intent: z.string().optional().describe("What you intend to change"),
+        paths: paths.describe("Files you are about to edit"),
+        task: z.string().optional().describe("Task id this work belongs to"),
+        intent: z.string().optional().describe("One line on what you will change; shown to other agents"),
+        agent: agentArg,
+      }),
+      outputSchema: z.object({
+        ok: z.boolean(),
+        until: z.number().optional().describe("Epoch ms when the claim expires"),
+        conflicts: z.array(conflictSchema),
+        unknown: z.array(z.string()).describe("Paths not in the parsed graph: not checked, not claimed"),
+        safe: z.array(z.string()).optional().describe("On a conflict: open-task files you could claim instead right now"),
       }),
     },
-    async ({ paths, task, intent }) => {
-      const res = await claim(await graph(), {
-        agent: agentId(),
-        paths,
-        taskId: task,
-        intent,
-      });
-      if (res.ok) return text(`OK until=${new Date(res.until).toISOString()}`);
-      return text(["CONFLICT", ...res.conflicts.map(conflictText)].join("\n"));
+    async ({ paths: files, task, intent, agent }) => {
+      const res = await claim(await graph(), { agent: who(agent), paths: files, taskId: task, intent });
+      const unknown = res.unknown ?? [];
+      const warnings = unknownText(unknown);
+      if (res.ok) {
+        const checked = files.length - unknown.length;
+        const ok = checked > 0 ? [`OK until=${new Date(res.until).toISOString()} (${checked} checked)`] : [];
+        return reply([...ok, ...warnings].join("\n"), { ok: true, until: res.until, conflicts: [], unknown });
+      }
+      const safe = res.safe ?? [];
+      const hint = safe.length > 0 ? [`Safe now: ${safe.join(", ")}`] : [];
+      const text = ["CONFLICT", ...res.conflicts.map(conflictText), ...hint, ...warnings].join("\n");
+      return reply(text, { ok: false, conflicts: res.conflicts, unknown, safe });
     },
   );
 
   server.registerTool(
     "release",
     {
-      description: "Release this agent's claims. Omit paths to release all of them.",
-      inputSchema: z.object({
-        paths: z.array(z.string()).optional().describe("Repo-relative paths"),
-      }),
+      title: "Release claims",
+      description: "Call when you finish editing. Releases your claims on the given files, or all of them if `paths` is omitted.",
+      inputSchema: z.object({ paths: paths.optional(), agent: agentArg }),
+      outputSchema: z.object({ released: z.number() }),
     },
-    async ({ paths }) => {
-      const res = await release(await graph(), { agent: agentId(), paths });
-      return text(`released ${res.released}`);
+    async ({ paths: files, agent }) => {
+      const { released } = await release(await graph(), { agent: who(agent), paths: files });
+      return reply(`released ${released}`, { released });
     },
   );
 
   server.registerTool(
     "heartbeat",
     {
-      description: "Tell the graph this agent is still working.",
-      inputSchema: z.object({}),
+      title: "Heartbeat",
+      description: "Call every few minutes during long work so other agents know you are still active.",
+      inputSchema: z.object({ agent: agentArg }),
+      outputSchema: z.object({ agent: z.string(), seq: z.number() }),
     },
-    async () => {
-      await heartbeat(await graph(), { id: agentId() });
-      return text("ok");
+    async ({ agent }) => {
+      const id = who(agent);
+      const { seq } = await heartbeat(await graph(), { id });
+      return reply(`ok ${id}`, { agent: id, seq });
     },
   );
 
   server.registerTool(
     "status",
     {
-      description: "List agents and claims that have not expired.",
+      title: "Status",
+      description: "Who is working right now: every agent and every claim that has not expired.",
       inputSchema: z.object({}),
+      outputSchema: z.object({
+        agents: z.array(
+          z.object({
+            id: z.string(),
+            kind: z.string().nullable(),
+            status: z.string().nullable(),
+            lastSeen: z.number().nullable(),
+            claims: z.array(z.string()),
+          }),
+        ),
+        claims: z.array(
+          z.object({ agent: z.string(), path: z.string(), until: z.number(), taskId: z.string().nullable() }),
+        ),
+      }),
+      annotations: { readOnlyHint: true },
     },
     async () => {
       const s = await status(await graph());
-      const agents = s.agents.map(
-        (a) => `${a.id} ${a.kind ?? "-"} ${a.status ?? "-"} claims=${a.claims.join(",") || "-"}`,
-      );
+      const agents = s.agents.map((a) => `${a.id} ${a.kind ?? "-"} ${a.status ?? "-"} claims=${a.claims.join(",") || "-"}`);
       const claims = s.claims.map(
         (c) => `${c.agent} ${c.path} until=${new Date(c.until).toISOString()} task=${c.taskId ?? "-"}`,
       );
-      return text(`agents:\n${agents.join("\n") || "(none)"}\nclaims:\n${claims.join("\n") || "(none)"}`);
+      const text = `agents:\n${agents.join("\n") || "(none)"}\nclaims:\n${claims.join("\n") || "(none)"}`;
+      return reply(text, { agents: s.agents, claims: s.claims });
     },
   );
 
   server.registerTool(
     "record_decision",
     {
-      description: "Record a decision and the files it affects. An older active decision on the same file is superseded.",
+      title: "Record decision",
+      description:
+        "Record a design decision and the files it affects, so later agents (and `why`) can find it. " +
+        "An older active decision on the same file is marked superseded.",
       inputSchema: z.object({
-        text: z.string(),
-        why: z.string(),
-        affects: z.array(z.string()).min(1),
-        task: z.string().optional(),
+        text: z.string().min(1).describe("The decision, e.g. 'use argon2, not bcrypt'"),
+        why: z.string().min(1).describe("The reason"),
+        affects: paths.describe("Files the decision applies to"),
+        task: z.string().optional().describe("Task the decision caused"),
+        agent: agentArg,
       }),
+      outputSchema: z.object({ id: z.string() }),
     },
-    async ({ text: decision, why, affects, task }) => {
-      const id = await recordDecision(await graph(), {
-        agent: agentId(),
-        text: decision,
-        why,
-        paths: affects,
-        taskId: task,
-      });
-      return text(`decision ${id}`);
+    async ({ text, why, affects, task, agent }) => {
+      const id = await recordDecision(await graph(), { agent: who(agent), text, why, paths: affects, taskId: task });
+      return reply(`decision ${id}`, { id });
     },
   );
 
   server.registerTool(
     "record_lesson",
     {
-      description: "Record a lesson about one or more files.",
+      title: "Record lesson",
+      description: "Record something you learned about files (a gotcha, a failed approach) so the next agent's briefing shows it.",
       inputSchema: z.object({
-        text: z.string(),
-        about: z.array(z.string()).min(1),
+        text: z.string().min(1).describe("The lesson"),
+        about: paths.describe("Files it is about"),
+        agent: agentArg,
       }),
+      outputSchema: z.object({ id: z.string() }),
     },
-    async ({ text: lesson, about }) => {
-      const id = await recordLesson(await graph(), { text: lesson, paths: about, agent: agentId() });
-      return text(`lesson ${id}`);
+    async ({ text, about, agent }) => {
+      const id = await recordLesson(await graph(), { text, paths: about, agent: who(agent) });
+      return reply(`lesson ${id}`, { id });
     },
   );
 
   server.registerTool(
     "brief_me",
     {
-      description: "Briefing for a task id or a directory prefix: claims, decisions, lessons, events, handoff.",
+      title: "Brief me",
+      description:
+        "Call before starting a task or taking over someone else's. Returns nearby claims, active decisions, lessons, " +
+        "recent events and the latest handoff note for a task id or a directory prefix. With neither, the whole repo.",
       inputSchema: z.object({
-        task: z.string().optional(),
-        prefix: z.string().optional(),
+        task: z.string().min(1).optional().describe("Task id"),
+        prefix: z.string().optional().describe("Directory prefix, e.g. auth/ ('' or omitted: the whole repo)"),
       }),
+      outputSchema: z.object({ text: z.string(), summary: z.string().nullable(), brief: z.record(z.string(), z.unknown()) }),
+      annotations: { readOnlyHint: true },
     },
     async ({ task, prefix }) => {
-      const body = formatBrief(await brief(await graph(), { taskId: task, prefix }));
-      const summary = await summarizeBrief(body);
-      return text(summary ? `${body}\n\nSummary: ${summary}` : body);
+      const b = await brief(await graph(), { taskId: task, prefix: task === undefined && prefix === undefined ? "" : prefix });
+      const text = formatBrief(b);
+      const summary = await summarizeBrief(text);
+      // Events arrive newest first; keep the newest per (kind, path, agent).
+      const seen = new Set<string>();
+      const events = b.events
+        .filter((e) => {
+          const key = `${e.kind}\0${e.path}\0${e.agentId ?? ""}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, BRIEF_EVENTS);
+      return reply(summary ? `${text}\n\nSummary: ${summary}` : text, { text, summary, brief: { ...b, events } });
     },
   );
 
   server.registerTool(
     "why",
     {
-      description: "Why a file looks like this: edit, agent, task, decision.",
-      inputSchema: z.object({ path: z.string() }),
+      title: "Why is this file like this",
+      description: "Trace a file's recent edits to the agent, task and decision behind them (newest first).",
+      inputSchema: z.object({ path }),
+      outputSchema: z.object({ path: z.string(), hits: z.array(z.record(z.string(), z.unknown())) }),
+      annotations: { readOnlyHint: true },
     },
-    async ({ path }) => {
-      const hits = await whyTrace(await graph(), path);
-      if (hits.length === 0) return text(`no edits recorded for ${path}`);
-      return text(hits.map((h) => h.path.join(" → ")).join("\n"));
+    async ({ path: file }) => {
+      const hits = await whyTrace(await graph(), file);
+      const text =
+        hits.length === 0
+          ? `no edits or decisions recorded for ${file}`
+          : hits.map((h) => `${h.path.join(" → ")}${h.edits > 1 ? ` (${h.edits} edits)` : ""}`).join("\n");
+      return reply(text, { path: file, hits: hits.map((h) => ({ ...h })) });
     },
   );
 
   server.registerTool(
     "blast_radius",
     {
-      description: "Files that import this one, hop by hop. Empty means nothing depends on it.",
-      inputSchema: z.object({ path: z.string() }),
+      title: "Blast radius",
+      description: "Files that import this one, directly or up to 3 hops away, with any agent claiming them. Check before changing an export.",
+      inputSchema: z.object({ path }),
+      outputSchema: z.object({
+        path: z.string(),
+        dependents: z.array(z.object({ path: z.string(), hops: z.number(), agents: z.array(z.string()) })),
+      }),
+      annotations: { readOnlyHint: true },
     },
-    async ({ path }) => {
-      const blast = await blastRadius(await graph(), path);
-      if (blast.dependents.length === 0) return text(`${path}: no dependents`);
-      return text(blast.dependents.map((d) => `${d.hops} ${d.path}`).join("\n"));
+    async ({ path: file }) => {
+      const blast = await blastRadius(await graph(), file);
+      const text =
+        blast.dependents.length === 0
+          ? `${file}: no dependents`
+          : blast.dependents.map((d) => `${d.hops} ${d.path}${d.agents.length ? ` (claimed by ${d.agents.join(",")})` : ""}`).join("\n");
+      return reply(text, { path: blast.path, dependents: blast.dependents });
     },
   );
 
   server.registerTool(
     "plan_task",
     {
-      description: "Open a task and name the files it will touch.",
+      title: "Plan task",
+      description: "Open a task and list the files it will touch. Feeds `parallel_batches`.",
       inputSchema: z.object({
-        id: z.string(),
+        id: z.string().min(1).describe("Task id"),
         title: z.string().optional(),
-        paths: z.array(z.string()).min(1),
+        paths: paths.describe("Files the task will touch"),
       }),
+      outputSchema: z.object({ id: z.string(), paths: z.array(z.string()) }),
     },
-    async ({ id, title, paths }) => {
-      await planTask(await graph(), { id, title, paths });
-      return text(`planned ${id}`);
+    async ({ id, title, paths: files }) => {
+      await planTask(await graph(), { id, title, paths: files });
+      return reply(`planned ${id}`, { id, paths: files });
     },
   );
 
   server.registerTool(
     "parallel_batches",
     {
-      description: "Open tasks split into batches that can run at the same time.",
+      title: "Parallel batches",
+      description:
+        "Group open tasks so tasks in different groups touch unrelated code and can run at the same time. " +
+        "Tasks in the same group should run one after another.",
       inputSchema: z.object({}),
+      outputSchema: z.object({
+        batches: z.array(z.object({ componentId: z.number(), tasks: z.array(z.string()), paths: z.array(z.string()) })),
+      }),
     },
     async () => {
       const batches = await parallelBatches(await graph());
-      if (batches.length === 0) return text("no open tasks");
-      return text(batches.map((b) => b.tasks.join(" ")).join("\n"));
+      const text = batches.length === 0 ? "no open tasks" : batches.map((b) => b.tasks.join(" ")).join("\n");
+      return reply(text, { batches });
     },
   );
 
   server.registerTool(
     "handoff",
     {
-      description: "Hand a task to another agent, with a note the next briefing shows.",
+      title: "Hand off",
+      description: "Hand a task to another agent with a note. The next `brief_me` for that task shows the note.",
       inputSchema: z.object({
-        task: z.string(),
-        to: z.string(),
-        note: z.string(),
+        task: z.string().min(1).describe("Task id"),
+        to: z.string().min(1).describe("Agent id receiving the task"),
+        note: z.string().min(1).describe("What they need to know"),
+        agent: agentArg,
       }),
+      outputSchema: z.object({ task: z.string(), from: z.string(), to: z.string() }),
     },
-    async ({ task, to, note }) => {
-      await handoff(await graph(), { from: agentId(), to, taskId: task, note });
-      return text(`handed ${task} to ${to}`);
+    async ({ task, to, note, agent }) => {
+      const from = who(agent);
+      await handoff(await graph(), { from, to, taskId: task, note });
+      return reply(`handed ${task} to ${to}`, { task, from, to });
     },
   );
 
@@ -284,13 +400,12 @@ function isDirectRun(): boolean {
 
 if (isDirectRun()) {
   process.stdin.on("end", () => {
-    if (!graphPromise) return;
-    void graphPromise.then((g) => g.close()).catch(() => undefined);
+    void graphPromise?.then((g) => g.close()).catch(() => undefined);
   });
-  const server = createServer();
-  const transport = new StdioServerTransport();
-  server.connect(transport).catch((err: unknown) => {
-    console.error(err instanceof Error ? err.message : err);
-    process.exitCode = 1;
-  });
+  createServer()
+    .connect(new StdioServerTransport())
+    .catch((err: unknown) => {
+      console.error(err instanceof Error ? err.message : err);
+      process.exitCode = 1;
+    });
 }

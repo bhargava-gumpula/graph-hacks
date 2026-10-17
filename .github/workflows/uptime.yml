@@ -1,0 +1,23 @@
+name: uptime
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+# PLACEHOLDER DOMAINS: swap these two lines when the final domain is decided.
+env:
+  API_URL: https://switchboard-api.bhargava-gumpula.com
+  SITE_URL: https://switchboard.bhargava-gumpula.com
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: API health
+        run: curl -fsS --max-time 10 --retry 2 --retry-delay 5 "$API_URL/api/health"
+      - name: Site loads
+        run: curl -fsS --max-time 10 --retry 2 --retry-delay 5 -o /dev/null "$SITE_URL/app"

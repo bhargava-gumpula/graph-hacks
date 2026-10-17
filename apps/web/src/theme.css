@@ -1,0 +1,148 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/* One accent (signal orange). Zinc neutrals. Dark-first; light follows the system. */
+@theme {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --color-signal: #ff6a3d;
+  --color-signal-soft: #ff6a3d26;
+  --color-ink: #0b0b0d;
+  --color-panel: #121215;
+  --color-line: #26262c;
+  --color-fog: #8b8b96;
+  --color-paper: #ededf0;
+  --radius-panel: 10px;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root {
+  color-scheme: dark;
+  --bg: var(--color-ink);
+  --fg: var(--color-paper);
+  --muted: var(--color-fog);
+  --surface: var(--color-panel);
+  --border: var(--color-line);
+  /* Orange for TEXT. Fills and strokes keep --color-signal; light mode darkens text for contrast. */
+  --signal-text: #ff6a3d;
+  --chart-1: oklch(0.32 0 none);
+  --chart-2: oklch(0.41 0 none);
+  --chart-3: oklch(0.54 0 none);
+  --chart-4: oklch(0.71 0 none);
+  --chart-5: oklch(0.89 0 none);
+  --chart-background: oklch(1 0 0);
+  --chart-foreground: oklch(0.145 0.004 285);
+  --chart-foreground-muted: oklch(0.55 0.014 260);
+  --chart-line-primary: var(--chart-1);
+  --chart-line-secondary: var(--chart-2);
+  --chart-crosshair: oklch(0.4 0.1828 274.34);
+  --chart-grid: oklch(0.9 0 0);
+  --chart-brush-border: var(--chart-grid);
+  --chart-tooltip-background: var(--popover);
+  --chart-tooltip-foreground: var(--popover-foreground);
+  --chart-tooltip-muted: var(--muted-foreground);
+  --chart-marker-background: oklch(0.97 0.005 260);
+  --chart-marker-border: oklch(0.85 0.01 260);
+  --chart-marker-foreground: oklch(0.3 0.01 260);
+  --chart-label: oklch(0.45 0.01 260);
+  --chart-scale-01: oklch(0.98 0.003 106);
+  --chart-scale-02: oklch(0.92 0.008 106);
+  --chart-scale-03: oklch(0.82 0.015 106);
+  --chart-scale-04: oklch(0.68 0.02 106);
+  --chart-scale-05: oklch(0.55 0.025 106);
+  --chart-scale-pattern-color: oklch(0.96 0.005 106);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] {
+    color-scheme: light;
+    --bg: #f6f6f7;
+    --fg: #141417;
+    --muted: #5c5c66;
+    --surface: #ffffff;
+    --border: #dcdce1;
+    --signal-text: #bf4219; /* 4.85:1 on --bg, 5.24:1 on --surface (WCAG AA) */
+  }
+}
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--color-signal-soft); }
+
+/* Fixed film grain on a non-scrolling layer (cheap, pointer-events none). */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+:focus-visible { outline: 2px solid var(--color-signal); outline-offset: 3px; border-radius: 6px; }
+
+:root, .dark {
+  --chart-1: oklch(1 0 none);
+  --chart-2: oklch(0.73 0 none);
+  --chart-3: oklch(0.51 0 none);
+  --chart-4: oklch(0.39 0 none);
+  --chart-5: oklch(0.32 0 none);
+  --chart-background: oklch(0.145 0 0);
+  --chart-foreground: oklch(0.45 0 0);
+  --chart-foreground-muted: oklch(0.65 0.01 260);
+  --chart-crosshair: oklch(0.45 0 0);
+  --chart-grid: oklch(0.25 0 0);
+  --chart-brush-border: var(--chart-grid);
+  --chart-marker-background: oklch(0.25 0.01 260);
+  --chart-marker-border: oklch(0.4 0.01 260);
+  --chart-marker-foreground: oklch(0.9 0 0);
+  --chart-label: oklch(0.75 0.01 260);
+  --chart-scale-01: oklch(0.28 0.03 270);
+  --chart-scale-02: oklch(0.38 0.04 270);
+  --chart-scale-03: oklch(0.48 0.05 270);
+  --chart-scale-04: oklch(0.58 0.06 270);
+  --chart-scale-05: oklch(0.68 0.07 270);
+  --chart-scale-pattern-color: oklch(0.145 0 0);
+}
+
+@theme inline {
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-background: var(--chart-background);
+  --color-chart-foreground: var(--chart-foreground);
+  --color-chart-foreground-muted: var(--chart-foreground-muted);
+  --chart-line-primary: var(--chart-line-primary);
+  --chart-line-secondary: var(--chart-line-secondary);
+  --color-chart-crosshair: var(--chart-crosshair);
+  --color-chart-grid: var(--chart-grid);
+  --chart-brush-border: var(--chart-brush-border);
+  --chart-tooltip-background: var(--chart-tooltip-background);
+  --chart-tooltip-foreground: var(--chart-tooltip-foreground);
+  --chart-tooltip-muted: var(--chart-tooltip-muted);
+  --color-chart-marker-background: var(--chart-marker-background);
+  --color-chart-marker-border: var(--chart-marker-border);
+  --color-chart-marker-foreground: var(--chart-marker-foreground);
+  --color-chart-label: var(--chart-label);
+  --color-chart-scale-01: var(--chart-scale-01);
+  --color-chart-scale-02: var(--chart-scale-02);
+  --color-chart-scale-03: var(--chart-scale-03);
+  --color-chart-scale-04: var(--chart-scale-04);
+  --color-chart-scale-05: var(--chart-scale-05);
+  --color-chart-scale-pattern-color: var(--chart-scale-pattern-color);
+}

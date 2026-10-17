@@ -1,20 +1,19 @@
-import { useEffect, useRef, useState } from "react";
-import { pulse } from "./AsciiField";
-import { motion, useReducedMotion } from "motion/react";
+import { useRef, useState } from "react";
+import { motion, useMotionValueEvent, useReducedMotion, useScroll } from "motion/react";
 import { StoryGraph } from "./StoryGraph";
 
 const STEPS = [
   {
     title: "Two agents, two clean worktrees.",
-    body: "Agent A rewrites the hashing in crypto.ts. Agent B polishes the login form. Different files, different branches. Nothing looks wrong.",
+    body: "Agent A rewrites the session label in session.ts. Agent B polishes the login form. Different files, different branches. Nothing looks wrong.",
   },
   {
-    title: "Three imports apart.",
-    body: "LoginForm.tsx imports login.ts, which imports session.ts, which imports crypto.ts. Neither agent can see that chain from its own folder.",
+    title: "Two imports apart.",
+    body: "LoginForm.tsx imports login.ts, which imports session.ts. Neither agent can see that chain from its own worktree.",
   },
   {
     title: "Without a check, git merges both.",
-    body: "Each branch passes on its own. Merged together, the login form calls a function that no longer exists, and the build breaks.",
+    body: "Each branch passes on its own. Merged together, the login form calls code that A changed under it, and the build breaks.",
   },
   {
     title: "With Switchboard, B asks first.",
@@ -22,39 +21,46 @@ const STEPS = [
   },
 ];
 
-/** Scroll-based storyline: the text steps scroll by while the graph stays pinned; the step in the middle band sets the stage. */
+/**
+ * Scroll-based storyline: the graph stays pinned while the steps scroll by, and the stage is read
+ * straight from the section's scroll progress, so anchor jumps, End/Home and fast flings always land
+ * on the right stage. The spacing is chosen so each quarter of the scroll range is exactly one step:
+ * - lg: steps are 75vh tall and the list pads 54vh + 46vh = one viewport, so a step is centred at its stage's midpoint.
+ * - below lg: the pinned graph block is 75vw + 94px tall (75vw + 76px from md), the top padding brings
+ *   each heading in at 86vh, and steps are 34vh, so the active heading moves from 86vh to 52vh, under the graph.
+ */
 export function Story() {
   const reduce = useReducedMotion();
   const [stage, setStage] = useState(0);
-  const graphRef = useRef<HTMLDivElement>(null);
-
-  // The collision (stage 2) and the refusal (stage 3) each send a shockwave through the ASCII field.
-  useEffect(() => {
-    if (stage < 2 || reduce || !graphRef.current) return;
-    const r = graphRef.current.getBoundingClientRect();
-    pulse(r.left + r.width * (stage === 2 ? 0.12 : 0.9), r.top + r.height * (stage === 2 ? 0.4 : 0.32));
-  }, [stage, reduce]);
+  const sectionRef = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ["start start", "end end"] });
+  useMotionValueEvent(scrollYProgress, "change", (v) => setStage(Math.min(3, Math.floor(v * 4))));
 
   return (
-    <section id="story" className="relative mx-auto max-w-7xl px-5 md:px-8" aria-label="How a collision happens">
+    <section
+      ref={sectionRef}
+      id="story"
+      className="relative mx-auto max-w-7xl px-5 md:px-8"
+      aria-label="How a collision happens"
+    >
       <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
-        <div className="sticky top-16 z-10 order-first -mx-5 bg-[var(--bg)]/90 px-5 py-4 backdrop-blur-sm lg:order-last lg:mx-0 lg:flex lg:h-[calc(100dvh-4rem)] lg:items-center lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
-          <div ref={graphRef} className="w-full">
+        <div className="sticky top-16 z-10 order-first -mx-5 bg-[var(--bg)]/90 px-5 py-4 backdrop-blur-sm md:-mx-8 md:px-8 lg:order-last lg:mx-0 lg:flex lg:h-[calc(100dvh-4rem)] lg:items-center lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+          <div className="w-full">
             <StoryGraph stage={stage} />
           </div>
         </div>
-        <ol className="lg:pt-[18vh] lg:pb-[8vh]">
+        <ol className="pb-[14vh] pt-[max(0px,calc(86vh_-_75vw_-_94px))] md:pt-[max(0px,calc(86vh_-_75vw_-_76px))] lg:pb-[46vh] lg:pt-[54vh]">
           {STEPS.map((s, i) => (
-            <li key={s.title} className="flex min-h-[70vh] items-center lg:min-h-[85vh]">
+            <li key={s.title} className="flex min-h-[34vh] items-start lg:min-h-[75vh] lg:items-center">
               <motion.div
-                onViewportEnter={() => setStage(i)}
-                viewport={{ amount: 0.9, margin: "-30% 0px -30% 0px" }}
+                initial={false}
                 animate={{ opacity: reduce || stage === i ? 1 : 0.28 }}
-                transition={{ duration: 0.4 }}
+                transition={{ duration: reduce ? 0 : 0.4 }}
                 className="max-w-md"
+                aria-current={stage === i ? "step" : undefined}
               >
                 <h2 className="text-3xl font-semibold leading-tight tracking-tight md:text-4xl">{s.title}</h2>
-                <p className="mt-4 text-lg leading-relaxed text-[var(--muted)]">{s.body}</p>
+                <p className="mt-4 text-base leading-relaxed text-[var(--muted)] md:text-lg">{s.body}</p>
               </motion.div>
             </li>
           ))}

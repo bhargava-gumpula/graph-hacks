@@ -2,8 +2,8 @@ import { motion, useReducedMotion } from "motion/react";
 import { GitBranch, Lock, Notebook, Graph } from "@phosphor-icons/react";
 
 const OTHERS = [
-  { Icon: GitBranch, name: "Separate worktrees", gap: "Keep files apart. The conflict three imports away still lands at merge time." },
-  { Icon: Lock, name: "File locks", gap: "Stop two agents on the same file. They can't see that LoginForm.tsx depends on crypto.ts." },
+  { Icon: GitBranch, name: "Separate worktrees", gap: "Keep files apart. The conflict two imports away still lands at merge time." },
+  { Icon: Lock, name: "File locks", gap: "Stop two agents on the same file. They can't see that LoginForm.tsx depends on session.ts." },
   { Icon: Notebook, name: "Shared memory notes", gap: "Help agents remember. Nothing checks an edit against the code before it happens." },
 ];
 
@@ -26,8 +26,8 @@ export function Compare() {
           {OTHERS.map((o, i) => (
             <motion.li
               key={o.name}
-              initial={reduce ? false : { opacity: 0, x: 24 }}
-              whileInView={{ opacity: 1, x: 0 }}
+              initial={reduce ? false : { opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.5 }}
               transition={{ duration: 0.6, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
               className="flex gap-5 rounded-[var(--radius-panel)] border border-[var(--border)] p-6"

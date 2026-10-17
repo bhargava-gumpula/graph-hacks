@@ -127,3 +127,12 @@ test("with the agent's own words, full-text matches from anywhere join as relate
   expect((await brief(g(), { taskId: "T1", text: "session TTL", now: NOW })).related).toEqual([]);
   expect((await brief(g(), { taskId: "T1", now: NOW })).related).toEqual([]);
 });
+
+test("related never lists a superseded decision next to the one that replaced it", async () => {
+  await recordDecision(g(), { agent: "A", text: "session ttl 30m for mobile", why: "logouts", paths: ["auth/session.ts"], id: "D-ttl-old", now: 1_700 });
+  await recordDecision(g(), { agent: "A", text: "session ttl 60m for mobile", why: "fewer logins", paths: ["auth/session.ts"], id: "D-ttl-new", supersedes: ["D-ttl-old"], now: 1_800 });
+  const b = await brief(g(), { prefix: "ui/AboutPage", text: "session ttl mobile", now: NOW });
+  expect(b.related?.map((r) => r.id)).toContain("D-ttl-new");
+  expect(b.related?.map((r) => r.id)).not.toContain("D-ttl-old");
+  expect(formatBrief(b)).not.toContain("30m");
+});

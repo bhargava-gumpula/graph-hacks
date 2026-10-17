@@ -12,6 +12,7 @@ import {
   connect,
   ensureSchema,
   formatBrief,
+  formatHit,
   handoff,
   heartbeat,
   hotspots,
@@ -304,7 +305,8 @@ export function createServer(): McpServer {
       title: "Search memory",
       description:
         "Find recorded decisions (by their text or their reason) and lessons that mention any of these words, " +
-        "best match first, with the files they are about. Use it before choosing an approach someone may have ruled out.",
+        "best match first, with the files they are about. A replaced decision is marked (superseded): follow the one that replaced it. " +
+        "Use it before choosing an approach someone may have ruled out.",
       inputSchema: z.object({
         words: z.string().min(1).max(500).describe("Plain words, e.g. 'session ttl mobile'. Punctuation is ignored."),
         limit: z.number().int().min(1).max(20).optional().describe("Most hits to return (default 5)"),
@@ -329,9 +331,7 @@ export function createServer(): McpServer {
       const text =
         hits.length === 0
           ? `nothing recorded mentions: ${words}`
-          : hits
-              .map((h) => `${h.kind} ${h.id}: ${h.text}${h.why ? `. Why: ${h.why}` : ""}${h.paths.length ? ` (${h.paths.join(", ")})` : ""}`)
-              .join("\n");
+          : hits.map(formatHit).join("\n");
       return reply(text, { hits });
     },
   );

@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "vitest";
 import { useTestGraph } from "../test-helpers.js";
 import { recordLesson } from "./brief.js";
-import { fulltextQuery, searchMemory } from "./search.js";
+import { formatHit, fulltextQuery, searchMemory } from "./search.js";
 import { recordDecision } from "./why.js";
 
 const g = useTestGraph("sb_test_search");
@@ -55,4 +55,13 @@ test("punctuation and stop words never reach the index", async () => {
 
 test("limit caps the hits", async () => {
   expect(await searchMemory(g(), "session codegen mobile argon2", 2)).toHaveLength(2);
+});
+
+test("a superseded decision is still found, marked, unless activeOnly", async () => {
+  await recordDecision(g(), { agent: "A", text: "session TTL is 60 min", why: "fewer logins", paths: ["auth/session.ts"], id: "D-ttl2", supersedes: ["D-ttl"] });
+  const hits = await searchMemory(g(), "session ttl");
+  expect(hits.find((h) => h.id === "D-ttl")?.status).toBe("superseded");
+  expect(formatHit(hits.find((h) => h.id === "D-ttl")!)).toMatch(/^decision D-ttl \(superseded\): session TTL is 30 min\. Why: /);
+  expect(formatHit(hits.find((h) => h.id === "D-ttl2")!)).toBe("decision D-ttl2: session TTL is 60 min. Why: fewer logins (auth/session.ts)");
+  expect((await searchMemory(g(), "session ttl", 5, true)).map((h) => h.id)).not.toContain("D-ttl");
 });

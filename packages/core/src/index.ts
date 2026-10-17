@@ -56,7 +56,7 @@ export { summarizeBrief } from "./summarize.js";
 export { brief, formatBrief, handoff, NEAR_FILES, recordLesson } from "./queries/brief.js";
 export type { Brief } from "./queries/brief.js";
 
-export { fulltextQuery, searchMemory, SEARCH_DECISIONS, SEARCH_LESSONS } from "./queries/search.js";
+export { formatHit, fulltextQuery, searchMemory, SEARCH_DECISIONS, SEARCH_LESSONS } from "./queries/search.js";
 export type { MemoryHit } from "./queries/search.js";
 
 export { hotspots, HOTSPOTS } from "./queries/history.js";

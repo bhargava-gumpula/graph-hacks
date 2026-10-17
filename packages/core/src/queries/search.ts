@@ -17,10 +17,11 @@ export interface MemoryHit {
 /**
  * Q7. Full-text search over decisions, through the FULLTEXT index on
  * Decision(text, why) that ensureSchema creates. Matching words in the reason
- * count as much as words in the decision itself.
+ * count as much as words in the decision itself. `$activeOnly` drops superseded ones.
  */
 export const SEARCH_DECISIONS = `
 CALL db.idx.fulltext.queryNodes('Decision', $q) YIELD node, score
+WITH node, score WHERE NOT ($activeOnly AND node.status = 'superseded')
 OPTIONAL MATCH (node)-[:AFFECTS]->(f:File)
 WITH node, score, collect(f.path) AS paths
 RETURN 'decision' AS kind, node.id AS id, node.text AS text, node.why AS why, node.status AS status, paths, score
@@ -56,11 +57,14 @@ export function fulltextQuery(text: string): string | null {
   return words.length > 0 ? words.slice(0, 20).join("|") : null;
 }
 
-/** Decisions and lessons that mention any of these words, best match first. */
-export async function searchMemory(g: SbGraph, text: string, limit = 5): Promise<MemoryHit[]> {
+/**
+ * Decisions and lessons that mention any of these words, best match first.
+ * Superseded decisions are included (marked by `status`) unless `activeOnly`.
+ */
+export async function searchMemory(g: SbGraph, text: string, limit = 5, activeOnly = false): Promise<MemoryHit[]> {
   const q = fulltextQuery(text);
   if (!q) return [];
-  const params = { q, limit };
+  const params = { q, limit, activeOnly };
   const rows = (await Promise.all([g.roQuery(SEARCH_DECISIONS, params), g.roQuery(SEARCH_LESSONS, params)])).flat();
   return rows
     .map((row) => ({
@@ -74,4 +78,11 @@ export async function searchMemory(g: SbGraph, text: string, limit = 5): Promise
     }))
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
     .slice(0, limit);
+}
+
+/** One line per hit for the CLI and MCP replies. A superseded decision says so. */
+export function formatHit(h: MemoryHit): string {
+  const mark = h.status === "superseded" ? " (superseded)" : "";
+  const why = h.why ? `. Why: ${h.why}` : "";
+  return `${h.kind} ${h.id}${mark}: ${h.text}${why}${h.paths.length ? ` (${h.paths.join(", ")})` : ""}`;
 }

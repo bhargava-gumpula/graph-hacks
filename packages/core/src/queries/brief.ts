@@ -168,7 +168,8 @@ const RELATED_LIMIT = 5;
 async function related(g: SbGraph, text: string | undefined, shown: BriefNote[]): Promise<MemoryHit[]> {
   if (!text) return [];
   const seen = new Set(shown.map((n) => n.id));
-  return (await searchMemory(g, text, RELATED_LIMIT + seen.size)).filter((h) => !seen.has(h.id)).slice(0, RELATED_LIMIT);
+  // Active only, like the brief's own decisions: a replaced decision is not advice.
+  return (await searchMemory(g, text, RELATED_LIMIT + seen.size, true)).filter((h) => !seen.has(h.id)).slice(0, RELATED_LIMIT);
 }
 
 /**

@@ -17,7 +17,9 @@ import {
   ensureSchema,
   findConflicts,
   formatBrief,
+  formatHit,
   handoff,
+  hops,
   hotspots,
   loadParse,
   markHubs,
@@ -340,7 +342,7 @@ async function run(flags: Flags): Promise<number> {
       if (res.ok) {
         const checked = files.length - (res.unknown?.length ?? 0);
         if (checked > 0) {
-          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within 3 import hops)`);
+          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within ${hops()} import hops)`);
         }
         return 0;
       }
@@ -367,7 +369,7 @@ async function run(flags: Flags): Promise<number> {
       }
       const unknown = await unknownPaths(g, [file]);
       if (unknown.length > 0) warnUnknown(unknown);
-      else console.log(`OK no claim within 3 import hops (${ms} ms)`);
+      else console.log(`OK no claim within ${hops()} import hops (${ms} ms)`);
       return 0;
     }
 
@@ -460,10 +462,7 @@ async function run(flags: Flags): Promise<number> {
       if (files.length === 0) throw new Error("search needs words");
       const hits = await searchMemory(g, files.join(" "), 10);
       if (hits.length === 0) console.log(`nothing recorded mentions: ${files.join(" ")}`);
-      for (const h of hits) {
-        const why = h.why ? `. Why: ${h.why}` : "";
-        console.log(`${h.kind} ${h.id}: ${h.text}${why}${h.paths.length ? ` (${h.paths.join(", ")})` : ""}`);
-      }
+      for (const h of hits) console.log(formatHit(h));
       return 0;
     }
 

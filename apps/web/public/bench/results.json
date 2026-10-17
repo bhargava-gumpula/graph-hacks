@@ -7,7 +7,35 @@
   },
   "with": {
     "brokenBuilds": 0,
-    "blocked": 10
+    "blocked": 10,
+    "editsApplied": 0
   },
-  "checkMsMedian": 1
+  "checkMsMedian": 0.65,
+  "checkMsMin": 0.58,
+  "checkMsMax": 0.83,
+  "checkMsSamples": [
+    0.77,
+    0.83,
+    0.58,
+    0.78,
+    0.66,
+    0.61,
+    0.61,
+    0.72,
+    0.64,
+    0.62
+  ],
+  "baselineTscOk": true,
+  "edit": {
+    "agent": "B",
+    "file": "ui/LoginForm.tsx",
+    "removes": "import { login, loginHeadline } from \"../api/login\";"
+  },
+  "claim": {
+    "agent": "A",
+    "file": "auth/session.ts"
+  },
+  "tsc": "Version 5.9.3",
+  "node": "v26.9.0",
+  "ranAt": "2026-10-17T08:28:37.414Z"
 }

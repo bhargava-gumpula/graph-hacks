@@ -1,13 +1,13 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/packages/hooks/hook.sh claude start" }] }
+      { "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/packages/hooks/hook.sh claude start", "timeout": 15 }] }
     ],
     "PreToolUse": [
-      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/packages/hooks/hook.sh claude pre" }] }
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/packages/hooks/hook.sh claude pre", "timeout": 5 }] }
     ],
     "PostToolUse": [
-      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/packages/hooks/hook.sh claude post" }] }
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/packages/hooks/hook.sh claude post", "timeout": 5 }] }
     ]
   }
 }

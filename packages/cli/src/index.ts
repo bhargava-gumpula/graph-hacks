@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import {
   agentId,
   blastRadius,
+  heartbeat,
+  registerAgent,
+  status,
   brief,
   claim,
   connect,
@@ -22,22 +25,41 @@ import {
   release,
   summarizeBrief,
   whyTrace,
+  type AgentKind,
   type Conflict,
 } from "@switchboard/core";
 
-const USAGE = `switchboard parse [dir]
-switchboard claim <file...> [--task T] [--intent text] [--agent id]
-switchboard release [file...] [--agent id]
-switchboard check <file> [--agent id]
-switchboard edited <file> [--agent id]
-switchboard decide <text> --why <why> --affects <file> [--task T] [--agent id]
-switchboard lesson <text> --about <file>
-switchboard brief (--task T | --prefix dir/)
-switchboard why <file>
-switchboard blast <file>
-switchboard plan <task> <file...> [--title text]
-switchboard batches
-switchboard handoff <task> --to <agent> --note <text> [--agent id]`;
+const USAGE = `switchboard: coordinate AI coding agents through a shared FalkorDB graph.
+
+Usage: switchboard <command> [args] [--agent id]
+
+Agents and claims
+  register [--kind cursor|claude|human]     mark this agent active
+  heartbeat                                 tell others you are still working
+  status                                    agents and live claims
+  claim <file...> [--task T] [--intent text]
+                                            claim files before editing (exit 2 on conflict)
+  release [file...]                         release your claims (all if no files)
+  check <file>                              exit 2 and print the import path if editing <file>
+                                            would collide with another agent's claim; else exit 0
+  edited <file> [--task T]                  record that you edited <file>
+
+Memory
+  decide <text> --why <why> --affects <file> [--affects <file>...] [--task T]
+  lesson <text> --about <file> [--about <file>...]
+  brief (--task T | --prefix dir/)          briefing before you start or take over
+  why <file>                                edit -> agent -> task -> decision trace
+  handoff <task> --to <agent> --note <text>
+
+Planning
+  parse [dir]                               load a repo's import graph (default demo-repo)
+  blast <file>                              files that import <file>, hop by hop
+  plan <task> <file...> [--title text]      open a task with its files
+  batches                                   open tasks grouped into parallel-safe batches
+
+Agent id: --agent, else SB_AGENT, else the git branch of the current directory.
+Graph: SB_GRAPH (default sb_demo). FalkorDB: FALKORDB_URL (default redis://localhost:6379).
+Exit codes: 0 ok, 1 error or bad usage, 2 conflict.`;
 
 interface Flags {
   positional: string[];
@@ -51,6 +73,8 @@ interface Flags {
   to?: string;
   note?: string;
   title?: string;
+  kind?: string;
+  help: boolean;
 }
 
 /** One conflict, the line hooks and agents read. */
@@ -70,6 +94,8 @@ function parseArgs(argv: string[]): Flags {
   let to: string | undefined;
   let note: string | undefined;
   let title: string | undefined;
+  let kind: string | undefined;
+  let help = false;
   const take = (flag: string, i: number) => {
     const value = argv[i + 1];
     if (value === undefined) throw new Error(`${flag} needs a value`);
@@ -87,10 +113,12 @@ function parseArgs(argv: string[]): Flags {
     else if (arg === "--to") to = take(arg, i++);
     else if (arg === "--note") note = take(arg, i++);
     else if (arg === "--title") title = take(arg, i++);
+    else if (arg === "--kind") kind = take(arg, i++);
+    else if (arg === "--help" || arg === "-h") help = true;
     else if (arg.startsWith("--")) throw new Error(`unknown flag ${arg}`);
     else positional.push(arg);
   }
-  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title };
+  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, help };
 }
 
 function agentOf(flags: Flags): string {
@@ -101,7 +129,12 @@ function filesOf(flags: Flags): string[] {
   return flags.positional.slice(1);
 }
 
+const KINDS: readonly AgentKind[] = ["cursor", "claude", "human"];
+
 const COMMANDS = new Set([
+  "register",
+  "heartbeat",
+  "status",
   "parse",
   "claim",
   "release",
@@ -119,9 +152,16 @@ const COMMANDS = new Set([
 
 async function run(flags: Flags): Promise<number> {
   const command = flags.positional[0];
+  if (flags.help || command === "help") {
+    console.log(USAGE);
+    return 0;
+  }
   if (!command || !COMMANDS.has(command)) {
-    console.error(USAGE);
+    console.error(command ? `unknown command ${command}\n\n${USAGE}` : USAGE);
     return 1;
+  }
+  if (flags.kind !== undefined && !(KINDS as readonly string[]).includes(flags.kind)) {
+    throw new Error(`--kind must be one of ${KINDS.join(", ")}`);
   }
 
   const g = await connect();
@@ -129,6 +169,31 @@ async function run(flags: Flags): Promise<number> {
     await ensureSchema(g);
     const agent = agentOf(flags);
     const files = filesOf(flags);
+
+    if (command === "register") {
+      await registerAgent(g, { id: agent, kind: flags.kind as AgentKind | undefined });
+      console.log(`registered ${agent}${flags.kind ? ` kind=${flags.kind}` : ""}`);
+      return 0;
+    }
+
+    if (command === "heartbeat") {
+      await heartbeat(g, { id: agent });
+      console.log(`ok ${agent}`);
+      return 0;
+    }
+
+    if (command === "status") {
+      const s = await status(g);
+      console.log("agents:");
+      for (const a of s.agents) console.log(`  ${a.id} ${a.kind ?? "-"} ${a.status ?? "-"} claims=${a.claims.join(",") || "-"}`);
+      if (s.agents.length === 0) console.log("  (none)");
+      console.log("claims:");
+      for (const c of s.claims) {
+        console.log(`  ${c.agent} ${c.path} until=${new Date(c.until).toISOString()} task=${c.taskId ?? "-"}`);
+      }
+      if (s.claims.length === 0) console.log("  (none)");
+      return 0;
+    }
 
     if (command === "parse") {
       if (files.length > 1) throw new Error("parse takes one directory");

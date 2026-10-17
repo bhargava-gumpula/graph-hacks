@@ -26,8 +26,10 @@ const STEPS = [
  * straight from the section's scroll progress, so anchor jumps, End/Home and fast flings always land
  * on the right stage. The spacing is chosen so each quarter of the scroll range is exactly one step:
  * - lg: steps are 75vh tall and the list pads 54vh + 46vh = one viewport, so a step is centred at its stage's midpoint.
- * - below lg: the pinned graph block is 75vw + 94px tall (75vw + 76px from md), the top padding brings
- *   each heading in at 86vh, and steps are 34vh, so the active heading moves from 86vh to 52vh, under the graph.
+ * - below lg: the pinned graph block plus the grid gap is 75vw + 94px tall (75vw + 76px from md) and its fade
+ *   is 48px, so each step holds at 75vw + 174px (75vw + 156px from md), just under the fade. Steps are 60vh and
+ *   the list pads 128px + the rest of the viewport, so a step reaches its line 48px into its stage and is
+ *   pushed on before the next stage starts.
  */
 export function Story() {
   const reduce = useReducedMotion();
@@ -44,21 +46,21 @@ export function Story() {
       aria-label="How a collision happens"
     >
       <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
-        <div className="sticky top-16 z-10 order-first -mx-5 bg-[var(--bg)]/90 px-5 py-4 backdrop-blur-sm md:-mx-8 md:px-8 max-lg:after:pointer-events-none max-lg:after:absolute max-lg:after:inset-x-0 max-lg:after:top-full max-lg:after:h-16 max-lg:after:bg-gradient-to-b max-lg:after:from-[var(--bg)] max-lg:after:to-transparent lg:order-last lg:mx-0 lg:flex lg:h-[calc(100dvh-4rem)] lg:items-center lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+        <div className="sticky top-16 z-10 order-first -mx-5 bg-[var(--bg)]/90 px-5 py-4 backdrop-blur-sm md:-mx-8 md:px-8 max-lg:after:pointer-events-none max-lg:after:absolute max-lg:after:inset-x-0 max-lg:after:top-full max-lg:after:h-12 max-lg:after:bg-gradient-to-b max-lg:after:from-[var(--bg)] max-lg:after:to-transparent lg:order-last lg:mx-0 lg:flex lg:h-[calc(100dvh-4rem)] lg:items-center lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
           <div className="w-full">
             <StoryGraph stage={stage} />
           </div>
         </div>
-        <ol className="pb-[14vh] pt-[max(0px,calc(86vh_-_75vw_-_94px))] md:pt-[max(0px,calc(86vh_-_75vw_-_76px))] lg:pb-[46vh] lg:pt-[54vh]">
+        <ol className="pb-[max(0px,calc(100vh_-_75vw_-_222px))] pt-32 md:pb-[max(0px,calc(100vh_-_75vw_-_204px))] lg:pb-[46vh] lg:pt-[54vh]">
           {STEPS.map((s, i) => (
-            <li key={s.title} className="flex min-h-[34vh] items-start lg:min-h-[75vh]">
+            <li key={s.title} className="flex min-h-[60vh] items-start lg:min-h-[75vh]">
               <motion.div
                 initial={false}
                 animate={{ opacity: reduce || stage === i ? 1 : 0.28 }}
                 transition={{ duration: reduce ? 0 : 0.4 }}
-                // Desktop: the step rises at scroll speed, then holds at a reading line while its quarter of the
-                // story plays, so a quick scroll can't fling the text past; the next push carries it on.
-                className="max-w-md lg:sticky lg:top-[30vh]"
+                // The step rises at scroll speed, then holds at a reading line (under the pinned graph on phones)
+                // while its quarter of the story plays, so a quick scroll can't fling the text past; the next push carries it on.
+                className="sticky top-[calc(75vw_+_174px)] max-w-md md:top-[calc(75vw_+_156px)] lg:top-[30vh]"
                 aria-current={stage === i ? "step" : undefined}
               >
                 <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">{s.title}</h2>

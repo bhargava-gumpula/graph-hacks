@@ -10,7 +10,7 @@ Switchboard
 ## Description (required)
 > Hint: what problem does your project solve, and who is it for?
 
-Teams that run several AI coding agents at once (Claude Code, Cursor) hit a quiet failure: each agent's change is fine alone, but two changes three imports apart break the build after both merge. Worktrees and file locks don't see it, because the agents never touch the same file.
+Teams that run several AI coding agents at once (Claude Code, Cursor) hit a quiet failure: each agent's change is fine alone, but two changes two imports apart break the build after both merge. Worktrees and file locks don't see it, because the agents never touch the same file.
 
 Switchboard gives the agents one shared FalkorDB graph: the repo's import graph, who has claimed which file, and the team's decisions, lessons and events. Before an agent edits a file, a hook asks the graph whether any import path connects that file to another agent's claim. If one does, the edit is refused and the agent is told the exact path and who holds the other end. The same graph briefs a replacement agent, explains why a file looks the way it does, shows the blast radius of a change, and splits tasks into batches that can safely run in parallel.
 
@@ -32,11 +32,11 @@ The deployed URL (domain pending). Local setup is in the README either way.
 ## How did you use FalkorDB in your project? (required)
 > Hint: what technical problems you solved using FalkorDB
 
-- **Conflict detection is one path query.** `MATCH p = (f:File {path: $want})-[:IMPORTS*1..3]->(g:File)<-[c:CLAIMS]-(o:Agent)` finds any other agent's live claim up to three imports away, and returns the path as the reason the edit was refused. It runs in under a millisecond on the demo repo.
+- **Conflict detection is one path query.** `MATCH p = (f:File {path: $want})-[:IMPORTS*1..3]->(g:File)<-[c:CLAIMS]-(o:Agent)` finds any other agent's live claim up to three imports away, and returns the path as the reason the edit was refused. It takes about a millisecond (median 0.69 ms over 10 benchmark runs).
 - **Claims are atomic.** The check and the claim run as a single write query, so a race can't produce two holders (a test runs ten agents for the same file and exactly one wins).
-- **Hub files don't block everyone.** `algo.pageRank('File','IMPORTS')` marks heavily imported files (like `utils.ts`) as hubs, and conflict paths skip them.
+- **Hub files.** `algo.pageRank('File','IMPORTS')` flags heavily imported files (like `utils.ts`) as hubs. A conflict path may not pass through one, so a shared helper that imports other code cannot chain all its callers into one big conflict.
 - **Parallel batches.** Tasks that interfere become `INTERFERES` edges; `algo.WCC` splits the rest into batches that can run at the same time.
-- **Memory in the same graph.** Decisions, lessons and events are nodes linked to files, agents and tasks. A why-trace walks file → edit → task → decision; a briefing for a new agent gathers claims, recent decisions and lessons near the files it will touch. Full-text indexes cover decisions and lessons.
+- **Memory in the same graph.** Decisions, lessons and events are nodes linked to files, agents and tasks. A why-trace walks file → edit → task → decision; a briefing for a new agent gathers claims, recent decisions and lessons near the files it will touch.
 - **Live feed.** Every claim, refusal and edit is an event node with a gapless sequence number that the dashboard streams.
 
 ## Blog link (optional)

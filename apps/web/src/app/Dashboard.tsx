@@ -18,7 +18,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 const EXPO = [0.16, 1, 0.3, 1] as const;
 const STATUS_LABEL: Record<LiveStatus, string> = { loading: "connecting", live: "live", reconnecting: "reconnecting", replay: "replay", offline: "offline" };
-const COACH = "Two agents, one repo. Press Play: watch the graph refuse an edit a file lock would allow.";
+const COACH = "Two scripted agents, one repo. Press Play: watch the graph refuse an edit a file lock would allow.";
 
 /** The server has sent batches as Batch[] and as string[][]; accept both. */
 const toBatches = (b: unknown): Batch[] =>

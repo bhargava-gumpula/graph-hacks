@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 /** What each clause does. Repeated clauses share a note and light up together. */
 const NOTES = {
   up: "UPSTREAM: follow imports out of my file, up to three hops, to a file another agent claims. A lock table can't do this. A graph does it in one step.",
-  hub: "PageRank marks shared helpers like lib/utils.ts as hubs. A path may not pass through a hub, so one helper does not glue the repo into one big conflict. Editing the hub itself still conflicts with everything that imports it.",
+  hub: "PageRank flags files that many others import as hubs (lib/utils.ts here). A path may not pass through a hub, so a shared helper that imports other code cannot chain all its callers into one conflict. Editing a hub itself still conflicts with everything that imports it.",
   active: "Ignore your own claims and claims that have expired.",
   same: "SAME: another agent already claims this exact file.",
   down: "DOWNSTREAM: a file another agent claims imports mine, within three hops. My change can break their code.",

@@ -16,6 +16,17 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIN_NODE = 22;
 const WIN = process.platform === "win32";
 
+/** The URL with its password replaced by ***, as redactUrl in packages/core does: never print a secret. */
+export function redactUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.password) u.password = "***";
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return "(invalid URL)";
+  }
+}
+
 /** @returns {{ dryRun: boolean, open: boolean, help: boolean }} */
 export function parseArgs(argv) {
   const opts = { dryRun: false, open: true, help: false };
@@ -40,19 +51,20 @@ export function buildPlan(s) {
     throw new Error(`Node ${MIN_NODE} or newer is needed, you have ${s.node}. Install it from nodejs.org or run: nvm install ${MIN_NODE}`);
   }
   const url = `http://localhost:${s.port}/app?tour=1`;
+  const db = redactUrl(s.falkorUrl);
   const steps = [];
-  if (s.falkorUp) steps.push({ do: "none", say: `FalkorDB already answers at ${s.falkorUrl}: reuse it (no docker command)` });
+  if (s.falkorUp) steps.push({ do: "none", say: `FalkorDB already answers at ${db}: reuse it (no docker command)` });
   else if (isLocal(new URL(s.falkorUrl).hostname)) {
     if ((new URL(s.falkorUrl).port || "6379") !== "6379") {
-      throw new Error(`Nothing answers at ${s.falkorUrl}, and docker-compose.yml serves FalkorDB on 6379. Start your FalkorDB, or unset FALKORDB_URL.`);
+      throw new Error(`Nothing answers at ${db}, and docker-compose.yml serves FalkorDB on 6379. Start your FalkorDB, or unset FALKORDB_URL.`);
     }
     if (s.docker === "missing") {
       throw new Error("Docker isn't installed: install Docker Desktop or OrbStack, or set FALKORDB_URL to a running FalkorDB.");
     }
     if (s.docker === "stopped") throw new Error("Docker isn't running: start Docker Desktop or OrbStack, then run npm run quickstart again.");
-    steps.push({ do: "docker", say: `nothing answers at ${s.falkorUrl}: run docker compose up -d and wait for FalkorDB` });
+    steps.push({ do: "docker", say: `nothing answers at ${db}: run docker compose up -d and wait for FalkorDB` });
   } else {
-    throw new Error(`Nothing answers at FALKORDB_URL=${s.falkorUrl}. Start that FalkorDB, or unset FALKORDB_URL to run one locally with Docker.`);
+    throw new Error(`Nothing answers at FALKORDB_URL=${db}. Start that FalkorDB, or unset FALKORDB_URL to run one locally with Docker.`);
   }
   steps.push(s.hasDeps ? { do: "none", say: "node_modules exists: skip npm install" } : { do: "install", say: "install dependencies: npm ci" });
   steps.push(s.hasEnv ? { do: "none", say: ".env exists: keep it" } : { do: "env", say: "create .env from .env.example" });
@@ -183,7 +195,7 @@ async function main(opts) {
   for (const step of plan) {
     if (step.do === "docker") {
       sh("docker", ["compose", "up", "-d"], env);
-      await waitFor(() => pingRedis(falkorUrl), 60, `FalkorDB at ${falkorUrl}`);
+      await waitFor(() => pingRedis(falkorUrl), 60, `FalkorDB at ${redactUrl(falkorUrl)}`);
     } else if (step.do === "install") sh("npm", ["ci"], env);
     else if (step.do === "env") {
       copyFileSync(join(ROOT, ".env.example"), envFile);

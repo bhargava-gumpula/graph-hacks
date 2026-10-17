@@ -111,9 +111,10 @@ export function Dashboard() {
     };
   }, []);
 
-  // The island narrates a fresh refusal, replacing the running demo entry.
+  // The island narrates a fresh refusal, replacing the running demo entry. It reads the filtered
+  // hit, so the demo reply never narrates the previous run's refusal with the new run's time.
   useEffect(() => {
-    const h = live.hit;
+    const h = hit;
     if (!h || h.quiet) return;
     if (armed.current) {
       armed.current = false;

@@ -27,20 +27,45 @@ export interface ConflictInput {
   paths: string[];
   /** Epoch ms. Claims with `until <= now` are expired and ignored. */
   now?: number;
-  /** Max import hops, 1..4. Default 3. */
+  /** Max import hops, 1..5. Default 3; SB_HOPS overrides it (see `hops`). */
   k?: number;
 }
 
-const MAX_K = 4;
+/** Longest import chain any check follows. */
+export const MAX_HOPS = 5;
+
+/**
+ * The import-hop limit for the conflict check, the blast radius and interference.
+ * SB_HOPS, when set, is the operator's choice and wins over `k` for every check, so
+ * the claim guard, the hook and the "show the query" panels all follow it.
+ * Otherwise `k`, default 3. Valid 1..5; anything else throws.
+ */
+export function hops(k = 3): number {
+  const env = process.env.SB_HOPS?.trim();
+  const n = env ? Number(env) : k;
+  if (!Number.isInteger(n) || n < 1 || n > MAX_HOPS) {
+    throw new Error(`${env ? "SB_HOPS" : "k"} must be an integer 1..${MAX_HOPS}, got ${env || k}`);
+  }
+  return n;
+}
+
+/**
+ * The filter every multi-hop import path goes through, for path variable `p`:
+ *  - no hub strictly inside it. The ends may be hubs: claiming lib/utils.ts conflicts
+ *    with its importers, but two files that only share utils.ts never conflict
+ *    through it. `[1..-1]` drops the first and last node;
+ *  - no type-only edge (`import type`), unless SB_TYPE_IMPORTS=1. A type-only import
+ *    is erased at runtime and usually names a stable interface, so counting it mostly
+ *    adds false blocks. Edges without the property (hand-made fixtures) count.
+ */
+export function pathFilter(p: string): string {
+  const hub = `none(n IN nodes(${p})[1..-1] WHERE coalesce(n.hub, false))`;
+  if (process.env.SB_TYPE_IMPORTS === "1") return hub;
+  return `${hub} AND none(r IN relationships(${p}) WHERE coalesce(r.typeOnly, false))`;
+}
 
 /** Another agent's claim that has not expired. `c` is the CLAIMS edge, `o` its agent. */
 const ACTIVE_OTHER = `o.id <> $agent AND c.until > $now`;
-/**
- * A path is ignored if a file strictly inside it is a hub. The ends may be hubs:
- * claiming lib/utils.ts conflicts with its importers, but two files that only
- * share utils.ts never conflict through it. `[1..-1]` drops the first and last node.
- */
-const NO_HUB = `none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))`;
 /** Either end is a hub. */
 const HUB_END = `coalesce(f.hub, false) OR coalesce(g.hub, false) AS hub`;
 
@@ -48,11 +73,6 @@ const HUB_END = `coalesce(f.hub, false) OR coalesce(g.hub, false) AS hub`;
 const SAME = `(f:File {path: want})<-[c:CLAIMS]-(o:Agent)`;
 const upstream = (k: number) => `p = (f:File {path: want})-[:IMPORTS*1..${k}]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)`;
 const downstream = (k: number) => `p = (g:File)-[:IMPORTS*1..${k}]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)`;
-
-function checkK(k: number): number {
-  if (!Number.isInteger(k) || k < 1 || k > MAX_K) throw new Error(`k must be an integer 1..${MAX_K}, got ${k}`);
-  return k;
-}
 
 /**
  * Q1 dependency conflict, the hero query. Three parts, one per conflict type:
@@ -63,13 +83,14 @@ function checkK(k: number): number {
  * skipped, or every claim would conflict with every other; a hub at either end counts.
  *
  * Why not shortestPath(): FalkorDB only allows it in WITH/RETURN and it can't carry
- * the hub filter. With k <= 4 on a code graph, enumerating the paths is cheap; the
+ * the hub filter. With k <= 5 on a code graph, enumerating the paths is cheap; the
  * TS caller keeps the shortest one per (file, agent).
  * `k` is inlined because Cypher can't take a parameter as a variable-length bound;
- * it is validated to be an integer 1..4 first.
+ * `hops(k)` validates it (1..5) and applies SB_HOPS.
  */
 export function conflictQuery(k: number): string {
-  checkK(k);
+  k = hops(k);
+  const PATH_OK = pathFilter("p");
   return `
 UNWIND $paths AS want
 MATCH ${SAME}
@@ -79,13 +100,13 @@ RETURN want AS file, 'SAME' AS type, f.path AS claimed, [f.path] AS path, 0 AS h
 UNION ALL
 UNWIND $paths AS want
 MATCH ${upstream(k)}
-WHERE ${ACTIVE_OTHER} AND ${NO_HUB}
+WHERE ${ACTIVE_OTHER} AND ${PATH_OK}
 RETURN want AS file, 'UPSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n.path] AS path, length(p) AS hops,
        o.id AS agent, c.taskId AS taskId, c.intent AS intent, c.until AS until, ${HUB_END}
 UNION ALL
 UNWIND $paths AS want
 MATCH ${downstream(k)}
-WHERE ${ACTIVE_OTHER} AND ${NO_HUB}
+WHERE ${ACTIVE_OTHER} AND ${PATH_OK}
 RETURN want AS file, 'DOWNSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n.path] AS path, length(p) AS hops,
        o.id AS agent, c.taskId AS taskId, c.intent AS intent, c.until AS until, ${HUB_END}
 `;
@@ -102,17 +123,18 @@ RETURN want AS file, 'DOWNSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n
  * in one projection came back null, which let every claim through.
  */
 export function conflictGuard(k: number): string {
-  checkK(k);
+  k = hops(k);
+  const PATH_OK = pathFilter("p");
   return `
 UNWIND $paths AS want
 OPTIONAL MATCH ${SAME}
 WHERE ${ACTIVE_OTHER}
 WITH want, count(c) AS same
 OPTIONAL MATCH ${upstream(k)}
-WHERE ${ACTIVE_OTHER} AND ${NO_HUB}
+WHERE ${ACTIVE_OTHER} AND ${PATH_OK}
 WITH want, same, count(c) AS up
 OPTIONAL MATCH ${downstream(k)}
-WHERE ${ACTIVE_OTHER} AND ${NO_HUB}
+WHERE ${ACTIVE_OTHER} AND ${PATH_OK}
 WITH want, same, up, count(c) AS down
 WITH sum(same + up + down) AS blocked
 WITH blocked WHERE blocked = 0
@@ -121,7 +143,7 @@ WITH blocked WHERE blocked = 0
 
 /** Conflicts for a claim request; empty means the claim is safe. Shortest path per (file, agent). */
 export async function findConflicts(g: SbGraph, input: ConflictInput): Promise<Conflict[]> {
-  const rows = (await g.roQuery(conflictQuery(input.k ?? 3), {
+  const rows = (await g.roQuery(conflictQuery(hops(input.k)), {
     agent: input.agent,
     paths: [...new Set(input.paths.map(normPath))],
     now: input.now ?? Date.now(),

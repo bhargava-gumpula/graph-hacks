@@ -1,7 +1,7 @@
-import { beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { useTestGraph } from "../test-helpers.js";
 import { claim } from "./claims.js";
-import { findConflicts } from "./conflict.js";
+import { conflictQuery, findConflicts, hops } from "./conflict.js";
 
 const g = useTestGraph("sb_test_conflict");
 
@@ -9,6 +9,7 @@ const g = useTestGraph("sb_test_conflict");
  * Fixture. `a -> b` means a imports b.
  *   chain:  c0 -> c1 -> c2 -> c3 -> c4      (4 hops end to end)
  *   hub:    x -> hub -> y,   z -> hub
+ *   types:  t0 -type-> t1 -> t2          (t0 only has `import type` from t1)
  */
 const FIXTURE = `
 CREATE (c0:File {path:'c0', hub:false}), (c1:File {path:'c1', hub:false}), (c2:File {path:'c2', hub:false}),
@@ -16,7 +17,9 @@ CREATE (c0:File {path:'c0', hub:false}), (c1:File {path:'c1', hub:false}), (c2:F
        (x:File {path:'x', hub:false}), (hub:File {path:'hub', hub:true}), (y:File {path:'y', hub:false}),
        (z:File {path:'z', hub:false}),
        (c0)-[:IMPORTS]->(c1), (c1)-[:IMPORTS]->(c2), (c2)-[:IMPORTS]->(c3), (c3)-[:IMPORTS]->(c4),
-       (x)-[:IMPORTS]->(hub), (hub)-[:IMPORTS]->(y), (z)-[:IMPORTS]->(hub)
+       (x)-[:IMPORTS]->(hub), (hub)-[:IMPORTS]->(y), (z)-[:IMPORTS]->(hub),
+       (t0:File {path:'t0', hub:false})-[:IMPORTS {typeOnly: true}]->(t1:File {path:'t1', hub:false}),
+       (t1)-[:IMPORTS {typeOnly: false}]->(t2:File {path:'t2', hub:false})
 `;
 
 const NOW = 1_000_000;
@@ -29,6 +32,11 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await g().query("MATCH ()-[c:CLAIMS]->() DELETE c");
+});
+
+afterEach(() => {
+  delete process.env.SB_HOPS;
+  delete process.env.SB_TYPE_IMPORTS;
 });
 
 const theyClaim = (paths: string[], extra: { ttlMs?: number; taskId?: string; intent?: string } = {}) =>
@@ -62,10 +70,11 @@ describe("Q1 on a 4-hop chain, k = 3", () => {
     ]);
   });
 
-  test("k = 4 reaches the far end; k is validated", async () => {
+  test("k = 4 reaches the far end; k is validated 1..5", async () => {
     await theyClaim(["c4"]);
     expect(await summary(["c0"], NOW, 4)).toEqual([["c0", "UPSTREAM", 4, "c0>c1>c2>c3>c4"]]);
-    await expect(conflictsFor(["c0"], NOW, 5)).rejects.toThrow(/k must be/);
+    expect(await summary(["c0"], NOW, 5)).toEqual([["c0", "UPSTREAM", 4, "c0>c1>c2>c3>c4"]]);
+    await expect(conflictsFor(["c0"], NOW, 6)).rejects.toThrow(/k must be an integer 1..5/);
     await expect(conflictsFor(["c0"], NOW, 0)).rejects.toThrow(/k must be/);
   });
 
@@ -126,6 +135,47 @@ describe("Q1 filters", () => {
     await theyClaim(["c4"]);
     expect(await conflictsFor(["nope.ts"])).toEqual([]);
     expect(await conflictsFor([])).toEqual([]);
+  });
+});
+
+describe("SB_HOPS", () => {
+  test("narrows every check, the claim guard included, and wins over k", async () => {
+    await theyClaim(["c4"]);
+    process.env.SB_HOPS = "1";
+    expect(hops(4)).toBe(1);
+    expect(await summary(["c3", "c2"], NOW, 4)).toEqual([["c3", "UPSTREAM", 1, "c3>c4"]]);
+    expect((await claim(g(), { agent: ME, paths: ["c2"], now: NOW })).ok).toBe(true);
+    expect(conflictQuery(3)).toContain("*1..1]");
+  });
+
+  test("defaults to 3; anything outside 1..5 is rejected", () => {
+    expect(hops()).toBe(3);
+    process.env.SB_HOPS = "5";
+    expect(hops()).toBe(5);
+    for (const bad of ["0", "6", "2.5", "two"]) {
+      process.env.SB_HOPS = bad;
+      expect(() => hops()).toThrow(/SB_HOPS must be an integer 1..5/);
+    }
+  });
+});
+
+describe("type-only imports", () => {
+  test("are skipped in conflict paths by default", async () => {
+    await theyClaim(["t1"]);
+    expect(await conflictsFor(["t0"])).toEqual([]);
+    expect((await claim(g(), { agent: ME, paths: ["t0"], now: NOW })).ok).toBe(true);
+  });
+
+  test("a value edge on the same chain still conflicts", async () => {
+    await theyClaim(["t2"]);
+    expect(await summary(["t1", "t0"])).toEqual([["t1", "UPSTREAM", 1, "t1>t2"]]);
+  });
+
+  test("SB_TYPE_IMPORTS=1 counts them again", async () => {
+    process.env.SB_TYPE_IMPORTS = "1";
+    await theyClaim(["t1"]);
+    expect(await summary(["t0"])).toEqual([["t0", "UPSTREAM", 1, "t0>t1"]]);
+    expect((await claim(g(), { agent: ME, paths: ["t0"], now: NOW })).ok).toBe(false);
   });
 });
 

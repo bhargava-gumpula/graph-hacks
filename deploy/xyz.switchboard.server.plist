@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>xyz.switchboard.server</string>
+
+  <!-- Node from `command -v node` on the host. Check it before install.sh: the path must exist. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/bhargavagumpula/.local/node/bin/node</string>
+    <string>--import</string>
+    <string>tsx</string>
+    <string>apps/server/src/index.ts</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/bhargavagumpula/Projects/graph-hacks</string>
+
+  <!-- Public mode on its own graph and port. No ANTHROPIC_API_KEY on purpose: the public server never calls a model. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SERVER_PORT</key>
+    <string>8788</string>
+    <key>SB_GRAPH</key>
+    <string>sb_public</string>
+    <key>SB_PUBLIC</key>
+    <string>1</string>
+    <key>SB_HOST</key>
+    <string>127.0.0.1</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- install.sh creates this directory; launchd will not. -->
+  <key>StandardOutPath</key>
+  <string>/Users/bhargavagumpula/Library/Logs/switchboard/server.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/bhargavagumpula/Library/Logs/switchboard/server.err.log</string>
+</dict>
+</plist>

@@ -10,9 +10,9 @@ Researched 2026-10-11 from the official pages. The official site wins over any l
 | | IST (official) | Pacific (PDT) |
 |---|---|---|
 | Hacking starts | Oct 15, 12:01 AM | **Wed Oct 14, 11:31 AM** |
-| Submissions close | Oct 18, 11:59 PM | **Sun Oct 18, 11:29 AM** |
+| Submissions close | Oct 18, 11:59 PM | **Sun Oct 18 11:29 AM PT** |
 
-Luma shows Oct 15 8 AM → Oct 18 8 PM PT. Ignore that and plan for the **Sat 11:29 AM PT** deadline. Our internal deadline is **Sat Oct 17, 11 PM PT**. No kickoff time has been published yet (the FAQ mentions a kickoff session).
+Luma shows Oct 15 8 AM → Oct 18 8 PM PT. Ignore that and plan for the **Sun Oct 18 11:29 AM PT** deadline. Our internal deadline is **Sun Oct 18 10:30 AM PT**, an hour earlier. No kickoff time has been published yet (the FAQ mentions a kickoff session).
 
 ## Format
 Online, free, solo or a team of up to 4 (each person can be on one team only). Registered entrants: 3,000+ at last count.
@@ -54,7 +54,7 @@ Open source, Cypher, fast traversals, many isolated graphs in one instance (one 
 - **Installed 2026-10-13 (dev Mac):** OrbStack (Docker 29.8.2; CLI at ~/.orbstack/bin/docker) and cloudflared 2026.10.0. The falkordb/falkordb:latest image is pulled, and a smoke test passed (create a graph plus a variable-length path query, both under 1 ms). The demo-host Mac still needs the same setup.
 
 ## Rules check, 2026-10-13 evening (site + WeMakeDevs Discord via Aside; FalkorDB Discord not joined)
-- **The deadline is confirmed:** Oct 18, 11:59 PM IST = **Sat 11:29 AM PDT**. The site overview itself says "Oct 14, 11:31 AM to Oct 18, 11:29 AM PDT". Luma's 8 AM–8 PM is wrong; the site governs.
+- **The deadline is confirmed:** Oct 18, 11:59 PM IST = **Sun Oct 18 11:29 AM PT**. The site overview itself says "Oct 14, 11:31 AM to Oct 18, 11:29 AM PDT". Luma's 8 AM–8 PM is wrong; the site governs.
 - **The owner is registered** (site: "Registered"; Luma: "You're In").
 - **The submission form isn't open yet** (it opens at the start), so its fields and any video length limit are unknown.
 - **Judging:** no rubric is published. Oct 8 announcement (Kunal): every judged project gets **a public score and judge feedback, and the judges are listed publicly** on the hackathon site. No list is up yet.

@@ -36,6 +36,7 @@ import {
 } from "@switchboard/core";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -88,14 +89,31 @@ function runDemo(): Promise<DemoReply> {
   }));
 }
 
-// A fresh graph (first start, or FalkorDB lost its data) gets the demo right away.
-if ((await codeGraphCounts(g)).files === 0) await runDemo();
-setInterval(() => {
-  if (Date.now() - lastWrite > IDLE_MS) runDemo().catch(console.error);
-}, RESEED_EVERY_MS);
+/** The public story needs A holding session.ts for a while yet; a restart, an expired lease or a visitor's A claim (5 min) breaks it. */
+async function storyIntact(): Promise<boolean> {
+  const soon = Date.now() + 5 * 60_000;
+  return (await listClaims(g)).some((c) => c.agent === "A" && c.path === "auth/session.ts" && c.until > soon);
+}
+
+// A fresh graph (first start, or FalkorDB lost its data) gets the demo right away; so does a public start with a broken story.
+if ((await codeGraphCounts(g)).files === 0 || (PUBLIC && !(await storyIntact()))) await runDemo();
+if (PUBLIC) {
+  // Checked every minute, not on idle time: steady claim traffic must not starve the replay.
+  setInterval(() => {
+    if (demoRun || Date.now() - lastWrite < 60_000) return;
+    storyIntact()
+      .then((ok) => (ok ? undefined : runDemo()))
+      .catch(console.error);
+  }, 60_000);
+} else {
+  setInterval(() => {
+    if (Date.now() - lastWrite > IDLE_MS) runDemo().catch(console.error);
+  }, RESEED_EVERY_MS);
+}
 
 const app = new Hono();
 app.use("/api/*", cors());
+app.use("/api/*", bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.json({ error: "body too large" }, 413) }));
 
 app.onError((err, c) => {
   console.error(err);

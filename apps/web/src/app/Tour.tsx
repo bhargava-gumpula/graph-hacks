@@ -178,12 +178,16 @@ export function Tour({
 
   // Phones: a sheet at the bottom, or at the top when the targets sit in the lower half.
   const low = boxes.length > 0 && boxes.every((b) => b.y + b.h / 2 > window.innerHeight / 2);
+  // Desktop: inside the canvas, bottom left; a narrow canvas keeps it in the window's bottom left corner.
+  const sheet = { left: 8, right: 8, maxWidth: 440, marginInline: "auto" } as const;
   const place: React.CSSProperties =
     wide && anchorBox
-      ? { left: anchorBox.x + 16, bottom: window.innerHeight - (anchorBox.y + anchorBox.h) + 16, width: 380 }
+      ? anchorBox.w >= 560
+        ? { left: anchorBox.x + 16, bottom: window.innerHeight - (anchorBox.y + anchorBox.h) + 16, width: 380 }
+        : { left: 16, bottom: 16, width: 360 }
       : low
-        ? { left: 8, right: 8, top: 8 }
-        : { left: 8, right: 8, bottom: "calc(8px + env(safe-area-inset-bottom))" };
+        ? { ...sheet, top: 8 }
+        : { ...sheet, bottom: "calc(8px + env(safe-area-inset-bottom))" };
 
   return (
     <>

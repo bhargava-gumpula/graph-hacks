@@ -1,6 +1,11 @@
 {
   "n": 10,
-  "kind": "scripted agents, same edit, real tsc, real FalkorDB conflict check",
+  "kind": "scripted agents, two edits that each typecheck alone, real tsc, real FalkorDB claims",
+  "baselineOk": true,
+  "aAloneOk": true,
+  "bAloneOk": true,
+  "mergedOk": false,
+  "mergedError": "ui/LoginForm.tsx(9,67): error TS2339: Property 'toUpperCase' does not exist on type '{ user: string; at: string; }'.",
   "without": {
     "brokenBuilds": 10,
     "editsApplied": 10
@@ -8,34 +13,75 @@
   "with": {
     "brokenBuilds": 0,
     "blocked": 10,
+    "caught": 10,
     "editsApplied": 0
   },
-  "checkMsMedian": 0.65,
-  "checkMsMin": 0.58,
-  "checkMsMax": 0.83,
-  "checkMsSamples": [
-    0.77,
-    0.83,
-    0.58,
-    0.78,
-    0.66,
-    0.61,
-    0.61,
-    0.72,
-    0.64,
-    0.62
-  ],
-  "baselineTscOk": true,
-  "edit": {
-    "agent": "B",
-    "file": "ui/LoginForm.tsx",
-    "removes": "import { login, loginHeadline } from \"../api/login\";"
+  "runs": {
+    "without": [
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail",
+      "tsc-fail"
+    ],
+    "with": [
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "refused"
+    ]
   },
+  "checkMsMedian": 1.01,
+  "checkMsMin": 0.71,
+  "checkMsMax": 3.72,
+  "checkMsSamples": [
+    2.31,
+    1.33,
+    0.79,
+    0.82,
+    3.72,
+    1.45,
+    1.2,
+    0.71,
+    0.81,
+    0.81
+  ],
+  "claimMsMedian": 4.24,
   "claim": {
     "agent": "A",
     "file": "auth/session.ts"
   },
+  "edit": {
+    "agent": "B",
+    "file": "ui/LoginForm.tsx"
+  },
+  "conflict": {
+    "type": "UPSTREAM",
+    "hops": 2,
+    "path": [
+      "ui/LoginForm.tsx",
+      "api/login.ts",
+      "auth/session.ts"
+    ]
+  },
+  "graph": {
+    "files": 35,
+    "imports": 51
+  },
   "tsc": "Version 5.9.3",
   "node": "v26.9.0",
-  "ranAt": "2026-10-17T08:28:37.414Z"
+  "loadAvg1m": 29.98,
+  "cpus": 10,
+  "ranAt": "2026-10-17T09:16:24.733Z"
 }

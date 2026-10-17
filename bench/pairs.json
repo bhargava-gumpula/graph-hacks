@@ -1,0 +1,52 @@
+{
+  "demo": {
+    "dir": "demo-repo",
+    "files": 35,
+    "pairs": 595,
+    "lock": 0,
+    "oneHop": 51,
+    "graph": 78,
+    "hidden": 27,
+    "byHop": [
+      {
+        "hops": 1,
+        "pairs": 51
+      },
+      {
+        "hops": 2,
+        "pairs": 23
+      },
+      {
+        "hops": 3,
+        "pairs": 4
+      }
+    ],
+    "ms": 1.17
+  },
+  "real": {
+    "dir": "apps/web",
+    "files": 103,
+    "pairs": 5253,
+    "lock": 0,
+    "oneHop": 185,
+    "graph": 321,
+    "hidden": 136,
+    "byHop": [
+      {
+        "hops": 1,
+        "pairs": 185
+      },
+      {
+        "hops": 2,
+        "pairs": 95
+      },
+      {
+        "hops": 3,
+        "pairs": 41
+      }
+    ],
+    "ms": 2.75
+  },
+  "note": "pairs are unordered pairs of distinct files; ms is the median of 5 runs of the census query",
+  "ranAt": "2026-10-17T09:16:42.887Z"
+}

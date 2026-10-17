@@ -140,3 +140,10 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Public link:** now runs `SB_PUBLIC=1` (agents A–D only, paths must be in the code graph, no /api/edits). One outage: an agent's `pkill -f apps/server/src/index.ts` also killed the public server; it now runs in a restart loop and agents were told to stop processes by port only.
 - **Gates:** typecheck and lint clean; 23 files, 155 tests pass; web build clean.
 - **Submission form** is open (fields recorded in docs/SUBMISSION.md with draft answers).
+
+## 2026-10-17 10:50 PT: integration review, public repo, domain
+- **Integration review:** six lenses (demo runtime, public security, live data, agent integration, truth, UI), two independent skeptics per finding: 13 confirmed, 3 split, 5 refuted. Fixed: the public story is replayed whenever A's claim is missing or short (not on idle time); 64 KB body limit; the public server now runs on its own graph (`sb_public`, port 8788) so local hooks and the CLI can never write into it; second-Play narration, Cypher in replay and after a failed fetch, the replay WCC tile; the video re-cut to the session.ts / 2-import story with the real TS2339 error; wording (hub rule, "about a millisecond", no unused full-text claim, DEMO handoff step, scripted demo agents).
+- **Usage limit** paused the run from about 3:20 to 9:57 AM; the quick tunnel expired meanwhile and was replaced.
+- **Repo public** (owner approved): `.claude/skills` untracked (third-party), the promo code scrubbed from history with git filter-repo, `ui/rebuild` merged into `main`.
+- **Domain:** the owner bought `switchboard-agents.xyz` ($0.00). It was added to Cloudflare (Free plan), a named tunnel `switchboard` serves the site and the API from 127.0.0.1:8788, and the nameservers at gen.xyz point at Cloudflare; waiting for the registry and Cloudflare to activate the zone. All links in the repo use the domain.
+- **Gates:** typecheck and lint clean; 23 files, 155 tests pass; web build clean.

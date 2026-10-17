@@ -9,12 +9,11 @@ Nothing here runs by itself. The owner runs every step. Steps marked **Owner** o
 
 ## Variables
 
-The domain is not final. Change these two lines first, then use `$SITE` and `$API` in every command below. The same two hostnames also appear in `deploy/cloudflared.yml`, `.github/workflows/uptime.yml` and the link row of `README.md`.
+The site and the API share one host, https://switchboard-agents.xyz (one tunnel, one server process). `$SITE` and `$API` are kept separate below in case they are ever split.
 
 ```bash
-# PLACEHOLDER DOMAINS
-export SITE=https://switchboard.bhargava-gumpula.com
-export API=https://switchboard-api.bhargava-gumpula.com
+export SITE=https://switchboard-agents.xyz
+export API=https://switchboard-agents.xyz
 export API_HOST=${API#https://}
 ```
 

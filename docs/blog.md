@@ -77,7 +77,7 @@ Next is a tree-sitter parser for more languages, symbol-level claims, and re-par
 ## Links
 
 - Code: https://github.com/bhargava-gumpula/graph-hacks
-- Live demo: https://switchboard.bhargava-gumpula.com/app?play=1
+- Live demo: https://switchboard-agents.xyz/app?play=1
 - Video: TBD
 
 ## AI disclosure

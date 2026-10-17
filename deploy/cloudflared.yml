@@ -6,8 +6,7 @@ tunnel: <UUID>
 credentials-file: /Users/bhargavagumpula/.cloudflared/<UUID>.json
 
 ingress:
-  # PLACEHOLDER DOMAIN: swap switchboard-api.bhargava-gumpula.com when the final domain is decided.
-  - hostname: switchboard-api.bhargava-gumpula.com
+  - hostname: switchboard-agents.xyz
     service: http://127.0.0.1:8788
     originRequest:
       connectTimeout: 5s

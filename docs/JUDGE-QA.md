@@ -48,7 +48,7 @@ It reads TypeScript only (static imports, re-exports and `import("literal")`), w
 
 ## 12. How is it deployed?
 
-The server and FalkorDB run on an always-on Mac behind a Cloudflare Tunnel, and the web app is static on Cloudflare Pages, which falls back to a recorded run if the API is down. The exact steps are in `deploy/RUNBOOK.md`, and a GitHub Actions job pings the API and the site every 15 minutes.
+The server and FalkorDB run on the owner's Mac behind a named Cloudflare Tunnel at https://switchboard-agents.xyz. One server process serves both the built web app and the API, in public mode (`SB_PUBLIC=1`: agents A to D only, paths must already be in the code graph, short leases). If the API can't be reached, the dashboard switches to a recorded FalkorDB run and labels it Replay. The steps are in `deploy/RUNBOOK.md`, and a GitHub Actions job pings the site and the API every 15 minutes.
 
 ## Numbers you can quote
 

@@ -121,25 +121,19 @@ export function App() {
           {playing ? "Running…" : "Play the demo"}
         </button>
       </header>
-      <section className="story">
-        {story ? (
-          <>
-            <p className="sentence">{story.sentence}</p>
-            <p className="facts">
-              <span>Checked in {story.checkMs} ms</span>
-              <span>{story.batches.length} batches can run at once</span>
-              <span>Decision: use argon2, not bcrypt</span>
-            </p>
-          </>
-        ) : (
-          <p className="sentence quiet">
-            Switchboard checks an agent’s edit against the code’s import graph. A file lock only sees the filename.
-          </p>
-        )}
-      </section>
       <div className="main">
-        <GraphCanvas data={graph} hotPath={hotPath} onSelect={(id) => void showBlast(id)} />
+        <div className="stage">
+          <GraphCanvas data={graph} hotPath={hotPath} onSelect={(id) => void showBlast(id)} />
+          <div className="legend">
+            <span><i className="swatch" style={{ background: "#8ab4f8" }} /> file</span>
+            <span><i className="swatch" style={{ background: "#fbbc04" }} /> hub</span>
+            <span><i className="swatch" style={{ background: "#81c995" }} /> claimed</span>
+            <span><i className="swatch" style={{ background: "#ea4335" }} /> path</span>
+            <span>drag the globe</span>
+          </div>
+        </div>
         <aside className="panel">
+          <p className="sentence">{story ? story.sentence : "The globe keeps turning. Hover a file and the imports shoot out."}</p>
           <h2>Claims</h2>
           {claims.length === 0 && <p className="muted">No one has claimed a file yet.</p>}
           {claims.map((c) => (
@@ -176,12 +170,6 @@ export function App() {
             </>
           )}
         </aside>
-      </div>
-      <div className="legend">
-        <span><i className="swatch" style={{ background: "#8ab4f8" }} /> file</span>
-        <span><i className="swatch" style={{ background: "#fbbc04" }} /> hub</span>
-        <span><i className="swatch" style={{ background: "#81c995" }} /> claimed</span>
-        <span><i className="swatch" style={{ background: "#ea4335" }} /> path</span>
       </div>
     </div>
   );

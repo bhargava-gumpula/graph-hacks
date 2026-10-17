@@ -121,3 +121,21 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Not done:** the owner's voice on the video, publishing the blog, and submitting the form.
 - **Goal check:** the conflict, the batches, the why-trace, and the briefing are FalkorDB queries. Memory is events, decisions, and lessons in that graph. Coordination is claims and conflicts. The demo plays from one button. The benchmark is reproducible from `npm run bench`. The owner can say: a path means two agents will collide; no path means they will not. We are inside the Friday window. The landing page and the benchmark were in the plan. The three mockups were cut because the demo was already on this layout.
 - **Tests:** 43/43. Typecheck and lint clean.
+
+## 2026-10-16 11:50 PT: landing and demo card from five reel frames (branch `hack/ui-reels`)
+- **What changed:** `/` is four full-height beats: one large sentence, the import path on a paper grid, a conflict-check card with the bench numbers (`0 broke. In 1 ms.`), then the comparison table. On `/app` the sentence and the check sit in a card on the graph instead of a bar above it.
+- **Source:** Instagram and `cdninstagram.com` are on the Cisco Umbrella block list, so the videos themselves did not play here. Opening frames came from embed screenshots. Captions came from a reader proxy.
+- **Not copied:** the illustration style, the talking-head frame, and the fake desktop window chrome.
+- **Checks:** web typecheck clean. In the browser, Play the demo returned the LoginForm → login → session refusal (0.5 ms, 3 batches). `/judge` Conflict still returns that sentence.
+
+## 2026-10-16 12:30 PT: ring graph, after watching a reel (branch `hack/ui-reels`)
+- **Reels:** Instagram is still blocked. `yt-dlp` and ffmpeg are installed. A public downloader page played the first reel in the browser. Frames at 0s, 7s, and 21s: a light tool window with a work log, then the words “EVERY FRAME” on the drawing, then a person with a short caption on the picture.
+- **Graph:** files sit on one ring, grouped by folder. Dragging empty space spins it (verified: `session.ts` moved from the left of the ring to the top). Hover lists what that file imports, what imports it, and who claimed it, and lights those edges. The conflict path stays red; the other edges stay hidden until hover.
+- **Page:** the refusal sentence sits in the side column, so it does not cover the ring. The benchmark card on `/` is a light window, matching the tool window in the reel.
+
+## 2026-10-16 12:45 PT: globe, after watching the reels move (branch `hack/ui-reels`)
+- **Watched:** downloaded the reels and stepped through them one frame a second. Buck’s reel cuts every second: the spoken line is painted on the picture (“EVERY FRAME”, “THE BIGGEST SHIFT”, then an octopus that changes shape). Joseph’s reel is a dot sphere; hovering a dot shoots lines to a card of links, while he says “memory for agents” and “share my memory”. Felix names anime.js, motion.dev, and dashboards, one phrase per cut. macOS blocked on-device speech recognition, so the words are the captions burned on the frames, which track the voice.
+- **Graph:** the files are dots on a sphere that keeps turning. Drag spins it. Hover lights the import lines and names them. The conflict path is red with a dot traveling along it.
+
+## 2026-10-16 17:50 PT: landing scroll (branch `hack/ui-reels`)
+- The first screen is a small copy of the dashboard: the globe turns, the red path is already drawn, and the side line steps through the claim. A faint character field drifts with the scroll. Later sections fade in as they enter. The headline stays solid until you leave it.

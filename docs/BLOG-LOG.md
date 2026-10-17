@@ -25,3 +25,6 @@ Agent A claims `lib/crypto.ts`. Agent B asks for `ui/LoginForm.tsx`, a different
 
 ## 2026-10-15 17:15 — Which tasks can run together is a graph algorithm
 Five open tasks. FalkorDB connects two when one's files can reach the other's through imports, skipping the hub everyone imports. Weakly connected components then returns three batches: the login chain together, the settings island together, and the about page alone. Nobody listed the batches. The import graph did.
+
+## 2026-10-16 11:50 — The page took its layout from five opening frames
+Cisco Umbrella blocks instagram.com on this network, so the reels never played. Embed screenshots still showed the hook of each one: one huge line, a filename row on a grid, a status card with a single bar, and a scroll beat. The landing page is those four things. The graph is still the picture.

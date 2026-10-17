@@ -5,7 +5,7 @@ import { connect } from "@switchboard/core";
 
 const root = join(import.meta.dirname, "../../..");
 const tsx = join(root, "node_modules/.bin/tsx");
-const GRAPH = "sb_test_cli";
+const GRAPH = `sb_test_cli_${process.pid}`;
 const PATH_3 =
   "CONFLICT UPSTREAM ui/LoginForm.tsx ← A via ui/LoginForm.tsx → api/login.ts → auth/session.ts → lib/crypto.ts";
 
@@ -67,7 +67,8 @@ test("check exits 2 with the 3-hop path, and 0 once the claim is released", asyn
 }, 60_000);
 
 test("blast, plan, batches, decide, and why", async () => {
-  expect((await run(["parse", "demo-repo"])).code).toBe(0);
+  const parsed = await run(["parse", "demo-repo"]);
+  expect(parsed.code, parsed.stderr).toBe(0);
   const blast = await run(["blast", "auth/session.ts"]);
   expect(blast.code, blast.stderr).toBe(0);
   expect(blast.stdout).toContain("1 api/login.ts");
@@ -97,4 +98,87 @@ test("blast, plan, batches, decide, and why", async () => {
   expect((await run(["edited", "lib/crypto.ts", "--task", "T3", "--agent", "A"])).code).toBe(0);
   const why = await run(["why", "lib/crypto.ts"]);
   expect(why.stdout).toContain("use argon2, not bcrypt");
+}, 60_000);
+
+test("help, bad usage, register and status", async () => {
+  const help = await run(["--help"]);
+  expect(help.code).toBe(0);
+  expect(help.stdout).toContain("check <file>");
+  expect(help.stdout).toContain("Exit codes");
+
+  const unknown = await run(["frobnicate"]);
+  expect(unknown.code).toBe(1);
+  expect(unknown.stderr).toContain("unknown command frobnicate");
+
+  expect((await run(["check", "--agent"])).code).toBe(1);
+  expect((await run(["register", "--kind", "robot", "--agent", "R"])).code).toBe(1);
+
+  const registered = await run(["register", "--kind", "claude", "--agent", "R"]);
+  expect(registered.code, registered.stderr).toBe(0);
+  expect(registered.stdout.trim()).toBe("registered R kind=claude");
+  expect((await run(["heartbeat", "--agent", "R"])).code).toBe(0);
+
+  const parsed = await run(["parse", "demo-repo"]);
+  expect(parsed.code, parsed.stderr).toBe(0);
+  expect((await run(["claim", "auth/session.ts", "--agent", "R", "--task", "T9"])).code).toBe(0);
+  const s = await run(["status"]);
+  expect(s.code, s.stderr).toBe(0);
+  expect(s.stdout).toContain("R claude active claims=auth/session.ts");
+  expect(s.stdout).toMatch(/R auth\/session\.ts until=\S+ task=T9/);
+
+  const conflict = await run(["claim", "ui/LoginForm.tsx", "--agent", "S"]);
+  expect(conflict.code).toBe(2);
+  expect(conflict.stdout).toContain("ui/LoginForm.tsx → api/login.ts → auth/session.ts");
+  expect((await run(["release", "--agent", "R"])).code).toBe(0);
+}, 60_000);
+
+function hook(
+  args: string[],
+  event: object,
+  env: Record<string, string> = {},
+): Promise<{ code: number; stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bash", [join(root, "packages/hooks/hook.sh"), ...args], {
+      cwd: root,
+      // Port 9 is closed, so the hook takes the CLI fallback against the test graph.
+      env: { ...process.env, SB_GRAPH: GRAPH, SB_URL: "http://127.0.0.1:9", SB_HOOK_LOG: "/dev/null", ...env },
+    });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code: code ?? 1, stdout }));
+    child.stdin.end(JSON.stringify(event));
+  });
+}
+
+test("hook: denies a conflicting edit with the path, fails open, and can be switched off", async () => {
+  const parsed = await run(["parse", "demo-repo"]);
+  expect(parsed.code, parsed.stderr).toBe(0);
+  expect((await run(["claim", "lib/crypto.ts", "--agent", "A"])).code).toBe(0);
+  const edit = { tool_name: "Edit", tool_input: { file_path: join(root, "demo-repo/ui/LoginForm.tsx") }, cwd: root };
+
+  const denied = await hook(["claude", "pre"], edit, { SB_AGENT: "B" });
+  expect(denied.code).toBe(0);
+  expect(JSON.parse(denied.stdout)).toEqual({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: PATH_3,
+    },
+  });
+
+  const cursor = await hook(["cursor", "pre"], edit, { SB_AGENT: "B" });
+  expect(JSON.parse(cursor.stdout)).toMatchObject({ permission: "deny", agent_message: PATH_3 });
+
+  expect(JSON.parse((await hook(["claude", "pre"], edit, { SB_AGENT: "A" })).stdout)).toEqual({});
+  expect(JSON.parse((await hook(["claude", "pre"], edit, { SB_AGENT: "B", SWITCHBOARD_OFF: "1" })).stdout)).toEqual({});
+  const down = await hook(["cursor", "pre"], edit, { SB_AGENT: "B", FALKORDB_URL: "redis://127.0.0.1:9" });
+  expect(JSON.parse(down.stdout)).toEqual({ permission: "allow" });
+  const outside = { tool_input: { file_path: join(root, "packages/core/src/index.ts") } };
+  expect(JSON.parse((await hook(["claude", "pre"], outside, { SB_AGENT: "B" })).stdout)).toEqual({});
+
+  await run(["release", "--agent", "A"]);
 }, 60_000);

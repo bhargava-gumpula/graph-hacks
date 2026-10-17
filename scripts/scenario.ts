@@ -1,4 +1,5 @@
-// Usage: npm run scenario
+// The two-minute demo story in the terminal. Usage: npm run scenario [-- <demo dir>]
+// Graph: SB_GRAPH (default sb_demo). Same steps as POST /api/demo.
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +9,8 @@ const SESSION = "auth/session.ts";
 const LOGIN = "ui/LoginForm.tsx";
 
 function format(result: MvpScenarioResult): string {
-  const c = result.b.conflicts[0]!;
+  const c = result.b.conflicts[0];
+  if (!c) throw new Error("scenario expected B's claim to conflict, but it did not");
   return [
     result.sentence,
     `checked in ${result.checkMs} ms`,

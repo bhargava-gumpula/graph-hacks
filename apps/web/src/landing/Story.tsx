@@ -51,12 +51,14 @@ export function Story() {
         </div>
         <ol className="pb-[14vh] pt-[max(0px,calc(86vh_-_75vw_-_94px))] md:pt-[max(0px,calc(86vh_-_75vw_-_76px))] lg:pb-[46vh] lg:pt-[54vh]">
           {STEPS.map((s, i) => (
-            <li key={s.title} className="flex min-h-[34vh] items-start lg:min-h-[75vh] lg:items-center">
+            <li key={s.title} className="flex min-h-[34vh] items-start lg:min-h-[75vh]">
               <motion.div
                 initial={false}
                 animate={{ opacity: reduce || stage === i ? 1 : 0.28 }}
                 transition={{ duration: reduce ? 0 : 0.4 }}
-                className="max-w-md"
+                // Desktop: the step rises at scroll speed, then holds at a reading line while its quarter of the
+                // story plays, so a quick scroll can't fling the text past; the next push carries it on.
+                className="max-w-md lg:sticky lg:top-[30vh]"
                 aria-current={stage === i ? "step" : undefined}
               >
                 <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">{s.title}</h2>

@@ -22,6 +22,8 @@ const TOP = RAMP.length - 1;
 const FONT_PX = 13;
 const LINE = 16;
 const FPS = 20;
+/** A live shockwave draws at 30 fps: smooth enough for the front, half the cost of every frame. */
+const PULSE_FPS = 30;
 const IDLE_FPS = 10;
 const IDLE_AFTER_MS = 2000;
 const MAX_DPR = 1.5;
@@ -84,6 +86,8 @@ export function AsciiField() {
     let line: Uint16Array[] = [];
     let used = new Uint8Array(0);
     let text: (string | null)[] = [];
+    const pulseR: number[] = [];
+    const pulseE: number[] = [];
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
@@ -126,6 +130,12 @@ export function AsciiField() {
       const ct = Math.cos(t * 0.8) * 0.15;
       const R = POINTER_R;
       const hasPointer = pointer.in;
+      // Each pulse's radius and energy are the same for every cell this frame.
+      for (let k = 0; k < pulses.length; k++) {
+        const a = Math.min(1, Math.max(0, (t - pulses[k].t0) / PULSE_LIFE));
+        pulseR[k] = PULSE_R * (1 - (1 - a) ** 3);
+        pulseE[k] = (1 - a) ** 2;
+      }
 
       for (let r = 0; r < rows; r++) {
         const y = r * LINE;
@@ -150,12 +160,11 @@ export function AsciiField() {
           let hot = 0;
           for (let k = 0; k < pulses.length; k++) {
             const p = pulses[k];
-            const a = Math.max(0, (t - p.t0) / PULSE_LIFE);
-            const band = Math.abs(Math.hypot(c * cw - p.x, y - p.y) - PULSE_R * (1 - (1 - a) ** 3));
+            const band = Math.abs(Math.hypot(c * cw - p.x, y - p.y) - pulseR[k]);
             if (band < PULSE_BAND) {
-              const k = (1 - band / PULSE_BAND) * (1 - a) ** 2;
-              if (k > hot) hot = k;
-              e += k * 0.9;
+              const e2 = (1 - band / PULSE_BAND) * pulseE[k];
+              if (e2 > hot) hot = e2;
+              e += e2 * 0.9;
             }
           }
           const rest = Math.min(REST_TOP, Math.round(((f + 1) / 2) * TOP * 0.92 * BASE));
@@ -199,16 +208,11 @@ export function AsciiField() {
         lastY = sy;
         lastScroll = now;
       }
-      // A live shockwave draws on every frame so its front stays smooth.
-      if (pulses.length > 0) {
-        last = now;
-        draw(now);
-        return;
-      }
+      const live = pulses.length > 0;
       const pointerBusy = now - lastMove < IDLE_AFTER_MS;
-      // Hold still while the page scrolls; past the hero, only the pointer redraws the field.
-      if (now - lastScroll < SCROLL_HOLD_MS || (!pointerBusy && sy > window.innerHeight)) return;
-      const interval = 1000 / (pointerBusy ? FPS : IDLE_FPS);
+      // Hold still while the page scrolls; past the hero, only the pointer redraws the field. A live shockwave always plays.
+      if (!live && (now - lastScroll < SCROLL_HOLD_MS || (!pointerBusy && sy > window.innerHeight))) return;
+      const interval = 1000 / (live ? PULSE_FPS : pointerBusy ? FPS : IDLE_FPS);
       // A little slack, and a fixed cadence: a late frame doesn't push every later frame back.
       if (now - last < interval - 3) return;
       last = now - last > interval * 2 ? now : last + interval;

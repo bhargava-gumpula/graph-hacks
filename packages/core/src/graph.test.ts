@@ -75,14 +75,14 @@ describe("cloud URLs", () => {
   });
 
   test("a failed connect never prints the password, from the URL or the env", async () => {
-    const err = await connect({ url: "rediss://default:s3cr%2Ft@127.0.0.1:1" }).catch((e: unknown) => e as Error);
+    const err = (await connect({ url: "rediss://default:s3cr%2Ft@127.0.0.1:1" }).catch((e: unknown) => e)) as Error;
     expect(err.message).toMatch(/^Cannot connect to FalkorDB at rediss:\/\/default:\*\*\*@127\.0\.0\.1:1\./);
     expect(err.message).not.toMatch(/s3cr/);
     expect(err.cause).toBeUndefined();
 
     process.env.FALKORDB_PASSWORD = "envs3cret";
     try {
-      const err2 = await connect({ url: "redis://127.0.0.1:1" }).catch((e: unknown) => e as Error);
+      const err2 = (await connect({ url: "redis://127.0.0.1:1" }).catch((e: unknown) => e)) as Error;
       expect(err2.message).not.toMatch(/envs3cret/);
     } finally {
       delete process.env.FALKORDB_PASSWORD;

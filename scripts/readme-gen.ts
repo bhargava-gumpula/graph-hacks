@@ -90,8 +90,8 @@ async function entries(): Promise<Entry[]> {
       call: "MARK_HUBS",
       file: "hubs",
       text: str(hubs!, "hubs", "MARK_HUBS"),
-      what: "PageRank over `IMPORTS`, then a flag on the files everything imports (`lib/utils.ts` in the demo repo).",
-      lock: "it cannot tell a file everyone imports from a file two people share, so one hub would link every task to every other.",
+      what: "PageRank over `IMPORTS`, then a flag on the files everything imports (`lib/utils.ts` in the demo repo). Paths that run through a flagged file are ignored.",
+      lock: "it cannot tell a file everyone imports from a file two agents really share, so a path through it would look like a dependency.",
     },
     {
       title: "Why",

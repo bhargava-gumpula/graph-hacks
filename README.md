@@ -31,7 +31,7 @@ FalkorDB is the only store. There is no second database and no message broker. R
 | Conflict: does this edit reach another agent's claim? | `(f)-[:IMPORTS*1..3]->(g)<-[c:CLAIMS]-(o)` and the reverse direction, hubs skipped. The path comes back. | Two recursive CTEs, one per direction, each with a hand-built path column and a hub filter. A lock table only matches names. |
 | Blast radius: who breaks if this file changes? | `(d)-[:IMPORTS*1..3]->(f {path: $path})`, nearest hop per dependent, with the agents holding claims on each. | A reverse recursive walk, then a join to claims. |
 | Batches: which tasks can run together? | `CALL algo.WCC({nodeLabels: ['Task'], relationshipTypes: ['INTERFERES']})` | Build the pair list yourself, then run union-find in application code. |
-| Hubs: which file would link everything to everything? | `CALL algo.pageRank('File', 'IMPORTS')` | Count importers by hand, or write PageRank. |
+| Hubs: which file is so widely imported that a path through it means nothing? | `CALL algo.pageRank('File', 'IMPORTS')` | Count importers by hand, or write PageRank. |
 | Why: why does this file look like this? | edit → agent → task → decision, plus `SUPERSEDES*1..5` to the newest decision. | Five joins, one of them recursive. |
 | Brief: what should a new agent know first? | `(f)-[:IMPORTS*0..2]-(g)` around the files it will touch, then claims, decisions and lessons on that set. | The same walk, then one join per kind of memory. |
 
@@ -320,9 +320,9 @@ ORDER BY componentId
 
 ### Hubs (PageRank)
 
-`MARK_HUBS` in [`packages/core/src/queries/hubs.ts`](packages/core/src/queries/hubs.ts). PageRank over `IMPORTS`, then a flag on the files everything imports (`lib/utils.ts` in the demo repo).
+`MARK_HUBS` in [`packages/core/src/queries/hubs.ts`](packages/core/src/queries/hubs.ts). PageRank over `IMPORTS`, then a flag on the files everything imports (`lib/utils.ts` in the demo repo). Paths that run through a flagged file are ignored.
 
-Why a lock table cannot do this: it cannot tell a file everyone imports from a file two people share, so one hub would link every task to every other.
+Why a lock table cannot do this: it cannot tell a file everyone imports from a file two agents really share, so a path through it would look like a dependency.
 
 ```cypher
 CALL algo.pageRank('File', 'IMPORTS') YIELD node, score

@@ -111,7 +111,7 @@ LINES='.conflicts[] |
   ((.path | join(" ─imports→ ")) + (if .type == "SAME" then " (same file)" else "" end)),
   ("held by \(.agent)" + (if .taskId then " · task \(.taskId)" else "" end)
     + (if .intent then " \"\(.intent)\"" else "" end)
-    + (if .until then " · free in \((.until - $now) / 60000 | ceil) min" else "" end))'
+    + (if .until then " · free in \((.until - $now) / 60000 | round) min" else "" end))'
 head="✗ Switchboard blocked this edit"
 tail="Don't work around this with Bash. Pick another file or call brief_me."
 reason=""

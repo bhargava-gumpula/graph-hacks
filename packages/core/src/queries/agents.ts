@@ -37,12 +37,52 @@ CREATE (e)-[:BY]->(a)
 RETURN m.value AS seq
 `;
 
-/** One write: touch `lastSeen` and record a `heartbeat` event. */
+/**
+ * One write: the agent is alive. Touch `lastSeen`, mark it active again, push
+ * every unexpired claim forward by its own TTL, and record a `heartbeat` event.
+ */
 export const HEARTBEAT_AGENT = `${ALLOCATE_EVENT}
 MERGE (a:Agent {id: $id})
-SET a.lastSeen = $at
+ON CREATE SET a.startedAt = $at
+SET a.lastSeen = $at, a.status = 'active'
 CREATE (e)-[:BY]->(a)
-RETURN m.value AS seq
+WITH m, a
+OPTIONAL MATCH (a)-[c:CLAIMS]->(:File)
+WHERE c.until > $at
+WITH m, collect(c) AS live
+FOREACH (c IN live | SET c.until = $at + coalesce(c.ttl, c.until - c.since))
+RETURN m.value AS seq, size(live) AS extended
+`;
+
+/** An agent silent this long (no register, heartbeat, claim or release) is stale. */
+export const DEFAULT_STALE_MS = 30 * 60 * 1000;
+
+/** Active agents not seen since `$cutoff`, with what they hold. Read-only. */
+export const STALE_AGENTS = `
+MATCH (a:Agent)
+WHERE a.status = 'active' AND a.lastSeen < $cutoff
+OPTIONAL MATCH (a)-[:CLAIMS]->(f:File)
+RETURN a.id AS id, collect(f.path) AS paths
+ORDER BY id
+`;
+
+/**
+ * One write per stale agent: mark it `stale`, drop all its claims and record a
+ * `release` event. The WHERE is re-checked here, so an agent that heartbeat
+ * after STALE_AGENTS ran is left alone.
+ */
+export const RELEASE_STALE_AGENT = `
+MATCH (a:Agent {id: $id})
+WHERE a.status = 'active' AND a.lastSeen < $cutoff
+SET a.status = 'stale'
+WITH a
+OPTIONAL MATCH (a)-[c:CLAIMS]->(f:File)
+WITH a, collect(c) AS claims
+MATCH (m:Meta {key: 'seq'})
+SET m.value = m.value + 1
+CREATE (e:Event {seq: m.value, kind: 'release', at: $at, payload: $payload})-[:BY]->(a)
+FOREACH (c IN claims | DELETE c)
+RETURN m.value AS seq, size(claims) AS released
 `;
 
 /**
@@ -84,14 +124,36 @@ export async function registerAgent(
 export async function heartbeat(
   g: SbGraph,
   input: { id: string; now?: number },
-): Promise<{ seq: number }> {
+): Promise<{ seq: number; extended: number }> {
   const rows = await g.query(HEARTBEAT_AGENT, {
     kind: "heartbeat",
     at: input.now ?? Date.now(),
     payload: JSON.stringify({ id: input.id }),
     id: input.id,
   });
-  return { seq: readSeq(rows, "heartbeat") };
+  return { seq: readSeq(rows, "heartbeat"), extended: Number(rows[0]?.extended ?? 0) };
+}
+
+/**
+ * Agents silent for `staleMs` (no register, heartbeat, claim or release) are
+ * marked `stale` and lose their claims, so a crashed agent with a long TTL stops
+ * blocking others. Returns the ids released.
+ */
+export async function releaseStaleAgents(
+  g: SbGraph,
+  input: { staleMs?: number; now?: number } = {},
+): Promise<string[]> {
+  const now = input.now ?? Date.now();
+  const cutoff = now - (input.staleMs ?? DEFAULT_STALE_MS);
+  const stale = await g.roQuery(STALE_AGENTS, { cutoff });
+  const released: string[] = [];
+  for (const row of stale) {
+    const id = String(row.id);
+    const payload = JSON.stringify({ reason: "stale", paths: pathsOf(row.paths) });
+    const rows = await g.query(RELEASE_STALE_AGENT, { id, cutoff, at: now, payload });
+    if (rows.length > 0) released.push(id);
+  }
+  return released;
 }
 
 /** Agents and their active claims. Read-only. `now` defaults to the current time. */

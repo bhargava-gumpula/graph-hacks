@@ -28,6 +28,21 @@ export interface ConflictInput {
 
 const MAX_K = 4;
 
+/** Another agent's claim that has not expired. `c` is the CLAIMS edge, `o` its agent. */
+const ACTIVE_OTHER = `o.id <> $agent AND c.until > $now`;
+/** A multi-hop path is ignored if any file on it, ends included, is a hub. */
+const NO_HUB = `none(n IN nodes(p) WHERE coalesce(n.hub, false))`;
+
+/** `want` is the requested path; `g` the claimed file; `p` the import chain, importer first. */
+const SAME = `(f:File {path: want})<-[c:CLAIMS]-(o:Agent)`;
+const upstream = (k: number) => `p = (f:File {path: want})-[:IMPORTS*1..${k}]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)`;
+const downstream = (k: number) => `p = (g:File)-[:IMPORTS*1..${k}]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)`;
+
+function checkK(k: number): number {
+  if (!Number.isInteger(k) || k < 1 || k > MAX_K) throw new Error(`k must be an integer 1..${MAX_K}, got ${k}`);
+  return k;
+}
+
 /**
  * Q1 dependency conflict, the hero query. Three parts, one per conflict type:
  *  - SAME: another agent claims the very file I asked for (hop 0, hubs included).
@@ -43,25 +58,53 @@ const MAX_K = 4;
  * it is validated to be an integer 1..4 first.
  */
 export function conflictQuery(k: number): string {
-  if (!Number.isInteger(k) || k < 1 || k > MAX_K) throw new Error(`k must be an integer 1..${MAX_K}, got ${k}`);
+  checkK(k);
   return `
 UNWIND $paths AS want
-MATCH (f:File {path: want})<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now
+MATCH ${SAME}
+WHERE ${ACTIVE_OTHER}
 RETURN want AS file, 'SAME' AS type, f.path AS claimed, [f.path] AS path, 0 AS hops,
        o.id AS agent, c.taskId AS taskId, c.intent AS intent
 UNION ALL
 UNWIND $paths AS want
-MATCH p = (f:File {path: want})-[:IMPORTS*1..${k}]->(g:File), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p) WHERE n.hub)
+MATCH ${upstream(k)}
+WHERE ${ACTIVE_OTHER} AND ${NO_HUB}
 RETURN want AS file, 'UPSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n.path] AS path, length(p) AS hops,
        o.id AS agent, c.taskId AS taskId, c.intent AS intent
 UNION ALL
 UNWIND $paths AS want
-MATCH p = (g:File)-[:IMPORTS*1..${k}]->(f:File {path: want}), (g)<-[c:CLAIMS]-(o:Agent)
-WHERE o.id <> $agent AND c.until > $now AND none(n IN nodes(p) WHERE n.hub)
+MATCH ${downstream(k)}
+WHERE ${ACTIVE_OTHER} AND ${NO_HUB}
 RETURN want AS file, 'DOWNSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n.path] AS path, length(p) AS hops,
        o.id AS agent, c.taskId AS taskId, c.intent AS intent
+`;
+}
+
+/**
+ * The same three checks as `conflictQuery`, as a prefix for a write query: it
+ * yields one row when nothing conflicts and no rows otherwise, so whatever
+ * follows it only runs when the claim is free. Used by `claim()` to check and
+ * write in one query (see claims.ts). Needs a non-empty `$paths`: on an empty
+ * list the sum is 0 and the guard passes.
+ *
+ * Each count gets its own WITH, and the filter too: in FalkorDB `same + count(c)`
+ * in one projection came back null, which let every claim through.
+ */
+export function conflictGuard(k: number): string {
+  checkK(k);
+  return `
+UNWIND $paths AS want
+OPTIONAL MATCH ${SAME}
+WHERE ${ACTIVE_OTHER}
+WITH want, count(c) AS same
+OPTIONAL MATCH ${upstream(k)}
+WHERE ${ACTIVE_OTHER} AND ${NO_HUB}
+WITH want, same, count(c) AS up
+OPTIONAL MATCH ${downstream(k)}
+WHERE ${ACTIVE_OTHER} AND ${NO_HUB}
+WITH want, same, up, count(c) AS down
+WITH sum(same + up + down) AS blocked
+WITH blocked WHERE blocked = 0
 `;
 }
 

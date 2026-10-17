@@ -7,7 +7,9 @@ import {
   CaretRight,
   Graph,
   HandGrabbing,
+  HourglassMedium,
   Lightning,
+  LockSimpleOpen,
   NotePencil,
   Prohibit,
   Robot,
@@ -16,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 import { api, type Blast, type Claim, type Conflict, type Decision, type FeedItem, type GNode } from "./api";
 import type { Hit, LiveStatus } from "./useLive";
+import { agentBadge, agentList, agentName, isScripted, namesEditor } from "./agents";
 
 const EXPO = [0.16, 1, 0.3, 1] as const;
 
@@ -64,6 +67,31 @@ export function agentTool(a: GNode, events: FeedItem[]) {
   const reg = events.find((e) => e.kind === "register" && e.agentId === id);
   const k = (reg?.payload as { kind?: string } | null)?.kind;
   return k ? (TOOL[k] ?? k) : null;
+}
+
+export type WaitState = { kind: "waiting"; path: string; holder: string } | { kind: "free"; path: string };
+
+/**
+ * Who is waiting for a file and who may go now, from the newest events: a `wait` (refused, waiting for its
+ * holder) until a `free` naming the agent, which lasts until that agent claims, is refused again or releases.
+ */
+export function waitStates(events: FeedItem[]): Map<string, WaitState> {
+  const out = new Map<string, WaitState>();
+  const settled = new Set<string>();
+  const set = (agent: string, w: WaitState) => {
+    if (!settled.has(agent)) out.set(agent, w);
+    settled.add(agent);
+  };
+  for (const e of [...events].sort((a, b) => b.seq - a.seq)) {
+    const p = (e.payload ?? {}) as { agent?: string; path?: string; holder?: string; waiters?: string[] };
+    if (e.kind === "wait") {
+      const agent = p.agent ?? e.agentId;
+      if (agent && p.path) set(agent, { kind: "waiting", path: p.path, holder: p.holder ?? "" });
+    } else if (e.kind === "free" && p.path) {
+      for (const agent of p.waiters ?? []) set(agent, { kind: "free", path: p.path });
+    } else if ((e.kind === "claim" || e.kind === "conflict" || e.kind === "release") && e.agentId) settled.add(e.agentId);
+  }
+  return out;
 }
 
 /**
@@ -191,6 +219,7 @@ export function AgentsPanel({
     return () => clearInterval(t);
   }, []);
   const blocked = useMemo(() => blockedBy(hit, events), [hit, events]);
+  const waits = useMemo(() => waitStates(events), [events]);
 
   if (!agents.length) {
     if (status === "loading") {
@@ -229,8 +258,12 @@ export function AgentsPanel({
         {agents.map((a, i) => {
           const id = a.id.replace(/^agent:/, "");
           const mine = claims.filter((c) => c.agent === id);
-          const tool = agentTool(a, events);
-          const b = blocked?.agent === id ? blocked.conflict : null;
+          const scripted = isScripted(id);
+          // A scripted agent registers as a Cursor or Claude Code kind; it is neither, so it shows no tool.
+          const tool = scripted || namesEditor(id) ? null : agentTool(a, events);
+          const w = waits.get(id);
+          // A wait (or the free after it) is newer than the refusal it follows, so it replaces the blocked row.
+          const b = !w && blocked?.agent === id ? blocked.conflict : null;
           return (
             <motion.li
               key={a.id}
@@ -250,13 +283,20 @@ export function AgentsPanel({
                     b ? "bg-[var(--color-signal)] text-[#1a0d08]" : "bg-[var(--fg)] text-[var(--bg)]"
                   }`}
                 >
-                  {id.slice(0, 2)}
+                  {agentBadge(id)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">Agent {id}</p>
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <span className="truncate">{agentName(id)}</span>
+                    {scripted && (
+                      <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 font-mono text-[10px] font-normal leading-4 text-[var(--muted)]">scripted</span>
+                    )}
+                  </p>
                   {tool && <p className="truncate text-xs text-[var(--muted)]">{tool}</p>}
                 </div>
-                <span className="shrink-0 text-[11px] text-[var(--muted)]">{b ? "blocked" : (a.status ?? "active")}</span>
+                <span className="shrink-0 text-[11px] text-[var(--muted)]">
+                  {w?.kind === "waiting" ? "waiting" : w?.kind === "free" ? "can go" : b ? "blocked" : (a.status ?? "active")}
+                </span>
               </div>
               <AnimatePresence initial={false}>
                 {b && (
@@ -278,12 +318,42 @@ export function AgentsPanel({
                       >
                         <Prohibit size={13} className="mt-px shrink-0 text-[var(--color-signal)]" aria-hidden />
                         <span>
-                          blocked: {b.file} → held by {b.agent} · {hops(b.hops)}
+                          blocked: {b.file} → held by {agentName(b.agent)} · {hops(b.hops)}
                         </span>
                       </button>
                     </div>
                   </motion.div>
                 )}
+              </AnimatePresence>
+              <AnimatePresence initial={false}>
+              {w && (
+                // Same clipped height-and-fade as the blocked row; keyed by state so waiting to free crossfades.
+                <motion.div
+                  key={`${w.kind}:${w.path}`}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                  className="overflow-hidden"
+                >
+                <p
+                  className={`mt-3 flex items-start gap-2 rounded-md border px-2 py-1.5 font-mono text-[11px] leading-snug ${
+                    w.kind === "free" ? "border-[var(--fg)]/25 text-[var(--fg)]" : "border-dashed border-[var(--border)] text-[var(--muted)]"
+                  }`}
+                >
+                  {w.kind === "waiting" ? (
+                    <HourglassMedium size={13} className="mt-px shrink-0" aria-hidden />
+                  ) : (
+                    <LockSimpleOpen size={13} className="mt-px shrink-0" aria-hidden />
+                  )}
+                  <span className="min-w-0 break-words">
+                    {w.kind === "waiting"
+                      ? `waiting for ${w.path}${w.holder ? `, held by ${agentName(w.holder)}` : ""}`
+                      : `${w.path} is free: go`}
+                  </span>
+                </p>
+                </motion.div>
+              )}
               </AnimatePresence>
               {mine.length > 0 && (
                 <ul className="mt-3 grid gap-1">
@@ -322,18 +392,20 @@ const ICON: Record<string, JSX.Element> = {
   register: <Robot size={15} />,
   handoff: <Lightning size={15} />,
   graph: <TreeStructure size={15} />,
+  wait: <HourglassMedium size={15} />,
+  free: <LockSimpleOpen size={15} />,
 };
 
 function describe(e: FeedItem): string {
   const p = (e.payload ?? {}) as Record<string, unknown>;
-  const who = e.agentId ? `Agent ${e.agentId}` : "Someone";
+  const who = e.agentId ? agentName(e.agentId) : "Someone";
   const on = e.onKey ?? e.onLabel;
   switch (e.kind) {
     case "claim":
       return `${who} claimed ${(p.paths as string[] | undefined)?.join(", ") ?? on ?? "a file"}`;
     case "conflict": {
       const c = conflictOf(e);
-      return c ? `${who} refused: ${c.file} reaches ${c.claimed} (${c.agent}) in ${hops(c.hops)}` : `${who} refused`;
+      return c ? `${who} refused: ${c.file} reaches ${c.claimed} (${agentName(c.agent)}) in ${hops(c.hops)}` : `${who} refused`;
     }
     case "collision":
       return `${who} edited a file inside another agent's claim`;
@@ -346,6 +418,8 @@ function describe(e: FeedItem): string {
     case "edit":
       return `${who} edited ${on ?? "a file"}`;
     case "register": {
+      if (isScripted(e.agentId)) return `${who} checked in (scripted)`;
+      if (e.agentId && namesEditor(e.agentId)) return `${who} checked in`;
       const tool = TOOL[String(p.kind ?? "")];
       return `${who} checked in${tool ? ` from ${tool}` : ""}`;
     }
@@ -358,6 +432,16 @@ function describe(e: FeedItem): string {
       if (u.status === "created") return `New file ${file}${adds ? ` ${adds}` : ""}`;
       const parts = [adds && `now ${adds}`, u.removed?.length ? `no longer imports ${names(u.removed)}` : ""].filter(Boolean);
       return parts.length ? `${file} ${parts.join(" and ")}` : `${file} changed`;
+    }
+    case "wait": {
+      const w = p as { agent?: string; path?: string; holder?: string };
+      const holder = w.holder ? `, held by ${agentName(w.holder)}` : "";
+      return `${agentName(w.agent ?? e.agentId ?? "Someone")} is waiting for ${w.path ?? on ?? "a file"}${holder}`;
+    }
+    case "free": {
+      const f = p as { path?: string; waiters?: string[] };
+      const file = f.path ?? on ?? "A file";
+      return f.waiters?.length ? `${file} is free: ${agentList(f.waiters)} can go` : `${file} is free`;
     }
     case "parse": {
       const n = p as { files?: number; imports?: number };
@@ -380,6 +464,8 @@ function FeedRow({ e, cypher, onPath }: { e: FeedItem; cypher: Record<string, st
   const bad = e.kind === "conflict" || e.kind === "collision";
   const dim = e.kind === "register" || e.kind === "release";
   const c = conflictOf(e);
+  const via = e.kind === "wait" ? (e.payload as { via?: string[] } | null)?.via : undefined;
+  const path = c?.path ?? (via && via.length > 1 ? via : undefined);
   // Quiet rows (check-ins, releases) use the muted text colour, not opacity, so they keep 4.5:1 contrast.
   const row = `flex w-full gap-3 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug ${bad ? "text-[var(--fg)]" : dim ? "text-[var(--muted)]" : "text-[var(--fg)]/80"}`;
   const inner = (
@@ -397,9 +483,9 @@ function FeedRow({ e, cypher, onPath }: { e: FeedItem; cypher: Record<string, st
       transition={{ duration: 0.35, ease: EXPO }}
       className={`rounded-md ${bad ? "bg-[var(--color-signal-soft)] ring-1 ring-inset ring-[var(--color-signal)]/30" : ""}`}
     >
-      {/* Only a conflict row is an action (show its path); the rest are plain log entries. */}
-      {c ? (
-        <button type="button" onClick={() => onPath(c.path)} className={`${row} transition-colors hover:bg-[var(--color-signal)]/15`}>
+      {/* Only a conflict or wait row is an action (show its path); the rest are plain log entries. */}
+      {path ? (
+        <button type="button" onClick={() => onPath(path)} className={`${row} transition-colors ${bad ? "hover:bg-[var(--color-signal)]/15" : "hover:bg-[var(--fg)]/[0.06]"}`}>
           {inner}
         </button>
       ) : (
@@ -529,7 +615,7 @@ function WhyTrace({ row }: { row: Record<string, unknown> }) {
                 {s.label}
                 {i > 0 && <span className="opacity-70"> · {shown[i - 1].edge}</span>}
               </span>
-              <span className={`block truncate text-[13px] ${s.label === "File" ? "font-mono text-[12px]" : ""}`}>{s.label === "Agent" ? `Agent ${s.v}` : s.v}</span>
+              <span className={`block truncate text-[13px] ${s.label === "File" ? "font-mono text-[12px]" : ""}`}>{s.label === "Agent" ? agentName(String(s.v)) : s.v}</span>
             </div>
           </motion.li>
         ))}
@@ -563,7 +649,7 @@ export function Inspect({ path, claims, blast, cypher }: { path: string | null; 
     <div className="grid gap-6 p-5">
       <div>
         <p className="font-mono text-sm">{path}</p>
-        <p className="mt-1 text-xs text-[var(--muted)]">{holders.length ? `Claimed by ${holders.map((h) => `Agent ${h.agent}`).join(", ")}` : "Not claimed"}</p>
+        <p className="mt-1 text-xs text-[var(--muted)]">{holders.length ? `Claimed by ${agentList(holders.map((h) => h.agent))}` : "Not claimed"}</p>
       </div>
       <Section title="Blast radius" kind="IMPORTS*1..3">
         {!blast ? (
@@ -657,7 +743,7 @@ export function Memory({ decisions, events, tasks }: { decisions: Decision[]; ev
                 className="rounded-[var(--radius-panel)] border border-[var(--border)] p-3"
               >
                 <p className={`text-sm ${d.status === "superseded" ? "text-[var(--muted)] line-through decoration-[var(--muted)]" : ""}`}>{d.text}</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">{[d.agent && `Agent ${d.agent}`, d.why && `why: ${d.why}`, d.status].filter(Boolean).join(", ")}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{[d.agent && agentName(d.agent), d.why && `why: ${d.why}`, d.status].filter(Boolean).join(", ")}</p>
               </motion.li>
             ))}
           </ul>
@@ -737,7 +823,7 @@ export function Brief({ tasks, claims }: { tasks: string[]; claims: Claim[] }) {
   return (
     <div className="grid gap-4 p-5">
       <div>
-        <h3 className="text-sm font-medium">{holder ? `What Agent ${holder}'s replacement is told` : `What an agent picking up ${task} is told`}</h3>
+        <h3 className="text-sm font-medium">{holder ? `What ${agentName(holder)}'s replacement is told` : `What an agent picking up ${task} is told`}</h3>
         <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
           If the agent on this task dies, the next one starts from this: claims, decisions, lessons and recent edits, ranked by graph distance.
         </p>

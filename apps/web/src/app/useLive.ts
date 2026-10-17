@@ -12,7 +12,7 @@ export interface Hit {
 }
 
 /** Event kinds that change the snapshot or the lists, so they trigger a (coalesced) refetch. */
-const CHANGES = new Set(["claim", "release", "conflict", "decision", "edit", "register", "collision", "lesson", "handoff", "graph"]);
+const CHANGES = new Set(["claim", "release", "conflict", "decision", "edit", "register", "collision", "lesson", "handoff", "graph", "wait", "free"]);
 const HISTORY = 40; // events of history to show on connect
 const BEAT_MS = 600; // one fresh event per beat, so a burst reads as a story
 const RECONNECT_MS = 3000;

@@ -64,6 +64,8 @@ export interface Health {
   dbMs?: number;
   uptimeS?: number;
   lastResetAt?: number | null;
+  /** Public link only: "own" is this visitor's private copy of the demo, "shared" means the copies ran out. */
+  visitor?: "own" | "shared";
 }
 export interface DemoReply {
   sentence: string;

@@ -1,7 +1,6 @@
 import type { ClaimResult } from "./queries/claims.js";
 import { claim } from "./queries/claims.js";
 import { findConflicts } from "./queries/conflict.js";
-import { MARK_FILE_HUB } from "./queries/hubs.js";
 import { loadParse } from "./queries/loader.js";
 import { SET_TASK_STATUS, parallelBatches, planTask } from "./queries/schedule.js";
 import { recordEdit } from "./queries/edits.js";
@@ -34,7 +33,6 @@ export interface MvpScenarioResult {
 export async function runMvpScenario(g: SbGraph, demoRoot: string): Promise<MvpScenarioResult> {
   await ensureSchema(g);
   const counts = await loadParse(g, parseRepo(demoRoot));
-  await g.query(MARK_FILE_HUB, { path: "lib/utils.ts" });
   await release(g, { agent: A });
   await release(g, { agent: B });
   await registerAgent(g, { id: A, kind: "cursor" });

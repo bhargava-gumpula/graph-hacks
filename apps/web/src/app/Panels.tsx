@@ -65,18 +65,23 @@ export function agentTool(a: GNode, events: FeedItem[]) {
   return k ? (TOOL[k] ?? k) : null;
 }
 
-let cypherReq: Promise<Record<string, string> | null> | null = null;
-/** The named Cypher the server runs (GET /api/cypher). Null while loading or when the route is missing. */
-export function useCypher() {
+/**
+ * The named Cypher the server runs (GET /api/cypher, or the recorded set in replay). Null while loading
+ * or when the route is missing. Fetched once health has picked a mode; a failure retries on the next status.
+ */
+export function useCypher(status: LiveStatus) {
   const [q, setQ] = useState<Record<string, string> | null>(null);
   useEffect(() => {
+    if (q || (status !== "live" && status !== "replay")) return;
     let on = true;
-    cypherReq ??= api.cypher().catch(() => null);
-    void cypherReq.then((r) => on && setQ(r));
+    api.cypher().then(
+      (r) => on && setQ(r),
+      () => undefined,
+    );
     return () => {
       on = false;
     };
-  }, []);
+  }, [status, q]);
   return q;
 }
 

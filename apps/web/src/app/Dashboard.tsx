@@ -33,7 +33,7 @@ const when = (s: string | null) => {
 export function Dashboard() {
   const [batchMode, setBatchMode] = useState(false);
   const live = useLive({ withBatches: batchMode });
-  const cypher = useCypher();
+  const cypher = useCypher(live.status);
   const [tab, setTab] = useState<Tab>("feed");
   const [selected, setSelected] = useState<string | null>(null);
   const [blast, setBlast] = useState<Blast | null>(null);

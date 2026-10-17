@@ -10,7 +10,7 @@
 // Fails open: FalkorDB down, a timeout, a parse failure or any error allows the edit. SWITCHBOARD_OFF=1 disables it.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -205,10 +205,14 @@ export async function handle(c: Ctx): Promise<object> {
     let paths: string[];
     if (command !== undefined) {
       const snap = snapshotFile(input, command);
-      if (!existsSync(snap)) return answer(editor, phase, { context: notices });
-      const before = JSON.parse(readFileSync(snap, "utf8")) as Record<string, number>;
-      unlinkSync(snap);
-      paths = inRepo(changedFiles(before, dirtyFiles(cwd))).slice(0, MAX_SHELL_EDITS);
+      try {
+        const before = JSON.parse(readFileSync(snap, "utf8")) as Record<string, number>;
+        unlinkSync(snap);
+        paths = inRepo(changedFiles(before, dirtyFiles(cwd))).slice(0, MAX_SHELL_EDITS);
+      } catch {
+        // no snapshot (not a git checkout) or git timed out: nothing to record
+        paths = [];
+      }
     } else {
       const file = [tool.file_path, tool.notebook_path, tool.path, input.file_path].map(str).find(Boolean);
       paths = file ? inRepo([file]) : [];
@@ -223,9 +227,11 @@ export async function handle(c: Ctx): Promise<object> {
 
   // pre
   let files: string[];
-  if (command !== undefined) {
+  // ponytail: a command that fails (no PostToolUse) leaves its small snapshot in the temp dir.
+  const snap = command === undefined ? undefined : snapshotFile(input, command);
+  if (command !== undefined && snap) {
     try {
-      writeFileSync(snapshotFile(input, command), JSON.stringify(dirtyFiles(cwd)));
+      writeFileSync(snap, JSON.stringify(dirtyFiles(cwd)));
     } catch {
       // not a git checkout: the post call records nothing
     }
@@ -241,7 +247,8 @@ export async function handle(c: Ctx): Promise<object> {
   if (res.ok) {
     const unknown = res.unknown ?? [];
     log(editor, phase, unknown.length ? `allow ${paths.join(", ")} for ${agent}: not all in the parsed graph` : `allow ${paths.join(", ")} for ${agent} (claimed)`);
-    const note = unknown.length
+    // A shell command often writes files no parser sees (logs, build output): no note for those.
+    const note = unknown.length && command === undefined
       ? `Switchboard: ${unknown.join(", ")} ${unknown.length === 1 ? "is" : "are"} not in the parsed graph, no dependency check`
       : undefined;
     return answer(editor, phase, { context: notices, note });
@@ -253,8 +260,9 @@ export async function handle(c: Ctx): Promise<object> {
     return answer(editor, phase, { context: [warning, notices].filter(Boolean).join("\n\n") });
   }
   await recordWaits(g, { agent, conflicts: res.conflicts });
+  if (snap) rmSync(snap, { force: true });
   const held = [...new Set(res.conflicts.map((x) => x.claimed))].join(", ");
-  const wait = `You are now waiting on ${held}; Switchboard tells you here when it is free.`;
+  const wait = held && `You are now waiting on ${held}; Switchboard tells you here when it is free.`;
   log(editor, phase, `deny ${paths.join(", ")} for ${agent}: ${reason.replaceAll("\n", " | ")}`);
   return answer(editor, phase, { deny: [reason, wait, notices].filter(Boolean).join("\n") });
 }

@@ -85,16 +85,46 @@ export async function loadParse(g: SbGraph, parsed: ParseResult): Promise<{ file
   return counts;
 }
 
-/** Drop files and agents that are not part of the demo repo. Hook edits of this checkout must not appear on the demo canvas. */
-export const RESET_DEMO_EXTRAS = `
+/**
+ * Put the demo graph back to its starting state before the scenario replays, one
+ * query per step: a chained `... WITH 1 AS _ MATCH ...` stops as soon as one step
+ * matches nothing, which is how stray agents used to survive a reset.
+ * Kept: the demo repo's File nodes and IMPORTS edges, agents A and B, and the
+ * Meta seq counter, so seq never goes backwards for a live feed.
+ * Dropped: files outside the demo repo (hook edits of this checkout), every claim,
+ * every other agent, and the memory the scenario writes again (edits, events,
+ * decisions, lessons, tasks).
+ */
+export const RESET_DEMO = [
+  `MATCH (f:File)
+   WHERE NOT (f.path STARTS WITH 'ui/' OR f.path STARTS WITH 'api/' OR f.path STARTS WITH 'auth/' OR f.path STARTS WITH 'lib/')
+   DETACH DELETE f`,
+  "MATCH ()-[c:CLAIMS]->() DELETE c",
+  "MATCH (a:Agent) WHERE NOT a.id IN ['A', 'B'] DETACH DELETE a",
+  "MATCH ()-[r:EDITED]->() DELETE r",
+  "MATCH (e:Event) DETACH DELETE e",
+  "MATCH (d:Decision) DETACH DELETE d",
+  "MATCH (l:Lesson) DETACH DELETE l",
+  "MATCH (t:Task) DETACH DELETE t",
+];
+
+export async function resetDemo(g: SbGraph): Promise<void> {
+  for (const query of RESET_DEMO) await g.query(query);
+}
+
+/** Which of these paths are File nodes already. */
+export const FOUND_FILES = `
 MATCH (f:File)
-WHERE NOT (f.path STARTS WITH 'ui/' OR f.path STARTS WITH 'api/' OR f.path STARTS WITH 'auth/' OR f.path STARTS WITH 'lib/')
-DETACH DELETE f
-WITH 1 AS _
-MATCH (a:Agent)
-WHERE NOT a.id IN ['A', 'B']
-DETACH DELETE a
+WHERE f.path IN $paths
+RETURN collect(f.path) AS paths
 `;
+
+/** The paths that are not in the code graph, in input order. */
+export async function missingFiles(g: SbGraph, paths: string[]): Promise<string[]> {
+  const [row] = await g.roQuery(FOUND_FILES, { paths });
+  const found = new Set((row?.paths as string[] | undefined) ?? []);
+  return paths.filter((p) => !found.has(p));
+}
 
 /** Count File nodes and IMPORTS edges currently in the graph. */
 export async function codeGraphCounts(g: SbGraph): Promise<{ files: number; imports: number }> {

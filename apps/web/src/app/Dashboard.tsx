@@ -285,9 +285,11 @@ export function Dashboard() {
 
         <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-cols-[280px_minmax(0,1fr)_380px] lg:grid-rows-1">
           <aside className="hidden min-h-0 flex-col border-r border-[var(--border)] bg-[var(--bg)]/70 backdrop-blur-sm lg:flex">
-            <div className="border-b border-[var(--border)] p-4">
-              {tiles ? <Tiles {...tiles} /> : <div className="h-[178px] animate-pulse rounded-[var(--radius-panel)] bg-[var(--fg)]/[0.04]" />}
-            </div>
+            {(tiles || live.status === "loading") && (
+              <div className="border-b border-[var(--border)] p-4">
+                {tiles ? <Tiles {...tiles} /> : <div className="h-[178px] animate-pulse rounded-[var(--radius-panel)] bg-[var(--fg)]/[0.04]" />}
+              </div>
+            )}
             <p className="px-4 pt-4 text-xs font-medium text-[var(--muted)]">Agents</p>
             <div className="min-h-0 flex-1 overflow-y-auto" onPointerLeave={() => setHoverAgent(null)}>
               <div
@@ -568,7 +570,22 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
             <span className="font-medium">
               {n} group{n === 1 ? "" : "s"} → {n} agent{n === 1 ? "" : "s"} can work at once
             </span>
-            <span className="text-[var(--muted)]"> · {queued.length ? `${queued.join(", ")} must queue` : "nothing has to queue"}</span>
+            <span className="text-[var(--muted)]">
+              {" · "}
+              {queued.length ? (
+                <>
+                  {queued.map((t, i) => (
+                    <span key={t} className="whitespace-nowrap">
+                      {t}
+                      {i < queued.length - 1 ? ", " : ""}
+                    </span>
+                  ))}{" "}
+                  must queue
+                </>
+              ) : (
+                "nothing has to queue"
+              )}
+            </span>
           </p>
           <ul className="mt-2.5 flex flex-wrap gap-1.5">
             {groups.map((g, i) => (

@@ -47,7 +47,7 @@ export function GraphView(props: GraphViewProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<string | null>(null);
-  const [routeHover, setRouteHover] = useState(false);
+  const [routeHover, setRouteHover] = useState<{ x: number; y: number } | null>(null);
 
   // Camera: pan and zoom as motion values (no React re-render per frame).
   const tx = useMotionValue(0);
@@ -251,8 +251,11 @@ export function GraphView(props: GraphViewProps) {
                 strokeWidth={18}
                 data-node
                 className="cursor-help"
-                onPointerEnter={() => setRouteHover(true)}
-                onPointerLeave={() => setRouteHover(false)}
+                onPointerMove={(e) => {
+                  const r = wrap.current?.getBoundingClientRect();
+                  if (r) setRouteHover({ x: e.clientX - r.left, y: e.clientY - r.top });
+                }}
+                onPointerLeave={() => setRouteHover(null)}
               />
             </>
           )}
@@ -401,7 +404,10 @@ export function GraphView(props: GraphViewProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: EXPO }}
             className="pointer-events-none absolute z-10 w-72 rounded-[var(--radius-panel)] border border-[var(--color-signal)]/40 bg-[var(--surface)]/95 p-3 text-xs shadow-xl shadow-black/30 backdrop-blur"
-            style={cardAt(shot.end.x, shot.end.y, 288, conflictCypher ? 190 : 70)}
+            style={{
+              left: Math.max(8, Math.min((wrap.current?.clientWidth ?? 0) - 296, routeHover.x + 16)),
+              top: Math.max(8, Math.min((wrap.current?.clientHeight ?? 0) - (conflictCypher ? 200 : 80), routeHover.y + 14)),
+            }}
           >
             <p className="font-mono text-[12px] text-[var(--fg)]">
               {hit.conflict.file} → {hit.conflict.claimed}
@@ -411,7 +417,7 @@ export function GraphView(props: GraphViewProps) {
               {checkMs != null ? `, found in ${checkMs} ms` : ""}
             </p>
             {conflictCypher && (
-              <pre className="mt-2 max-h-28 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg)] p-2 font-mono text-[9.5px] leading-[1.5] text-[var(--muted)]">
+              <pre className="mt-2 max-h-32 overflow-hidden whitespace-pre-wrap rounded-md border border-[var(--border)] bg-[var(--bg)] p-2 font-mono text-[9.5px] leading-[1.5] text-[var(--muted)]">
                 {upstreamPart(conflictCypher)}
               </pre>
             )}

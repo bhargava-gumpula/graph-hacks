@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
-import { parseRepo, type ParseResult } from "./parser.js";
+import { gitignore, parseFile, parseRepo, type ParseResult } from "./parser.js";
 
 const DEMO = join(import.meta.dirname, "../../../demo-repo");
 const expected = JSON.parse(readFileSync(join(DEMO, "expected.json"), "utf8"));
@@ -122,6 +122,37 @@ describe("parseRepo edge cases", () => {
     const plain = parseRepo(root);
     expect(edge(plain, "src/js-ext.ts", "src/b.ts")).toBeDefined();
     expect(edge(plain, "src/uses-barrel.ts", "src/barrel/index.ts")).toBeDefined();
+  });
+});
+
+describe(".gitignore and build output", () => {
+  const root = mkdtempSync(join(tmpdir(), "sb-ignore-"));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const write = (path: string, text = "export const x = 1;\n") => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  };
+  write(".gitignore", "# generated\n/generated/\n*.gen.ts\n!keep.gen.ts\ntmp\nsrc/legacy/**\n");
+  for (const p of ["src/a.ts", "src/keep.gen.ts", "src/b.gen.ts", "generated/api.ts", "src/generated/ok.ts", "tmp/x.ts", "src/tmp/y.ts",
+    "src/legacy/old.ts", ".next/server/page.js", "out/index.js", "build/main.js", "coverage/lcov.js", ".turbo/x.js", ".vercel/output/f.js",
+    "dist/a.js"]) write(p);
+
+  test("skips build output always and the repo's .gitignore patterns", () => {
+    expect(parseRepo(root).files.map((f) => f.path)).toEqual(["src/a.ts", "src/generated/ok.ts", "src/keep.gen.ts"]);
+    expect(parseFile(root, "src/b.gen.ts")).toBeNull();
+    expect(parseFile(root, "out/index.js")).toBeNull();
+    expect(parseFile(root, "src/a.ts")?.file.path).toBe("src/a.ts");
+  });
+
+  test("the matcher: dirs, globs, anchoring, negation", () => {
+    const ignored = gitignore(root);
+    expect(ignored("generated/api.ts")).toBe(true);
+    expect(ignored("src/generated/ok.ts")).toBe(false);
+    expect(ignored("deep/tmp/z.ts")).toBe(true);
+    expect(ignored("src/keep.gen.ts")).toBe(false);
+    expect(ignored("src/legacy/a/b.ts")).toBe(true);
+    expect(ignored("src/legacyish.ts")).toBe(false);
+    expect(gitignore(join(root, "no-such-dir"))("anything.ts")).toBe(false);
   });
 });
 

@@ -75,3 +75,19 @@ export function curve(a: { x: number; y: number }, b: { x: number; y: number }) 
   const dx = Math.max(40, Math.abs(b.x - a.x) * 0.5) * Math.sign(b.x - a.x || 1);
   return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
 }
+
+/** Shortest chain of imports from one file to another (BFS over IMPORTS edges); [] if none. */
+export function importPath(g: Snapshot, from: string, to: string): string[] {
+  const out = new Map<string, string[]>();
+  for (const e of g.edges) if (e.kind === "IMPORTS") out.set(e.source, [...(out.get(e.source) ?? []), e.target]);
+  const prev = new Map<string, string>([[from, from]]);
+  const queue = [from];
+  while (queue.length && !prev.has(to)) {
+    const n = queue.shift()!;
+    for (const m of out.get(n) ?? []) if (!prev.has(m)) (prev.set(m, n), queue.push(m));
+  }
+  if (!prev.has(to)) return [];
+  const path = [to];
+  while (path[0] !== from) path.unshift(prev.get(path[0])!);
+  return path;
+}

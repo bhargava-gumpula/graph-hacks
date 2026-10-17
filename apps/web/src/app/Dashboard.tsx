@@ -232,11 +232,6 @@ export function Dashboard() {
           </div>
         </header>
 
-        <div className="pointer-events-none absolute left-1/2 top-[8.75rem] z-30 -translate-x-1/2 lg:top-16">
-          <div className="pointer-events-auto">
-            <StatusIsland tasks={tasks} rest={rest} onDismiss={(id) => setTasks((t) => t.filter((x) => x.id !== id))} dismissAfter={5000} />
-          </div>
-        </div>
 
         <AnimatePresence>
           {tryOpen && (
@@ -333,6 +328,12 @@ export function Dashboard() {
                 )}
               </div>
             )}
+
+            <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2">
+              <div className="pointer-events-auto">
+                <StatusIsland tasks={tasks} rest={rest} onDismiss={(id) => setTasks((t) => t.filter((x) => x.id !== id))} dismissAfter={5000} />
+              </div>
+            </div>
 
             <AnimatePresence>
               {batchMode && (
@@ -560,7 +561,7 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.35, ease: EXPO }}
-      className="absolute left-3 right-3 top-3 z-10 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/90 p-3 backdrop-blur-md sm:right-auto sm:max-w-[420px]"
+      className="absolute left-3 right-3 top-16 z-10 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/90 p-3 backdrop-blur-md sm:right-auto sm:max-w-[420px]"
     >
       {n === 0 ? (
         <p className="text-[13px] text-[var(--muted)]">Computing parallel groups with WCC.</p>

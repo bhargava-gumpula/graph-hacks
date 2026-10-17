@@ -427,11 +427,19 @@ Agent A holds `auth/session.ts` and changes what `sessionLabel` returns. Agent B
 | | Broken builds | What happened |
 |---|---|---|
 | Without Switchboard | 10 / 10 | B's edit landed in 10 / 10 runs. |
-| With Switchboard | 0 / 10 | B's claim was refused 10 / 10 times. B's edit landed in 0 / 10 runs. |
+| With Switchboard | 0 / 10 | B's claim was refused 10 / 10 times. B's own `tsc` caught the clash 10 / 10 times. B's edit landed in 0 / 10 runs. |
 
-- Agent A holds `auth/session.ts`. Agent B edits `ui/LoginForm.tsx`.
-- The conflict check (`findConflicts`, one FalkorDB query from Node) took a median of 0.65 ms (range 0.58 to 0.83 ms) over 10 runs.
+- Agent A holds `auth/session.ts`. Agent B edits `ui/LoginForm.tsx`. The refusal: UPSTREAM, 2 hops, ui/LoginForm.tsx → api/login.ts → auth/session.ts.
+- The untouched repo, A's edit alone and B's edit alone all pass `tsc`. Merged, `tsc` fails: `ui/LoginForm.tsx(9,67): error TS2339: Property 'toUpperCase' does not exist on type '{ user: string; at: string; }'.`
+- The conflict check (`findConflicts`, one FalkorDB query from Node) took a median of 1.01 ms (range 0.71 to 3.72 ms) over 10 runs. The machine was busy: 1-minute load average 29.98 on 10 cores.
 - Last run: 2026-10-17, TypeScript 5.9.3, Node v26.9.0.
+
+Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once. A file lock collides only on the same path, so by definition it catches none of them:
+
+| Repo | Files | Pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |
+|---|---|---|---|---|---|---|
+| `demo-repo/` | 35 | 595 | 0 | 51 | 78 | 27 |
+| `apps/web/` | 103 | 5253 | 0 | 185 | 321 | 136 |
 
 <!-- bench:end -->
 

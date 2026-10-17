@@ -140,7 +140,10 @@ export function GraphView(props: GraphViewProps) {
   }, [claims]);
 
   // The conflict animation: packet along the path, then impact.
-  const [shot, setShot] = useState<{ id: number; d: string; end: { x: number; y: number }; ids: Set<string>; quiet: boolean } | null>(null);
+  const [shot, setShot] = useState<{ id: number; d: string; end: { x: number; y: number }; ids: Set<string>; order: Map<string, number>; quiet: boolean } | null>(null);
+  // How many path nodes the packet has reached: each hop lights when the packet gets there.
+  const [reach, setReach] = useState(Infinity);
+  const shotId = useRef<number | null>(null);
   const [impact, setImpact] = useState<{ id: number; x: number; y: number } | null>(null);
   const packetX = useMotionValue(-99);
   const packetY = useMotionValue(-99);
@@ -152,7 +155,8 @@ export function GraphView(props: GraphViewProps) {
       setImpact(null);
       return;
     }
-    const pts = hit.conflict.path.map((p) => L.nodes.get(p)).filter(Boolean) as { x: number; y: number }[];
+    const onCanvas = hit.conflict.path.filter((p) => L.nodes.has(p));
+    const pts = onCanvas.map((p) => L.nodes.get(p)!);
     if (pts.length < 1) {
       onLanded?.(hit.id);
       return;
@@ -161,7 +165,10 @@ export function GraphView(props: GraphViewProps) {
       pts.length === 1
         ? `M ${pts[0].x} ${pts[0].y} L ${pts[0].x} ${pts[0].y}`
         : pts.slice(1).map((p, i) => curve(pts[i], p)).map((s, i) => (i === 0 ? s : s.replace(/^M [^C]+/, ""))).join(" ");
-    setShot({ id: hit.id, d, end: pts[pts.length - 1], ids: new Set(hit.conflict.path), quiet: !!hit.quiet });
+    setShot({ id: hit.id, d, end: pts[pts.length - 1], ids: new Set(hit.conflict.path), order: new Map(onCanvas.map((p, i) => [p, i])), quiet: !!hit.quiet });
+    // A refetched graph rebuilds the same shot; only a new conflict starts dark.
+    if (shotId.current !== hit.id) setReach(hit.quiet || reduce ? Infinity : 0);
+    shotId.current = hit.id;
   }, [hit, L.nodes]);
 
   useEffect(() => {
@@ -175,8 +182,17 @@ export function GraphView(props: GraphViewProps) {
       return;
     }
     const done = () => {
+      setReach(Infinity);
       setImpact({ id: shot.id, ...shot.end });
       onLanded?.(shot.id);
+      // The claim it hit recoils on the impact frame (WAAPI, transform only).
+      if (!reduce) {
+        const endId = [...shot.order.keys()].pop();
+        svg.current?.querySelector(`[data-ring="${CSS.escape(endId ?? "")}"]`)?.animate(
+          [{ transform: "scale(1)" }, { transform: "scale(1.35)", offset: 0.25 }, { transform: "scale(1)" }],
+          { duration: 450, easing: "cubic-bezier(0.25, 1, 0.5, 1)" },
+        );
+      }
       const r = svg.current?.getBoundingClientRect();
       if (r) {
         const sx = r.left + tx.get() + shot.end.x * k.get();
@@ -189,6 +205,17 @@ export function GraphView(props: GraphViewProps) {
       done();
       return;
     }
+    // Where each path node sits along the route, as a fraction of its length.
+    const samples = Array.from({ length: 65 }, (_, i) => el.getPointAtLength((i / 64) * len));
+    const at = [...shot.order.keys()].map((id) => {
+      const n = L.nodes.get(id)!;
+      let best = 0;
+      samples.forEach((p, i) => {
+        if (Math.hypot(p.x - n.x, p.y - n.y) < Math.hypot(samples[best].x - n.x, samples[best].y - n.y)) best = i;
+      });
+      return best / 64;
+    });
+    let lit = 0;
     const c = animate(0, 1, {
       duration: Math.min(1.6, 0.45 * Math.max(1, hit?.conflict.hops ?? 1)),
       // power3.in: the packet accelerates into the claim and is cut at peak velocity on impact.
@@ -198,6 +225,8 @@ export function GraphView(props: GraphViewProps) {
         packetX.set(p.x);
         packetY.set(p.y);
         routeLen.set(v);
+        const r = at.filter((f) => f <= v).length - 1;
+        if (r > lit) setReach((lit = r));
       },
       onComplete: done,
     });
@@ -293,7 +322,7 @@ export function GraphView(props: GraphViewProps) {
           ))}
 
           {L.edges.map((e) => {
-            const onShot = shot && shot.ids.has(e.s.id) && shot.ids.has(e.t.id);
+            const onShot = shot && shot.ids.has(e.s.id) && shot.ids.has(e.t.id) && Math.max(shot.order.get(e.s.id) ?? 0, shot.order.get(e.t.id) ?? 0) <= reach;
             const inBlast = selected && (e.t.id === selected || blast.has(e.t.id)) && blast.has(e.s.id);
             const inFocus = focus && focus.has(e.s.id) && focus.has(e.t.id);
             const touch = hover && (e.s.id === hover || e.t.id === hover);
@@ -340,13 +369,14 @@ export function GraphView(props: GraphViewProps) {
 
           {[...L.nodes.values()].map((n) => {
             const claimers = claimsByFile.get(n.id) ?? [];
-            const onShot = shot?.ids.has(n.id);
+            const onRoute = shot?.ids.has(n.id);
+            const onShot = onRoute && (shot?.order.get(n.id) ?? 0) <= reach;
             const hop = blast.get(n.id);
             const isSel = selected === n.id;
             const isHover = hover === n.id;
             const batch = batchOf?.get(n.id);
             const fh = focus?.get(n.id);
-            const dimmed = (selected && !isSel && hop === undefined && !onShot) || (focus && fh === undefined && !onShot);
+            const dimmed = (selected && !isSel && hop === undefined && !onRoute) || (focus && fh === undefined && !onRoute);
             const isGhost = ghost?.file === n.id;
             const showLabel = isSel || isHover || onShot || claimers.length > 0 || hop !== undefined || fh !== undefined || batch !== undefined;
             return (
@@ -407,7 +437,7 @@ export function GraphView(props: GraphViewProps) {
                       style={{ originX: `${n.x}px`, originY: `${n.y}px`, transformBox: "view-box" }}
                       transition={{ type: "spring", stiffness: 380, damping: 33 }}
                     >
-                      <circle cx={n.x} cy={n.y} r={11} fill="none" stroke={onShot ? "var(--color-signal)" : "var(--fg)"} strokeWidth={1.5} />
+                      <circle data-ring={n.id} cx={n.x} cy={n.y} r={11} fill="none" stroke={onShot ? "var(--color-signal)" : "var(--fg)"} strokeWidth={1.5} style={{ transformBox: "fill-box", transformOrigin: "center" }} />
                       <rect x={n.x - 22} y={n.y - 26} width={20} height={14} rx={7} fill="var(--fg)" />
                       <text x={n.x - 12} y={n.y - 16} textAnchor="middle" className="fill-[var(--bg)] font-mono text-[9px] font-semibold">
                         {claimers[0].slice(0, 2)}

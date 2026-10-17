@@ -1,5 +1,11 @@
+import { Breakdown } from "./landing/Breakdown";
+import { Closing } from "./landing/Closing";
+import { Compare } from "./landing/Compare";
 import { Hero } from "./landing/Hero";
 import { Nav } from "./landing/Nav";
+import { Proof } from "./landing/Proof";
+import { Query } from "./landing/Query";
+import { Story } from "./landing/Story";
 
 export function Landing() {
   return (
@@ -7,8 +13,13 @@ export function Landing() {
       <Nav />
       <main>
         <Hero />
-        {/* U2: storyline, object breakdown, benchmark, competitors, try it. */}
+        <Story />
+        <Breakdown />
+        <Query />
+        <Proof />
+        <Compare />
       </main>
+      <Closing />
     </div>
   );
 }

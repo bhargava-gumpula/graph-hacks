@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.bhargava-gumpula/switchboard",
+  "title": "Switchboard",
+  "description": "Coordinates AI coding agents through a shared FalkorDB import graph: claims, conflicts, memory.",
+  "version": "0.1.0",
+  "websiteUrl": "https://switchboard-agents.xyz",
+  "repository": {
+    "url": "https://github.com/bhargava-gumpula/graph-hacks",
+    "source": "github",
+    "subfolder": "packages/npm"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "switchboard-agents",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }],
+      "environmentVariables": [
+        {
+          "name": "FALKORDB_URL",
+          "description": "FalkorDB (Redis protocol) URL",
+          "default": "redis://localhost:6379",
+          "isRequired": false
+        },
+        {
+          "name": "SB_GRAPH",
+          "description": "Graph name. Default: sb_<repo name>, shared by every worktree of the repo",
+          "isRequired": false
+        },
+        {
+          "name": "SB_EDITOR",
+          "description": "Editor part of the agent id <editor>@<branch>, e.g. cursor or claude-code",
+          "isRequired": false
+        },
+        {
+          "name": "SB_AGENT",
+          "description": "Agent id override",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

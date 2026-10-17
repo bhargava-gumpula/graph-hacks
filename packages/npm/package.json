@@ -1,0 +1,42 @@
+{
+  "name": "switchboard-agents",
+  "version": "0.1.0",
+  "description": "Coordinate AI coding agents (Claude Code, Cursor) through a shared FalkorDB import graph: claims, conflict checks, memory, an MCP server and editor hooks.",
+  "type": "module",
+  "bin": {
+    "switchboard": "dist/switchboard.mjs",
+    "switchboard-agents": "dist/switchboard.mjs",
+    "switchboard-mcp": "dist/switchboard-mcp.mjs"
+  },
+  "files": [
+    "dist",
+    "server.json"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "mcpName": "io.github.bhargava-gumpula/switchboard",
+  "homepage": "https://switchboard-agents.xyz",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bhargava-gumpula/graph-hacks.git",
+    "directory": "packages/npm"
+  },
+  "bugs": "https://github.com/bhargava-gumpula/graph-hacks/issues",
+  "license": "MIT",
+  "author": "Bhargava G",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "claude-code",
+    "cursor",
+    "ai-agents",
+    "multi-agent",
+    "falkordb",
+    "graph"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/build-plugin.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

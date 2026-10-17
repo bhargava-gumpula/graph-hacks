@@ -51,7 +51,7 @@ async function entries(): Promise<Entry[]> {
       file: "conflict",
       text: fn(conflict!, "conflict", "conflictGuard")(K),
       what: "The same three checks as a prefix for a write. It yields one row when nothing conflicts and no rows otherwise, so whatever follows runs only when the claim is free.",
-      lock: "its atomic step covers one name. This one covers every file within three imports of the request.",
+      lock: "its atomic step covers one name. This one covers every file within 3 import hops of the request.",
     },
     {
       title: "Claim: check and write in one query",

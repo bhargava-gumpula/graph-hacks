@@ -18,7 +18,7 @@ Two agents share one repository.
 
 > Agent B cannot edit ui/LoginForm.tsx. It reaches auth/session.ts, which agent A is already changing, through ui/LoginForm.tsx → api/login.ts → auth/session.ts. A file lock would have allowed the edit.
 
-4. B asks for `ui/AboutPage.tsx`. The same query returns no rows. That empty result is the proof that nothing within three imports is claimed, and the edit goes through.
+4. B asks for `ui/AboutPage.tsx`. The same query returns no rows. That empty result is the proof that nothing within 3 import hops is claimed, and the edit goes through.
 
 That sentence is the reply of `POST /api/demo`. In Claude Code and Cursor the refusal arrives as a denied edit, with the path as the reason. Press Play at `/app?play=1`, or run `npm run scenario` to see the same story in a terminal.
 
@@ -199,7 +199,7 @@ RETURN want AS file, 'DOWNSTREAM' AS type, g.path AS claimed, [n IN nodes(p) | n
 
 `conflictGuard(3)` in [`packages/core/src/queries/conflict.ts`](packages/core/src/queries/conflict.ts). The same three checks as a prefix for a write. It yields one row when nothing conflicts and no rows otherwise, so whatever follows runs only when the claim is free.
 
-Why a lock table cannot do this: its atomic step covers one name. This one covers every file within three imports of the request.
+Why a lock table cannot do this: its atomic step covers one name. This one covers every file within 3 import hops of the request.
 
 ```cypher
 UNWIND $paths AS want
@@ -389,7 +389,7 @@ Union
                                     Unwind
 ```
 
-The plan starts at the live claims, through the index on `CLAIMS(until)`, and walks at most three `IMPORTS` hops from there. In this plan the cost scales with live claims, not repo size.
+The plan starts at the live claims, through the index on `CLAIMS(until)`, and walks at most 3 `IMPORTS` hops from there. In this plan the cost scales with live claims, not repo size.
 
 ### Why not `shortestPath()`
 

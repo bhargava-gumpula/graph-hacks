@@ -64,7 +64,7 @@
     --muted: #5c5c66;
     --surface: #ffffff;
     --border: #dcdce1;
-    --signal-text: #c8461c;
+    --signal-text: #bf4219; /* 4.85:1 on --bg, 5.24:1 on --surface (WCAG AA) */
   }
 }
 

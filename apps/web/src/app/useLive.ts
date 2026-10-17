@@ -19,7 +19,6 @@ const RECONNECT_MS = 3000;
 const HEALTH_POLL_MS = 10_000; // while in replay or offline
 const SSE_SILENT_MS = 4000;
 const FEED_POLL_MS = 2000;
-const NO_RATE: { time: number; value: number }[] = [];
 
 const conflictOf = (item: FeedItem) =>
   item.kind === "conflict" || item.kind === "collision"
@@ -32,7 +31,9 @@ const conflictOf = (item: FeedItem) =>
  * and checks health every 10 s to come back.
  */
 export function useLive(opts: { withBatches?: boolean } = {}) {
-  const withBatches = !!opts.withBatches;
+  // A ref, so toggling batches doesn't give `refresh` a new identity and restart the stream.
+  const withBatches = useRef(false);
+  withBatches.current = !!opts.withBatches;
   const [graph, setGraph] = useState<Snapshot | null>(null);
   const [claims, setClaims] = useState<Claim[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -51,9 +52,9 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
       api.graph().then(setGraph),
       api.claims().then(setClaims),
       api.decisions().then(setDecisions),
-      withBatches ? api.batches().then(setBatches) : undefined,
+      withBatches.current ? api.batches().then(setBatches) : undefined,
     ]);
-  }, [withBatches]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -260,8 +261,5 @@ export function useLive(opts: { withBatches?: boolean } = {}) {
   /** Check health now instead of waiting for the next poll. */
   const retry = useCallback(() => retryRef.current(), []);
 
-  /** @deprecated The activity chart is going away; always empty. Removed once the dashboard stops reading it. */
-  const rate = NO_RATE;
-
-  return { graph, claims, decisions, batches, events, status, graphName, hit, rate, refresh, retry, replayAt, seqAtLoad };
+  return { graph, claims, decisions, batches, events, status, graphName, hit, refresh, retry, replayAt, seqAtLoad };
 }

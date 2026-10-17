@@ -11,13 +11,21 @@ export const CONNECT = {
     label: "Claude Code",
     steps: [
       { label: "Add the marketplace", cmd: "/plugin marketplace add bhargava-gumpula/graph-hacks" },
-      { label: "Install the plugin", cmd: "/plugin install switchboard@graph-hacks" },
+      { label: "Install the plugin", cmd: "/plugin install switchboard@switchboard" },
     ],
     note: "Type both in Claude Code. The plugin brings the hooks and the MCP server.",
   },
   cursor: {
     label: "Cursor",
-    mcp: { name: "switchboard", config: { command: "npx", args: ["-y", "switchboard-agents", "mcp"] } },
+    // The env gives the server the same agent id (cursor@branch) and project graph as the hooks.
+    mcp: {
+      name: "switchboard",
+      config: {
+        command: "npx",
+        args: ["-y", "switchboard-agents", "mcp"],
+        env: { SB_EDITOR: "cursor", SB_PROJECT_DIR: "${workspaceFolder}" },
+      },
+    },
     steps: [{ label: "Then wire the hooks in your repo", cmd: "npx switchboard-agents init --cursor" }],
     note: "The button adds the MCP server. The command adds the hooks that claim and refuse edits.",
   },

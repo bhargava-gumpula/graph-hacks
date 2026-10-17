@@ -2,6 +2,8 @@ import { existsSync, watch } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { SbGraph } from "../graph.js";
 import { isSourcePath, parseFile, type ParsedImport, type ParseResult } from "../parser.js";
+import { normPath } from "../paths.js";
+import { recordEdit, type EditInput } from "./edits.js";
 import { recordEvent } from "./events.js";
 import { markHubs } from "./hubs.js";
 
@@ -255,22 +257,41 @@ async function applyFile(g: SbGraph, root: string, path: string, agentId: string
   return done(status, added, removed, await event(status, added, removed, path));
 }
 
-/** Up to 20 files this graph got from a parse (they have a hash). */
-export const PARSED_SAMPLE = `
+/** Every file this graph got from a parse (they have a hash). */
+export const PARSED_PATHS = `
 MATCH (f:File)
 WHERE f.hash IS NOT NULL
 RETURN f.path AS path
-LIMIT 20
 `;
 
 /**
- * Is `root` the repo this graph was parsed from? True for a graph with no parsed files, or when any of
- * 20 of them is on disk under `root`. Check before per-file updates: against the wrong directory every
- * edited file would read as deleted and lose its node.
+ * Is `root` the repo this graph was parsed from? True for a graph with no parsed files, or when at least
+ * `share` of them are on disk under `root`. Default 0.9: a few files deleted while nothing watched still
+ * pass, one shared path (lib/utils.ts is in most apps) does not. Check before per-file updates: against
+ * the wrong directory every edited file would read as deleted and lose its node. Pass 1 before anything
+ * that replaces the graph.
  */
-export async function isRepoOf(g: SbGraph, root: string): Promise<boolean> {
-  const rows = await g.roQuery(PARSED_SAMPLE);
-  return rows.length === 0 || rows.some((r) => existsSync(join(resolve(root), String(r.path))));
+export async function isRepoOf(g: SbGraph, root: string, share = 0.9): Promise<boolean> {
+  const rows = await g.roQuery(PARSED_PATHS);
+  const abs = resolve(root);
+  return rows.filter((r) => existsSync(join(abs, String(r.path)))).length >= share * rows.length;
+}
+
+/**
+ * An agent's edit, for the hook and the CLI: re-parse the file against `root` (the graph's repo, or null
+ * to skip), then record the edit. A deleted file gets no EDITED edge: its MERGE would bring the File back
+ * as a node with no hash. The `graph` event updateFile records (agent, path, deleted) is the edit's record.
+ */
+export async function recordLiveEdit(g: SbGraph, root: string | null, edit: EditInput): Promise<{ seq: number; graph: FileUpdate | null }> {
+  const path = normPath(edit.path);
+  const graph = root
+    ? await updateFile(g, root, path, { agentId: edit.agentId }).catch((err: unknown) => {
+        console.error(`re-parse ${path} failed:`, err instanceof Error ? err.message : err);
+        return null;
+      })
+    : null;
+  if (graph?.status === "deleted" && graph.seq !== null) return { seq: graph.seq, graph };
+  return { seq: await recordEdit(g, { ...edit, path }), graph };
 }
 
 /**

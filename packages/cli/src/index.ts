@@ -20,17 +20,15 @@ import {
   handoff,
   loadParse,
   markHubs,
-  normPath,
   parallelBatches,
   parseRepo,
   planTask,
   recordDecision,
-  recordEdit,
+  recordLiveEdit,
   recordLesson,
   release,
   summarizeBrief,
   unknownPaths,
-  updateFile,
   watchRepo,
   whyTrace,
   type AgentKind,
@@ -371,9 +369,8 @@ async function run(flags: Flags): Promise<number> {
       if (!file || files.length !== 1) throw new Error("edited needs one file");
       // Re-parse first so the edit's collision check sees the file's new imports.
       const dir = repoDir();
-      const u = (await isRepoOf(g, dir)) ? await updateFile(g, dir, normPath(file), { agentId: agent }) : null;
+      const { seq, graph: u } = await recordLiveEdit(g, (await isRepoOf(g, dir)) ? dir : null, { agentId: agent, path: file, taskId: flags.task });
       if (u?.seq) await markHubs(g);
-      const seq = await recordEdit(g, { agentId: agent, path: file, taskId: flags.task });
       console.log(`edited ${file} seq=${seq}${u?.seq ? ` imports ${importDelta(u) || u.status}` : ""}`);
       return 0;
     }

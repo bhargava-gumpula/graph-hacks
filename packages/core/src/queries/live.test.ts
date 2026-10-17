@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -6,11 +6,12 @@ import { parseRepo } from "../parser.js";
 import { useTestGraph } from "../test-helpers.js";
 import { claim } from "./claims.js";
 import { findConflicts } from "./conflict.js";
-import { codeGraphCounts, isRepoOf, loadParse, updateFile, watchRepo, type FileUpdate } from "./loader.js";
+import { codeGraphCounts, isRepoOf, loadParse, recordLiveEdit, updateFile, watchRepo, type FileUpdate } from "./loader.js";
 
 const g = useTestGraph("sb_test_live");
+const demoRepo = join(import.meta.dirname, "../../../../demo-repo");
 const root = mkdtempSync(join(tmpdir(), "sb-live-"));
-cpSync(join(import.meta.dirname, "../../../../demo-repo"), root, { recursive: true });
+cpSync(demoRepo, root, { recursive: true });
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const ABOUT = "ui/AboutPage.tsx";
@@ -107,9 +108,80 @@ describe("updateFile", () => {
   });
 });
 
-test("isRepoOf tells the parsed repo from another directory", async () => {
-  expect(await isRepoOf(g(), root)).toBe(true);
-  expect(await isRepoOf(g(), tmpdir())).toBe(false);
+describe("recordLiveEdit", () => {
+  test("an edit that deleted the file records no EDITED edge, so the File stays gone", async () => {
+    const path = "ui/New.tsx";
+    writeFileSync(join(root, path), 'import { slug } from "@lib/utils";\nexport const n = slug;\n');
+    const made = await recordLiveEdit(g(), root, { agentId: "B", path });
+    expect(made.graph).toMatchObject({ status: "created" });
+    expect(await codeGraphCounts(g())).toEqual({ files: 36, imports: 52 });
+
+    unlinkSync(join(root, path));
+    const gone = await recordLiveEdit(g(), root, { agentId: "B", path });
+    expect(gone.graph).toMatchObject({ status: "deleted", removed: ["lib/utils.ts"] });
+    expect(gone.seq).toBe(gone.graph?.seq);
+    expect(await codeGraphCounts(g())).toEqual({ files: 35, imports: 51 });
+    const [row] = await g().roQuery("MATCH (f:File {path: $path}) RETURN count(f) AS n", { path });
+    expect(Number(row?.n)).toBe(0);
+  });
+
+  test("with no repo it only records the edit", async () => {
+    const e = await recordLiveEdit(g(), null, { agentId: "B", path: ABOUT });
+    expect(e.graph).toBeNull();
+    expect(e.seq).toBeGreaterThan(0);
+    expect(await codeGraphCounts(g())).toEqual({ files: 35, imports: 51 });
+  });
+});
+
+describe("isRepoOf", () => {
+  test("tells the parsed repo from another directory", async () => {
+    expect(await isRepoOf(g(), root)).toBe(true);
+    expect(await isRepoOf(g(), tmpdir())).toBe(false);
+  });
+
+  test("a few files deleted while nothing watched still pass the default, not share 1", async () => {
+    renameSync(join(root, ABOUT), join(root, "about.bak"));
+    try {
+      expect(await isRepoOf(g(), root)).toBe(true);
+      expect(await isRepoOf(g(), root, 1)).toBe(false);
+    } finally {
+      renameSync(join(root, "about.bak"), join(root, ABOUT));
+    }
+  });
+
+  describe("a team repo that shares lib/utils.ts with demo-repo", () => {
+    const team = useTestGraph("sb_test_live_team");
+    const teamRoot = mkdtempSync(join(tmpdir(), "sb-team-"));
+    afterAll(() => rmSync(teamRoot, { recursive: true, force: true }));
+    const files: Record<string, string> = {
+      "lib/utils.ts": "export const cn = (...c: string[]) => c.join(' ');\n",
+      "components/button.tsx": 'import { cn } from "../lib/utils";\nexport const Button = cn;\n',
+      "components/card.tsx": 'import { cn } from "../lib/utils";\nexport const Card = cn;\n',
+      "app/layout.tsx": 'import { cn } from "../lib/utils";\nexport const Layout = cn;\n',
+      "app/page.tsx": 'import { Button } from "../components/button";\nimport { Card } from "../components/card";\nexport const Page = [Button, Card];\n',
+    };
+
+    beforeAll(async () => {
+      for (const [path, text] of Object.entries(files)) {
+        mkdirSync(join(teamRoot, path, ".."), { recursive: true });
+        writeFileSync(join(teamRoot, path), text);
+      }
+      expect(await loadParse(team(), parseRepo(teamRoot))).toEqual({ files: 5, imports: 5 });
+    });
+
+    test("is its own repo and not demo-repo, for edits or for the demo", async () => {
+      expect(await isRepoOf(team(), teamRoot)).toBe(true);
+      expect(await isRepoOf(team(), demoRepo)).toBe(false);
+      expect(await isRepoOf(team(), demoRepo, 1)).toBe(false);
+    });
+
+    test("an edit seen from a server on demo-repo leaves its imports alone", async () => {
+      const liveRepo = (await isRepoOf(team(), demoRepo)) ? demoRepo : null;
+      const e = await recordLiveEdit(team(), liveRepo, { agentId: "B", path: "components/button.tsx" });
+      expect(e.graph).toBeNull();
+      expect(await codeGraphCounts(team())).toEqual({ files: 5, imports: 5 });
+    });
+  });
 });
 
 describe("watchRepo", () => {

@@ -30,13 +30,11 @@ import {
   MARK_HUBS,
   missingFiles,
   NEAR_FILES,
-  normPath,
   parallelBatches,
   parseRepo,
-  recordEdit,
+  recordLiveEdit,
   resetDemo,
   runMvpScenario,
-  updateFile,
   watchRepo,
   WCC_BATCHES,
   WHY_TRACE,
@@ -93,6 +91,7 @@ interface DemoReply {
 let demoRun: Promise<DemoReply> | null = null;
 function runDemo(): Promise<DemoReply> {
   return (demoRun ??= (async () => {
+    if (!(await isDemoGraph())) throw new Error(NOT_DEMO);
     const play = async () => {
       await resetDemo(g);
       return runMvpScenario(g, demoRepo);
@@ -104,6 +103,18 @@ function runDemo(): Promise<DemoReply> {
     demoRun = null;
   }));
 }
+
+/**
+ * The demo story replaces the whole graph, so it runs only on demo-repo's own graph: no SB_REPO, and every
+ * parsed file of the graph is on disk in demo-repo. Checked before each run, not once at start: a shared
+ * (cloud) graph can be loaded with a team's repo while this server runs.
+ */
+const NOT_DEMO = "this graph is a real repo's, not demo-repo's; the demo would reset it";
+const isDemoGraph = async () => repoDir === demoRepo && (await isRepoOf(g, demoRepo, 1));
+/** For the replay timers: a graph that is not the demo's is skipped quietly. */
+const logDemoError = (err: unknown) => {
+  if (!(err instanceof Error && err.message === NOT_DEMO)) console.error(err);
+};
 
 /** The public story needs A holding session.ts for a while yet; a restart, an expired lease or a visitor's A claim (5 min) breaks it. */
 async function storyIntact(): Promise<boolean> {
@@ -117,23 +128,20 @@ if (fresh) await (repoDir === demoRepo ? runDemo() : loadParse(g, parseRepo(repo
 // Per-edit re-parse only against the repo this graph came from (see isRepoOf); else edits are just recorded.
 const liveRepo = (await isRepoOf(g, repoDir)) ? repoDir : null;
 if (!liveRepo) console.warn(`${repoDir} is not the repo in graph ${g.name}: edits are recorded, not re-parsed. Set SB_REPO to the repo's directory.`);
-// The demo story resets the graph, so it runs only on demo-repo's own graph: never with SB_REPO, and never
-// on a graph parsed from another repo (a shared team graph, for one) by a server started without SB_REPO.
-const demoGraph = repoDir === demoRepo && liveRepo !== null;
 // A public start with a broken story replays it.
-if (!fresh && PUBLIC && demoGraph && !(await storyIntact())) await runDemo();
+if (!fresh && PUBLIC && (await isDemoGraph()) && !(await storyIntact())) await runDemo();
 
-if (PUBLIC && demoGraph) {
+if (PUBLIC && repoDir === demoRepo) {
   // Checked every minute, not on idle time: steady claim traffic must not starve the replay.
   setInterval(() => {
     if (demoRun || Date.now() - lastWrite < 60_000) return;
     storyIntact()
       .then((ok) => (ok ? undefined : runDemo()))
-      .catch(console.error);
+      .catch(logDemoError);
   }, 60_000);
-} else if (demoGraph) {
+} else if (repoDir === demoRepo) {
   setInterval(() => {
-    if (Date.now() - lastWrite > IDLE_MS) runDemo().catch(console.error);
+    if (Date.now() - lastWrite > IDLE_MS) runDemo().catch(logDemoError);
   }, RESEED_EVERY_MS);
 }
 
@@ -252,7 +260,7 @@ app.get("/api/decisions", async (c) => c.json(await listDecisions(g)));
 
 /** The two-minute story, driven from the page so a judge never needs a terminal. */
 app.post("/api/demo", limit(6), async (c) => {
-  if (!demoGraph) return c.json({ error: "this graph is a real repo's, not demo-repo's; the demo would reset it" }, 409);
+  if (!(await isDemoGraph())) return c.json({ error: NOT_DEMO }, 409);
   lastWrite = Date.now();
   return c.json(await runDemo());
 });
@@ -301,15 +309,9 @@ app.post("/api/edits", limit(60), async (c) => {
   );
   if (body instanceof Response) return body;
   lastWrite = Date.now();
-  const path = normPath(body.path);
-  const graph = liveRepo
-    ? await updateFile(g, liveRepo, path, { agentId: body.agent }).catch((err: unknown) => {
-        console.error(`re-parse ${path} failed:`, err instanceof Error ? err.message : err);
-        return null;
-      })
-    : null;
-  if (graph?.seq) remarkHubs();
-  return c.json({ seq: await recordEdit(g, { agentId: body.agent, path, taskId: body.task }), graph });
+  const edit = await recordLiveEdit(g, liveRepo, { agentId: body.agent, path: body.path, taskId: body.task });
+  if (edit.graph?.seq) remarkHubs();
+  return c.json(edit);
 });
 
 /** Where a feed starts: after `from` when the client says, else the last REPLAY events. */

@@ -191,7 +191,7 @@ function benchBlock(): string {
   const pairs = readJson<{ demo?: Census; real?: Census }>("bench/pairs.json");
   if (pairs?.demo) {
     lines.push("", "Pair census, computed by one query over the parsed import graph (`npx tsx scripts/pairs.ts`):", "");
-    lines.push("| Repo | Files | File pairs | Caught by a file lock | One import apart | Within 3 imports | Hidden from a one-hop check |", "|---|---|---|---|---|---|---|");
+    lines.push("| Repo | Files | File pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |", "|---|---|---|---|---|---|---|");
     const row = (label: string, c: Census) =>
       `| ${label} | ${c.files} | ${c.pairs} | ${c.lock} | ${c.oneHop} | ${c.graph} | ${c.hidden} |`;
     lines.push(row("`demo-repo/`", pairs.demo));

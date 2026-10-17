@@ -16,11 +16,11 @@ It groups the open tasks whose files can reach each other through imports, so yo
 
 ## 4. What is the exact hub rule?
 
-A file is a hub when 10 or more files import it, or when at least 3 files import it and its PageRank score is at least 4 times the average (`packages/core/src/queries/hubs.ts`). On the demo repo only `lib/utils.ts` is a hub, with 20 importers; a path through a hub does not count, but a claim on a hub itself still does.
+A file is a hub when 10 or more files import it, or when at least 3 files import it and its PageRank score is at least 4 times the average (`packages/core/src/queries/hubs.ts`). On the demo repo only `lib/utils.ts` is a hub, with 20 importers; a path never passes through a hub, but a claim on a hub itself conflicts with its importers.
 
 ## 5. What does the benchmark show, and what does it not?
 
-Ten times it copies the demo repo, applies two edits that each pass `tsc` alone (agent A in `session.ts`, agent B in `LoginForm.tsx`) and runs the real compiler: merged, the build breaks every time without Switchboard and never with it (`bench/results.json`). It does not show how often real agents collide, because the agents are scripted, it is one scenario, and it is deterministic, so N = 10 shows only that it repeats.
+Ten times it copies the demo repo and applies two edits that each pass `tsc` alone (agent A in `session.ts`, agent B in `LoginForm.tsx`): without Switchboard both land and the real compiler fails 10 of 10 times, and with it B's claim is refused, B waits for A, and B's own `tsc` stops its edit, so 0 of 10 builds break (`bench/results.json`). It does not show how often real agents collide, because the agents are scripted, it is one scenario, and it is deterministic, so N = 10 shows only that it repeats.
 
 ## 6. Did you use Switchboard to build Switchboard?
 
@@ -56,6 +56,6 @@ The server and FalkorDB run on an always-on Mac behind a Cloudflare Tunnel, and 
 |---|---|---|
 | Demo repo | 35 files, 51 import edges | `npm run parse -- demo-repo` |
 | Importers of `lib/utils.ts` | 20 | the `MARK_HUBS` result |
-| Conflict query, inside FalkorDB | about 0.15 ms | `GRAPH.PROFILE`, see the README |
+| Conflict query, inside FalkorDB | about 0.2 ms (median 0.17 ms over 25 runs) | `GRAPH.PROFILE`, see the README |
 | MCP tools | 13 | `packages/mcp/src/index.ts` |
 | First code commit | Oct 14, 11:09 PM PT, after the 11:31 AM PT start | `git log --reverse` |

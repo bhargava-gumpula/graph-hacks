@@ -1,6 +1,6 @@
 # A file lock would have said yes
 
-Agent A is changing `auth/session.ts`. Agent B asks to edit `ui/LoginForm.tsx`. They are different files, so a file lock says yes. Switchboard says no, and the check takes under a millisecond at the median:
+Agent A is changing `auth/session.ts`. Agent B asks to edit `ui/LoginForm.tsx`. They are different files, so a file lock says yes. Switchboard says no, and the check takes about a millisecond:
 
 > Agent B cannot edit ui/LoginForm.tsx. It reaches auth/session.ts, which agent A is already changing, through ui/LoginForm.tsx → api/login.ts → auth/session.ts. A file lock would have allowed the edit.
 
@@ -8,9 +8,7 @@ This post is about how a graph database makes that sentence possible, and what w
 
 ## The problem
 
-We run several coding agents on one repository. They forget everything when a session ends. They edit files that look independent and are not. The usual fixes are a lock on the filename and a human passing notes between agents.
-
-A filename lock cannot know that `LoginForm.tsx` imports `api/login.ts`, which imports `auth/session.ts`. Two agents can break each other without ever touching the same file.
+We run several coding agents on one repository. They forget everything when a session ends, and they edit files that look independent and are not. The usual fixes are a lock on the filename and a human passing notes between agents. A filename lock cannot know that `LoginForm.tsx` imports `api/login.ts`, which imports `auth/session.ts`, so two agents can break each other without touching the same file.
 
 ## The graph model
 
@@ -31,11 +29,9 @@ RETURN want AS file, g.path AS claimed,
        [n IN nodes(p) | n.path] AS path, length(p) AS hops, o.id AS agent
 ```
 
-Read it from the middle. `(f)-[:IMPORTS*1..3]->(g)` walks up to 3 imports from the file you asked for. `(g)<-[c:CLAIMS]-(o)` ends on a file somebody holds. `c.until > $now` ignores expired claims, and `o.id <> $agent` ignores your own.
+`(f)-[:IMPORTS*1..3]->(g)` walks up to 3 imports from the file you asked for. `(g)<-[c:CLAIMS]-(o)` ends on a file somebody holds. `c.until > $now` ignores expired claims, and `o.id <> $agent` ignores your own. The real query also runs with the arrow reversed, so that their file imports yours, and with no hops, for the very same file, and it drops paths that run through a hub. The full text is in the README, generated from the source.
 
-The real query runs this three times: once with the arrow reversed, so that their file imports yours, and once with no hops, for the very same file. It also drops paths that run through a hub. The full text is in the README, generated from the source.
-
-If a row comes back, the row is the path, and the path is the refusal. If nothing comes back, that empty result is the proof that no live claim sits within 3 hops. We show the bound on screen, because an empty result is only as good as the bound.
+If a row comes back, the row is the path, and the path is the refusal. If nothing comes back, that empty result is the proof that no live claim sits within 3 hops. We show the bound on screen, because the proof is only as good as the bound.
 
 ## One bash script hard-blocked two AI editors
 
@@ -64,13 +60,17 @@ The demo repo has two features that are meant to be independent, so the schedule
 
 Our first benchmark had a flaw we found ourselves. Agent B's edit deleted an import and left the call, so the build broke whether or not agent A existed. "10 of 10 broke without, 0 of 10 with" proved very little.
 
-The rebuilt version is a real merge collision. Agent A changes what `sessionLabel` in `session.ts` returns. Agent B edits `LoginForm.tsx` to use the new value. Each edit passes the TypeScript compiler on its own, and merged they fail. Ten times, we apply both edits to a copy of the demo repo and run the real `tsc`.
+The rebuilt version is a real merge collision. Agent A changes what `sessionLabel` in `session.ts` returns. Agent B edits `LoginForm.tsx` to use the new value. Each edit passes the TypeScript compiler on its own, and merged they fail. Ten times, we apply the edits to a copy of the demo repo and run the real `tsc`.
 
-It is still a scripted benchmark. The agents are not live models, it is one scenario on a 35-file repo, and it is deterministic, so ten runs show that it repeats, not that it is a statistic. We also count every file pair in the repo and ask how many are linked by imports within 3 hops. The numbers are in `bench/results.json` and `bench/pairs.json`, and the README generates its tables from them.
+Without Switchboard, a plain file lock lets B in, both edits land, and the build breaks ten times out of ten. With Switchboard, B's claim is refused while A holds `session.ts`. A's edit lands and A releases, and then B claims, applies its edit on top of A's, and its own `tsc` run catches the clash. No build breaks.
+
+It is still a scripted benchmark. The agents are not live models, it is one scenario on a 35-file repo, and it is deterministic, so ten runs show that it repeats, not a statistic.
+
+One number is not scripted. We count every pair of files in the demo repo: 595 pairs, and 78 of them are linked by imports within 3 hops. For 27 of those 78 the files are 2 or 3 hops apart, so a one-hop checker misses them, and a file lock misses all 78. The tables are in `bench/results.json` and `bench/pairs.json`, and the README generates its numbers from them.
 
 ## What we cut and what is next
 
-We left out symbol-level claims, so two agents in different functions of one file still conflict. We left out every language but TypeScript. We cut three UI mockups, and the page you see was rebuilt once from scratch. We did not use Switchboard to coordinate its own build, beyond parsing our own repo once.
+We left out symbol-level claims, so two agents in different functions of one file still conflict, and every language but TypeScript. We cut three UI mockups, and the page was rebuilt once from scratch. We did not use Switchboard to coordinate its own build, beyond parsing our own repo once.
 
 Next is a tree-sitter parser for more languages, symbol-level claims, and re-parsing a file when it changes instead of on demand.
 
@@ -82,4 +82,4 @@ Next is a tree-sitter parser for more languages, symbol-level claims, and re-par
 
 ## AI disclosure
 
-AI coding agents wrote most of the code: Cursor (Claude Opus 5.5 and Grok 4.7) and Claude Code. The owner made the product decisions, ran the editor tests that needed a person, and directed the UI rebuild. The first code commit came after the hackathon start, and every earlier commit is notes. Inside the product, the only model call is an optional Claude Haiku summary of a briefing, and it is off unless an API key is set. The conflict check, the batches and the why-trace never call a model.
+AI coding agents wrote most of the code: Cursor (Claude Opus 5.5 and Grok 4.7) and Claude Code. The owner made the product decisions, ran the editor tests that needed a person, and directed the UI rebuild. The first code commit came after the hackathon start, and every earlier commit is notes. The only model call inside the product is an optional Claude Haiku summary of a briefing, off unless an API key is set.

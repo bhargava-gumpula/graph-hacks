@@ -23,6 +23,7 @@
     "switchboard": "tsx packages/cli/src/index.ts",
     "scenario": "tsx scripts/scenario.ts",
     "bench": "tsx scripts/bench.ts",
+    "pairs": "tsx scripts/pairs.ts",
     "readme": "tsx scripts/readme-gen.ts",
     "self": "SB_GRAPH=sb_self tsx packages/cli/src/index.ts"
   },

@@ -1,6 +1,6 @@
 /* global process, console, document */
 // Records the hero shot for the README and the blog: /app?play=1 -> docs/blog-assets/conflict.gif
-// Usage: node scripts/record-hero.mjs [baseUrl]    (default http://localhost:8787)
+// Usage: node scripts/record-hero.mjs [baseUrl]    (default http://127.0.0.1:8787)
 // The server must be running with the demo graph. Needs Playwright's Chromium and ffmpeg.
 // Env: FFMPEG (default /opt/homebrew/bin/ffmpeg), HOLD_MS (recording time after the caption, default 3500),
 //      CAPTION (text that marks the refusal caption, default the end of the refusal sentence).
@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const base = (process.argv[2] ?? process.env.BASE_URL ?? "http://localhost:8787").replace(/\/$/, "");
+const base = (process.argv[2] ?? process.env.BASE_URL ?? "http://127.0.0.1:8787").replace(/\/$/, "");
 const out = resolve(import.meta.dirname, "../docs/blog-assets/conflict.gif");
 const ffmpeg = process.env.FFMPEG ?? "/opt/homebrew/bin/ffmpeg";
 const hold = Number(process.env.HOLD_MS ?? 3500);

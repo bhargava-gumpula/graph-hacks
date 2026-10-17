@@ -129,29 +129,34 @@ async function cypherBlock(): Promise<string> {
 
 interface Results {
   n: number;
-  without: { brokenBuilds: number };
-  with: { brokenBuilds: number; blocked: number };
+  without: { brokenBuilds: number; editsApplied?: number };
+  with: { brokenBuilds: number; blocked: number; caught?: number; editsApplied?: number };
   checkMsMedian: number;
   checkMsMin?: number;
   checkMsMax?: number;
   claim?: { agent: string; file: string };
   edit?: { agent: string; file: string };
+  conflict?: { type: string; hops: number; path: string[] };
   baselineOk?: boolean;
   aAloneOk?: boolean;
   bAloneOk?: boolean;
+  mergedOk?: boolean;
+  mergedError?: string;
   tsc?: string;
   node?: string;
   ranAt?: string;
+  loadAvg1m?: number;
+  cpus?: number;
 }
 
 interface Census {
+  dir?: string;
   files: number;
   pairs: number;
   lock: number;
   oneHop: number;
   graph: number;
   hidden: number;
-  ms?: number;
 }
 
 const ms = (x: number) => x.toFixed(2);
@@ -165,37 +170,49 @@ function benchBlock(): string {
   const r = readJson<Results>("bench/results.json");
   if (!r) throw new Error("readme-gen: bench/results.json is missing. Run `npm run bench` first.");
   const lines: string[] = [];
+  const b = r.edit?.agent ?? "B";
 
-  const ran = [r.ranAt?.slice(0, 10), r.tsc && `TypeScript ${r.tsc.replace(/^Version\s+/, "")}`, r.node && `Node ${r.node}`]
-    .filter(Boolean)
-    .join(", ");
+  const landed = r.without.editsApplied !== undefined ? ` ${b}'s edit landed in ${r.without.editsApplied} / ${r.n} runs.` : "";
+  const caught = r.with.caught !== undefined ? ` ${b}'s own \`tsc\` caught the clash ${r.with.caught} / ${r.n} times.` : "";
+  const withLanded = r.with.editsApplied !== undefined ? ` ${b}'s edit landed in ${r.with.editsApplied} / ${r.n} runs.` : "";
   lines.push(
-    "| | Broken builds | Edit refused by the graph |",
+    "| | Broken builds | What happened |",
     "|---|---|---|",
-    `| Without Switchboard | ${r.without.brokenBuilds} / ${r.n} | not asked |`,
-    `| With Switchboard | ${r.with.brokenBuilds} / ${r.n} | ${r.with.blocked} / ${r.n} |`,
+    `| Without Switchboard | ${r.without.brokenBuilds} / ${r.n} |${landed || " not asked"} |`,
+    `| With Switchboard | ${r.with.brokenBuilds} / ${r.n} | ${b}'s claim was refused ${r.with.blocked} / ${r.n} times.${caught}${withLanded} |`,
     "",
   );
   if (r.claim && r.edit) {
-    lines.push(`- Agent ${r.claim.agent} holds \`${r.claim.file}\`. Agent ${r.edit.agent} edits \`${r.edit.file}\`.`);
+    const via = r.conflict ? ` The refusal: ${r.conflict.type}, ${r.conflict.hops} hops, ${r.conflict.path.join(" → ")}.` : "";
+    lines.push(`- Agent ${r.claim.agent} holds \`${r.claim.file}\`. Agent ${r.edit.agent} edits \`${r.edit.file}\`.${via}`);
   }
   if (r.baselineOk && r.aAloneOk && r.bAloneOk) {
-    lines.push(
-      `- The untouched repo, A's edit alone and B's edit alone all pass \`tsc\`. Merged, the build failed in ${r.without.brokenBuilds} of ${r.n} runs without Switchboard.`,
-    );
+    const merged = r.mergedOk === false && r.mergedError ? ` Merged, \`tsc\` fails: \`${r.mergedError}\`` : "";
+    lines.push(`- The untouched repo, A's edit alone and B's edit alone all pass \`tsc\`.${merged}`);
   }
   const range = r.checkMsMin !== undefined && r.checkMsMax !== undefined ? ` (range ${ms(r.checkMsMin)} to ${ms(r.checkMsMax)} ms)` : "";
-  lines.push(`- The conflict check took a median of ${ms(r.checkMsMedian)} ms${range} over ${r.n} runs, timed around \`findConflicts\`, which includes the round trip to FalkorDB.`);
+  const load = r.loadAvg1m !== undefined ? ` The machine was busy: 1-minute load average ${r.loadAvg1m}${r.cpus ? ` on ${r.cpus} cores` : ""}.` : "";
+  lines.push(
+    `- The conflict check (\`findConflicts\`, one FalkorDB query from Node) took a median of ${ms(r.checkMsMedian)} ms${range} over ${r.n} runs.${load}`,
+  );
+  const ran = [r.ranAt?.slice(0, 10), r.tsc && `TypeScript ${r.tsc.replace(/^Version\s+/, "")}`, r.node && `Node ${r.node}`]
+    .filter(Boolean)
+    .join(", ");
   if (ran) lines.push(`- Last run: ${ran}.`);
 
   const pairs = readJson<{ demo?: Census; real?: Census }>("bench/pairs.json");
   if (pairs?.demo) {
-    lines.push("", "Pair census, computed by one query over the parsed import graph (`npx tsx scripts/pairs.ts`):", "");
-    lines.push("| Repo | Files | File pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |", "|---|---|---|---|---|---|---|");
-    const row = (label: string, c: Census) =>
-      `| ${label} | ${c.files} | ${c.pairs} | ${c.lock} | ${c.oneHop} | ${c.graph} | ${c.hidden} |`;
-    lines.push(row("`demo-repo/`", pairs.demo));
-    if (pairs.real) lines.push(row("`apps/web/src/`", pairs.real));
+    lines.push(
+      "",
+      "Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once. A file lock collides only on the same path, so by definition it catches none of them:",
+      "",
+      "| Repo | Files | Pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |",
+      "|---|---|---|---|---|---|---|",
+    );
+    const row = (fallback: string, c: Census) =>
+      `| \`${c.dir ?? fallback}/\` | ${c.files} | ${c.pairs} | ${c.lock} | ${c.oneHop} | ${c.graph} | ${c.hidden} |`;
+    lines.push(row("demo-repo", pairs.demo));
+    if (pairs.real) lines.push(row("apps/web", pairs.real));
   }
   return lines.join("\n");
 }

@@ -374,7 +374,7 @@ RETURN g.path AS path, min(length(p)) AS hops
 
 ### What the plan looks like
 
-`GRAPH.PROFILE` on the conflict query, with agent A holding `auth/session.ts` and agent B asking for `ui/LoginForm.tsx`. This is the UPSTREAM branch of the `Union`; the SAME and DOWNSTREAM branches look alike. The query reported about 0.15 ms of internal execution time (0.11 to 0.18 ms over six runs on a laptop).
+`GRAPH.PROFILE` on the conflict query, with agent A holding `auth/session.ts` and agent B asking for `ui/LoginForm.tsx`. This is the UPSTREAM branch of the `Union`, with the record counts left out; the SAME and DOWNSTREAM branches look alike. FalkorDB reported a median of 0.17 ms of internal execution time over 25 runs (0.12 to 0.46 ms, on a laptop shared with other jobs).
 
 ```text
 Union
@@ -382,10 +382,10 @@ Union
         Filter
             PathBuilder
                 Filter
-                    Conditional Variable Length Traverse | (f)-[_anon_0:IMPORTS*1..3]->(g)   0.027 ms
+                    Conditional Variable Length Traverse | (f)-[_anon_0:IMPORTS*1..3]->(g)   0.024 ms
                         Filter
                             Filter
-                                Edge By Index Scan | (o)-[c:CLAIMS]->(g:File)                0.003 ms
+                                Edge By Index Scan | (o)-[c:CLAIMS]->(g:File)                0.004 ms
                                     Unwind
 ```
 
@@ -416,27 +416,31 @@ Before an edit, the hook asks the server (or the CLI when the server is down) an
 npm run bench
 ```
 
-Agent A holds `auth/session.ts` and changes what `sessionLabel` returns. Agent B edits `ui/LoginForm.tsx` and uses that value. Each edit passes the TypeScript compiler on its own. Together they do not. Every trial copies `demo-repo`, applies the edits, and runs the real `tsc`. Without Switchboard both edits land, because a file lock allows two different files. With Switchboard, B's claim is refused while A holds `session.ts`.
+Agent A holds `auth/session.ts` and changes what `sessionLabel` returns. Agent B edits `ui/LoginForm.tsx` and uses that value. Each edit passes the TypeScript compiler on its own. Merged, they do not. Every trial copies `demo-repo`, applies the edits, and runs the real `tsc`.
+
+- **Without Switchboard** a plain file lock lets B in, because B asks for a different file. Both edits land and the build breaks.
+- **With Switchboard** B's claim is refused while A holds `session.ts`. A's edit lands and A releases. B then claims, applies its edit on top of A's, and its own `tsc` run catches the clash, so B's edit does not land.
 
 <!-- bench:start -->
 
-| | Broken builds | Edit refused by the graph |
+| | Broken builds | What happened |
 |---|---|---|
-| Without Switchboard | 10 / 10 | not asked |
-| With Switchboard | 0 / 10 | 10 / 10 |
+| Without Switchboard | 10 / 10 | B's edit landed in 10 / 10 runs. |
+| With Switchboard | 0 / 10 | B's claim was refused 10 / 10 times. B's edit landed in 0 / 10 runs. |
 
 - Agent A holds `auth/session.ts`. Agent B edits `ui/LoginForm.tsx`.
-- The conflict check took a median of 0.65 ms (range 0.58 to 0.83 ms) over 10 runs, timed around `findConflicts`, which includes the round trip to FalkorDB.
+- The conflict check (`findConflicts`, one FalkorDB query from Node) took a median of 0.65 ms (range 0.58 to 0.83 ms) over 10 runs.
 - Last run: 2026-10-17, TypeScript 5.9.3, Node v26.9.0.
 
 <!-- bench:end -->
 
 What this does not show:
 
-- The agents are scripted, not live model sessions. The only difference between the columns is whether the edit obeys the graph.
+- The agents are scripted, not live model sessions. B waits and A releases through calls made in sequence, not real concurrency.
 - It is one scenario on a 35-file synthetic repo. It shows the check catches that collision. It does not show how often real agents collide.
 - The run is deterministic. N = 10 shows that it repeats, not a statistic.
-- The timing is one local FalkorDB on one machine.
+- The build counts are the same every run by construction. The timing is the one noisy number: it comes from one local FalkorDB, and it moves with machine load.
+- It does not model what a missed collision costs, or the rework B does after its `tsc` fails.
 
 The full description is in [`bench/REPORT.md`](bench/REPORT.md).
 
@@ -454,7 +458,7 @@ Four things we hit, each with a fix in the code.
 - TypeScript only. The parser reads static imports, re-exports and `import("literal")`. It does not see `require()` or computed imports.
 - File-level. Two agents editing different functions in the same file still conflict. Two files that share only a database table or a config value do not.
 - At most 3 import hops by default. A collision four or more imports apart is not caught.
-- Hubs are not traversed. A path through `lib/utils.ts` in the middle does not count.
+- Paths do not pass through hubs. Editing a hub such as `lib/utils.ts` conflicts with its importers, but two files that merely share a hub do not conflict.
 - The import graph is a snapshot from the last `npm run parse`. It does not update when files change.
 - A claim is advice unless the editor runs the hook. Claude Code and Cursor both hard-block a denied edit. An agent with no hook only follows the contract of calling `claim`.
 

@@ -9,7 +9,7 @@
 # Env: SWITCHBOARD_OFF=1 disables it. SB_AGENT overrides the agent id (default: git branch of the
 # session's cwd). SB_ROOT is the agent's repo root (default: git top level of the session's cwd).
 # SB_PREFIX is the parsed repo's directory inside it (default demo-repo; empty = the whole repo).
-# SB_HOOK_TIMEOUT caps the CLI fallback in seconds (default 3). SB_HOOK_LOG is the log file.
+# SB_HOOK_TIMEOUT caps the CLI fallback in seconds (default 3; 8 for end). SB_HOOK_LOG is the log file.
 editor="${1:-cursor}"
 event="${2:-pre}"
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -72,7 +72,8 @@ if [[ "$event" == "start" ]]; then
 fi
 
 if [[ "$event" == "end" ]]; then
-  # The server has no release route, so this always takes the CLI.
+  # The server has no release route, so this always takes the CLI; nobody waits on it, so allow it longer.
+  limit="${SB_HOOK_TIMEOUT:-8}"
   out=$(cli release --agent "$agent" 2>/dev/null)
   log "end $agent: ${out:-release failed}"
   echo '{}'

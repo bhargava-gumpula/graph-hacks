@@ -113,7 +113,13 @@ export interface Replay {
 export const replay: { data: Replay | null; emit: (item: FeedItem) => void } = { data: null, emit: () => undefined };
 
 /** From the web origin, not the API base: the API is the thing that is down. */
-export const loadReplay = () => fetch("/replay.json").then((r) => json<Replay>(r));
+export async function loadReplay(): Promise<Replay> {
+  const r = await json<Replay>(await fetch("/replay.json"));
+  // Leases are absolute times; shift them so a recorded claim shows the time it had left at capture.
+  const shift = Date.now() - Date.parse(r.capturedAt);
+  for (const c of r.claims) c.until += shift;
+  return r;
+}
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {

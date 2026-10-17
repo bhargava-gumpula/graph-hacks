@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { ArrowClockwise, HandGrabbing, MagnifyingGlass, Play, Rows, X } from "@phosphor-icons/react";
 import { StatusIsland, type IslandTask } from "@/components/kokonutui/status-island";
 import { ChartStatFlow } from "@/components/charts/chart-stat-flow";
@@ -58,6 +58,7 @@ export function Dashboard() {
   const [demoHit, setDemoHit] = useState<number | null>(null);
   const story = demo && shown && demoHit === shown.id ? demo : null;
   const tryBtn = useRef<HTMLButtonElement>(null);
+  const reduce = useReducedMotion();
   const timers = useRef<number[]>([]);
   const later = (fn: () => void, ms: number) => timers.current.push(window.setTimeout(fn, ms));
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -341,9 +342,14 @@ export function Dashboard() {
           </aside>
 
           <main className="relative min-h-0 overflow-hidden" aria-busy={!live.graph && live.status === "loading"}>
-            {/* Keep the field dark behind the nodes; it still shows at the edges. */}
-            <div
+            {/* Keep the field dark behind the nodes; it still shows at the edges. On impact it opens for a
+                moment, so the shockwave reads around the claim it hit, then closes again. */}
+            <motion.div
+              key={landed ?? "rest"}
               aria-hidden
+              initial={landed == null || reduce ? false : { opacity: 0.15 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 1.4, ease: [0.5, 0, 0.75, 0] }}
               className="pointer-events-none absolute inset-0"
               style={{ background: "radial-gradient(ellipse 70% 65% at 50% 50%, var(--bg) 40%, color-mix(in oklab, var(--bg) 70%, transparent) 70%, transparent 100%)" }}
             />

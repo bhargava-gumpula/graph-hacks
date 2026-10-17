@@ -87,8 +87,10 @@ export function GraphView(props: GraphViewProps) {
   const fit = () => {
     const el = wrap.current;
     if (!el) return;
-    const s = Math.min(el.clientWidth / L.width, el.clientHeight / L.height) * 0.94;
-    moveCam(s, (el.clientWidth - L.width * s) / 2, (el.clientHeight - L.height * s) / 2, 0.3);
+    // Keep the top 48px for the status island, so it never covers the folder headers.
+    const top = 48;
+    const s = Math.min(el.clientWidth / L.width, (el.clientHeight - top) / L.height) * 0.94;
+    moveCam(s, (el.clientWidth - L.width * s) / 2, top + (el.clientHeight - top - L.height * s) / 2, 0.3);
   };
   useEffect(() => {
     fit();
@@ -373,7 +375,7 @@ export function GraphView(props: GraphViewProps) {
                   initial={reduce ? false : { opacity: 0, scale: 0.3 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ type: "spring", stiffness: 320, damping: 30, delay: enter(n) }}
-                  style={{ originX: `${n.x}px`, originY: `${n.y}px` }}
+                  style={{ originX: `${n.x}px`, originY: `${n.y}px`, transformBox: "view-box" }}
                 >
                 <circle cx={n.x} cy={n.y} r={coarse ? 15 : 12} fill="transparent" />
                 <AnimatePresence>
@@ -402,7 +404,7 @@ export function GraphView(props: GraphViewProps) {
                       initial={{ opacity: 0, scale: 1.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.6 }}
-                      style={{ originX: `${n.x}px`, originY: `${n.y}px` }}
+                      style={{ originX: `${n.x}px`, originY: `${n.y}px`, transformBox: "view-box" }}
                       transition={{ type: "spring", stiffness: 380, damping: 33 }}
                     >
                       <circle cx={n.x} cy={n.y} r={11} fill="none" stroke={onShot ? "var(--color-signal)" : "var(--fg)"} strokeWidth={1.5} />
@@ -420,7 +422,7 @@ export function GraphView(props: GraphViewProps) {
                       initial={{ opacity: 0, scale: 0.4 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 1.4 }}
-                      style={{ originX: `${n.x}px`, originY: `${n.y}px` }}
+                      style={{ originX: `${n.x}px`, originY: `${n.y}px`, transformBox: "view-box" }}
                       transition={{ type: "spring", stiffness: 300, damping: 29, delay: reduce ? 0 : 0.2 }}
                     >
                       <circle cx={n.x} cy={n.y} r={15} fill="none" stroke="var(--color-signal)" strokeWidth={1.5} strokeDasharray="3 3" />

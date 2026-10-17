@@ -25,12 +25,14 @@ import {
   isRepoOf,
   latestSeq,
   listClaims,
+  loadParse,
   listDecisions,
   MARK_HUBS,
   missingFiles,
   NEAR_FILES,
   normPath,
   parallelBatches,
+  parseRepo,
   recordEdit,
   resetDemo,
   runMvpScenario,
@@ -109,8 +111,12 @@ async function storyIntact(): Promise<boolean> {
   return (await listClaims(g)).some((c) => c.agent === "A" && c.path === "auth/session.ts" && c.until > soon);
 }
 
-// A fresh graph (first start, or FalkorDB lost its data) gets the demo right away; so does a public start with a broken story.
-if ((await codeGraphCounts(g)).files === 0 || (PUBLIC && !(await storyIntact()))) await runDemo();
+// With SB_REPO the graph is that repo's, so the demo story (which resets the graph) never runs on it.
+const demoGraph = repoDir === demoRepo;
+// A fresh graph (first start, or FalkorDB lost its data) gets the demo right away, or a parse of SB_REPO;
+// so does a public start with a broken story.
+if ((await codeGraphCounts(g)).files === 0) await (demoGraph ? runDemo() : loadParse(g, parseRepo(repoDir)));
+else if (PUBLIC && !(await storyIntact())) await runDemo();
 // Per-edit re-parse only against the repo this graph came from (see isRepoOf); else edits are just recorded.
 const liveRepo = (await isRepoOf(g, repoDir)) ? repoDir : null;
 if (!liveRepo) console.warn(`${repoDir} is not the repo in graph ${g.name}: edits are recorded, not re-parsed. Set SB_REPO to the repo's directory.`);
@@ -123,7 +129,7 @@ if (PUBLIC) {
       .then((ok) => (ok ? undefined : runDemo()))
       .catch(console.error);
   }, 60_000);
-} else {
+} else if (demoGraph) {
   setInterval(() => {
     if (Date.now() - lastWrite > IDLE_MS) runDemo().catch(console.error);
   }, RESEED_EVERY_MS);
@@ -244,6 +250,7 @@ app.get("/api/decisions", async (c) => c.json(await listDecisions(g)));
 
 /** The two-minute story, driven from the page so a judge never needs a terminal. */
 app.post("/api/demo", limit(6), async (c) => {
+  if (!demoGraph) return c.json({ error: "this server holds a real repo's graph (SB_REPO); the demo would reset it" }, 409);
   lastWrite = Date.now();
   return c.json(await runDemo());
 });

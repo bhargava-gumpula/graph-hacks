@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from "vitest";
 import { useTestGraph } from "../test-helpers.js";
-import { heartbeat, registerAgent, status } from "./agents.js";
+import { heartbeat, registerAgent, releaseStaleAgents, status } from "./agents.js";
 import { claim, DEFAULT_TTL_MS } from "./claims.js";
+import { feedSince, latestSeq } from "./feed.js";
 
 const g = useTestGraph("sb_test_agents");
 
@@ -58,4 +59,36 @@ test("status lists the claim after claim(), and skips an expired one", async () 
   expect(s.claims).toEqual([
     { agent: "ada", path: "lib/crypto.ts", until: now + DEFAULT_TTL_MS, taskId: "T1" },
   ]);
+});
+
+test("a stale agent is marked stale and its claims are released", async () => {
+  const now = 1_000_000;
+  await claim(g(), { agent: "dead", paths: ["lib/crypto.ts"], ttlMs: 10 * DEFAULT_TTL_MS, now });
+  await claim(g(), { agent: "alive", paths: ["ui/AboutPage.tsx"], now });
+  await heartbeat(g(), { id: "alive", now: now + 50_000 });
+  const before = await latestSeq(g());
+
+  expect(await releaseStaleAgents(g(), { staleMs: 60_000, now: now + 70_000 })).toEqual(["dead"]);
+
+  const s = await status(g(), now + 70_000);
+  expect(s.agents.map((a) => [a.id, a.status, a.claims])).toEqual([
+    ["alive", "active", ["ui/AboutPage.tsx"]],
+    ["dead", "stale", []],
+  ]);
+  const feed = await feedSince(g(), before);
+  expect(feed.map((e) => [e.kind, e.agentId, e.payload])).toEqual([
+    ["release", "dead", { reason: "stale", paths: ["lib/crypto.ts"] }],
+  ]);
+  // Idempotent: nothing left to release.
+  expect(await releaseStaleAgents(g(), { staleMs: 60_000, now: now + 80_000 })).toEqual([]);
+  // A heartbeat brings it back.
+  await heartbeat(g(), { id: "dead", now: now + 90_000 });
+  expect((await status(g(), now + 90_000)).agents.find((a) => a.id === "dead")?.status).toBe("active");
+});
+
+test("claim() releases a stale agent's long claim before checking", async () => {
+  const now = 2_000_000;
+  await claim(g(), { agent: "ghost", paths: ["lib/crypto.ts"], ttlMs: 10 * DEFAULT_TTL_MS, now });
+  const later = now + DEFAULT_TTL_MS + 1;
+  expect((await claim(g(), { agent: "next", paths: ["lib/crypto.ts"], now: later })).ok).toBe(true);
 });

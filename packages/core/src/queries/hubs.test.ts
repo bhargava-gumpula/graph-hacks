@@ -42,6 +42,13 @@ describe("small graphs", () => {
     expect(await markHubs(g())).toEqual([]);
   });
 
+  test("files that import nothing are scored, not an error", async () => {
+    await g().query("UNWIND ['x.ts', 'y.ts'] AS p CREATE (:File {path: p})");
+    const scores = await markHubs(g());
+    expect(scores.map((s) => [s.path, s.hub]).sort()).toEqual([["x.ts", false], ["y.ts", false]]);
+    await g().query("MATCH (f:File) DETACH DELETE f");
+  });
+
   test("a file with two importers in a tiny repo is not a hub", async () => {
     await loadParse(g(), repo([["a.ts", "b.ts"], ["c.ts", "b.ts"]]));
     const scores = await markHubs(g());

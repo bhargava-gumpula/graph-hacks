@@ -73,7 +73,7 @@ export interface Notices {
 }
 
 async function event(g: SbGraph, kind: "wait" | "free", payload: unknown, agentId: string | null, onPath: string, now: number) {
-  const rows = await g.query(RECORD_EVENT, { kind, at: now, payload: JSON.stringify(payload), agentId, onPath, taskId: null });
+  const rows = await g.query(RECORD_EVENT, { kind, at: now, payload: JSON.stringify(payload), agentId, onPath, taskId: null, via: [] });
   return readSeq(rows, kind);
 }
 

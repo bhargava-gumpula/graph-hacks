@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { useTestGraph } from "../test-helpers.js";
 import { claim } from "./claims.js";
 import { conflictQuery, findConflicts, hops } from "./conflict.js";
@@ -148,14 +148,21 @@ describe("SB_HOPS", () => {
     expect(conflictQuery(3)).toContain("*1..1]");
   });
 
-  test("defaults to 3; anything outside 1..5 is rejected", () => {
+  test("defaults to 3; a bad SB_HOPS warns and falls back, a bad k throws", () => {
     expect(hops()).toBe(3);
     process.env.SB_HOPS = "5";
     expect(hops()).toBe(5);
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
     for (const bad of ["0", "6", "2.5", "two"]) {
       process.env.SB_HOPS = bad;
-      expect(() => hops()).toThrow(/SB_HOPS must be an integer 1..5/);
+      expect(hops()).toBe(3);
+      expect(hops(2)).toBe(2);
     }
+    expect(warn).toHaveBeenCalledTimes(4);
+    expect(warn.mock.calls[0]![0]).toMatch(/SB_HOPS must be an integer 1..5, got 0; using 3/);
+    warn.mockRestore();
+    delete process.env.SB_HOPS;
+    for (const bad of [0, 6, 2.5]) expect(() => hops(bad)).toThrow(/k must be an integer 1..5/);
   });
 });
 

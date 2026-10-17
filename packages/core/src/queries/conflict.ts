@@ -34,19 +34,28 @@ export interface ConflictInput {
 /** Longest import chain any check follows. */
 export const MAX_HOPS = 5;
 
+const validHops = (n: number) => Number.isInteger(n) && n >= 1 && n <= MAX_HOPS;
+let warnedEnv: string | undefined;
+
 /**
  * The import-hop limit for the conflict check, the blast radius and interference.
  * SB_HOPS, when set, is the operator's choice and wins over `k` for every check, so
  * the claim guard, the hook and the "show the query" panels all follow it.
- * Otherwise `k`, default 3. Valid 1..5; anything else throws.
+ * Otherwise `k`, default 3. Valid 1..5. A bad `k` throws (it goes into query text).
+ * A bad SB_HOPS warns once and falls back to `k`: throwing would make the hook fail
+ * open and allow every edit.
  */
 export function hops(k = 3): number {
+  if (!validHops(k)) throw new Error(`k must be an integer 1..${MAX_HOPS}, got ${k}`);
   const env = process.env.SB_HOPS?.trim();
-  const n = env ? Number(env) : k;
-  if (!Number.isInteger(n) || n < 1 || n > MAX_HOPS) {
-    throw new Error(`${env ? "SB_HOPS" : "k"} must be an integer 1..${MAX_HOPS}, got ${env || k}`);
+  if (!env) return k;
+  const n = Number(env);
+  if (validHops(n)) return n;
+  if (warnedEnv !== env) {
+    warnedEnv = env;
+    console.error(`switchboard: SB_HOPS must be an integer 1..${MAX_HOPS}, got ${env}; using ${k}`);
   }
-  return n;
+  return k;
 }
 
 /**

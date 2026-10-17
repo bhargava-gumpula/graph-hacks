@@ -17,6 +17,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "brief", label: "Brief" },
 ];
 const EXPO = [0.16, 1, 0.3, 1] as const;
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const STATUS_LABEL: Record<LiveStatus, string> = { loading: "connecting", live: "live", reconnecting: "reconnecting", replay: "replay", offline: "offline" };
 const COACH = "Two scripted agents, one repo. Press Play: watch the graph refuse an edit a file lock would allow.";
 
@@ -44,11 +45,19 @@ export function Dashboard() {
   const [run, setRun] = useState(0);
   const [health, setHealth] = useState<Health | null>(null);
   const [hoverAgent, setHoverAgent] = useState<string | null>(null);
-  // Play clears the previous run's path, so the new refusal draws on a clean graph.
+  // Play clears the previous run's path, so the new refusal draws on a clean graph. A new run from
+  // any viewer (a newer parse event) clears it too.
   const [staleHit, setStaleHit] = useState<number | null>(null);
-  const hit = live.hit && live.hit.id !== staleHit ? live.hit : null;
+  const lastParse = useMemo(() => live.events.reduce((m, e) => (e.kind === "parse" && e.seq > m ? e.seq : m), -1), [live.events]);
+  const hit = live.hit && live.hit.id !== staleHit && live.hit.id > lastParse ? live.hit : null;
+  // The refusal's results land on the impact frame, not when the packet leaves.
+  const [landed, setLanded] = useState<number | null>(null);
+  const shown = hit && (hit.quiet || landed === hit.id) ? hit : null;
   const armed = useRef(false); // a demo run is waiting for its refusal
-  const demoHit = useRef<number | null>(null);
+  const [waiting, setWaiting] = useState(false); // the same, for rendering
+  const [demoHit, setDemoHit] = useState<number | null>(null);
+  const story = demo && shown && demoHit === shown.id ? demo : null;
+  const tryBtn = useRef<HTMLButtonElement>(null);
   const timers = useRef<number[]>([]);
   const later = (fn: () => void, ms: number) => timers.current.push(window.setTimeout(fn, ms));
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -56,8 +65,19 @@ export function Dashboard() {
   const agents = useMemo(() => (live.graph?.nodes ?? []).filter((n) => n.kind === "agent"), [live.graph]);
   const files = useMemo(() => (live.graph?.nodes ?? []).filter((n) => n.kind === "file").map((n) => n.id).sort(), [live.graph]);
   const imports = useMemo(() => (live.graph?.edges ?? []).filter((e) => e.kind === "IMPORTS").length, [live.graph]);
-  const collisions = useMemo(() => splitRuns(live.events).latest.filter((e) => e.kind === "conflict").length, [live.events]);
-  const blocked = useMemo(() => blockedBy(hit, live.events), [hit, live.events]);
+  const conflicts = useMemo(() => splitRuns(live.events).latest.filter((e) => e.kind === "conflict").length, [live.events]);
+  // The counter ticks with the impact, not with the feed row.
+  const collisions = Math.max(0, conflicts - (hit && !hit.quiet && landed !== hit.id ? 1 : 0));
+  const blocked = useMemo(() => blockedBy(shown, live.events), [shown, live.events]);
+  // Rings follow the paced feed: a fresh run shows only the claims its beats have reached so far.
+  const shownClaims = useMemo(() => {
+    const { latest } = splitRuns(live.events);
+    const run = latest.find((e) => e.kind === "parse")?.seq ?? 0;
+    if (run <= live.seqAtLoad) return live.claims;
+    return live.claims.filter((c) =>
+      latest.some((e) => e.kind === "claim" && e.agentId === c.agent && ((e.payload as { paths?: string[] } | null)?.paths ?? []).includes(c.path)),
+    );
+  }, [live.events, live.claims, live.seqAtLoad]);
 
   // WCC groups, biggest first so G1 is the one that must queue the most.
   const groups = useMemo(() => {
@@ -114,14 +134,17 @@ export function Dashboard() {
   // The island narrates a fresh refusal, replacing the running demo entry. It reads the filtered
   // hit, so the demo reply never narrates the previous run's refusal with the new run's time.
   useEffect(() => {
-    const h = hit;
+    const h = shown;
     if (!h || h.quiet) return;
+    let mine = demoHit === h.id;
     if (armed.current) {
       armed.current = false;
-      demoHit.current = h.id;
+      mine = true;
+      setDemoHit(h.id);
+      setWaiting(false);
     }
     const c = h.conflict;
-    const ms = demoHit.current === h.id ? demo?.checkMs : undefined;
+    const ms = mine ? demo?.checkMs : undefined;
     const id = `hit-${h.id}`;
     const entry: IslandTask = {
       id,
@@ -132,7 +155,7 @@ export function Dashboard() {
     setTasks((t) => [...t.filter((x) => x.id !== id && !(x.id.startsWith("demo-") && x.status === "running")).slice(-3), entry]);
     later(() => setTasks((t) => t.filter((x) => x.id !== id)), 9000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live.hit, demo?.checkMs]);
+  }, [shown?.id, demo?.checkMs]);
 
   const playDemo = async () => {
     if (playing) return;
@@ -140,6 +163,7 @@ export function Dashboard() {
     setSelected(null);
     setStaleHit(live.hit?.id ?? null);
     armed.current = true;
+    setWaiting(true);
     const id = `demo-${Date.now()}`;
     setTasks((t) => [...t.slice(-3), { id, label: "Running the demo", detail: "two agents, one hidden dependency", status: "running" }]);
     try {
@@ -148,6 +172,7 @@ export function Dashboard() {
       setRun((n) => n + 1);
     } catch (e) {
       armed.current = false;
+      setWaiting(false);
       setStaleHit(null);
       setTasks((t) => t.map((x) => (x.id === id ? { ...x, status: "error", label: "Demo failed", detail: (e as Error).message } : x)));
     } finally {
@@ -176,7 +201,7 @@ export function Dashboard() {
         : undefined;
 
   const onPath = (p: string[]) => setSelected(p[p.length - 1] ?? null);
-  const tiles = live.graph ? { collisions, checkMs: demo?.checkMs ?? null, groups: groups.length || null, files: files.length, imports } : null;
+  const tiles = live.graph ? { collisions, checkMs: story?.checkMs ?? null, groups: groups.length || null, files: files.length, imports } : null;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -209,18 +234,20 @@ export function Dashboard() {
               onClick={() => setBatchMode((b) => !b)}
               aria-pressed={batchMode}
               aria-label="Parallel batches"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition active:scale-95 md:px-3 ${
+              className={`relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition active:scale-95 md:px-3 ${
                 batchMode ? "border-[var(--fg)] text-[var(--fg)]" : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--muted)] hover:text-[var(--fg)]"
               }`}
             >
               <Rows size={14} /> <span className="hidden md:inline">Parallel batches</span>
             </button>
             <button
+              ref={tryBtn}
               type="button"
               onClick={() => setTryOpen((o) => !o)}
               aria-expanded={tryOpen}
+              aria-haspopup="dialog"
               aria-label="Try a claim"
-              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs transition hover:border-[var(--muted)] active:scale-95 sm:px-3"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs transition hover:border-[var(--muted)] active:scale-95 sm:px-3"
             >
               <HandGrabbing size={14} /> <span className="hidden sm:inline">Try a claim</span>
             </button>
@@ -228,7 +255,7 @@ export function Dashboard() {
               type="button"
               onClick={playDemo}
               disabled={playing}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-signal)] px-3.5 py-1.5 text-xs font-medium text-[#1a0d08] shadow-[0_0_24px_-6px_var(--color-signal)] transition hover:brightness-110 active:scale-95 disabled:opacity-70"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full bg-[var(--color-signal)] px-3.5 py-1.5 text-xs font-medium text-[#1a0d08] shadow-[0_0_24px_-6px_var(--color-signal)] transition hover:brightness-110 active:scale-95 disabled:opacity-70"
             >
               <Play size={14} weight="fill" />
               <span>
@@ -243,6 +270,7 @@ export function Dashboard() {
           {tryOpen && (
             <TryClaim
               files={files}
+              trigger={tryBtn}
               onClose={() => setTryOpen(false)}
               onSelect={(f) => {
                 setSelected(f);
@@ -288,7 +316,15 @@ export function Dashboard() {
           <aside className="hidden min-h-0 flex-col border-r border-[var(--border)] bg-[var(--bg)]/70 backdrop-blur-sm lg:flex">
             {(tiles || live.status === "loading") && (
               <div className="border-b border-[var(--border)] p-4">
-                {tiles ? <Tiles {...tiles} /> : <div className="h-[178px] animate-pulse rounded-[var(--radius-panel)] bg-[var(--fg)]/[0.04]" />}
+                {tiles ? (
+                  <Tiles {...tiles} />
+                ) : (
+                  <div aria-busy="true" aria-label="Loading numbers" className="grid grid-cols-2 gap-2 motion-safe:animate-pulse">
+                    <div className="col-span-2 h-[88px] rounded-[var(--radius-panel)] bg-[var(--fg)]/[0.04]" />
+                    <div className="h-[66px] rounded-[var(--radius-panel)] bg-[var(--fg)]/[0.04]" />
+                    <div className="h-[66px] rounded-[var(--radius-panel)] bg-[var(--fg)]/[0.04]" />
+                  </div>
+                )}
               </div>
             )}
             <p className="px-4 pt-4 text-xs font-medium text-[var(--muted)]">Agents</p>
@@ -299,12 +335,12 @@ export function Dashboard() {
                   setHoverAgent(li?.getAttribute("data-agent") ?? null);
                 }}
               >
-                <AgentsPanel agents={agents} claims={live.claims} events={live.events} status={live.status} hit={hit} onPick={setSelected} onPath={onPath} />
+                <AgentsPanel agents={agents} claims={shownClaims} events={live.events} status={live.status} hit={shown} onPick={setSelected} onPath={onPath} />
               </div>
             </div>
           </aside>
 
-          <main className="relative min-h-0 overflow-hidden">
+          <main className="relative min-h-0 overflow-hidden" aria-busy={!live.graph && live.status === "loading"}>
             {/* Keep the field dark behind the nodes; it still shows at the edges. */}
             <div
               aria-hidden
@@ -314,23 +350,28 @@ export function Dashboard() {
             {live.graph ? (
               <GraphView
                 graph={live.graph}
-                claims={live.claims}
+                claims={shownClaims}
                 hit={hit}
                 selected={selected}
                 blast={blastMap}
                 batchOf={batchOf}
                 ghost={blocked ? { file: blocked.conflict.file, agent: blocked.agent } : null}
                 focusAgent={hoverAgent}
-                checkMs={demo?.checkMs ?? null}
+                checkMs={story?.checkMs ?? null}
                 conflictCypher={cypher?.conflict}
                 onSelect={setSelected}
+                onLanded={setLanded}
               />
             ) : (
               <div className="relative grid h-full place-items-center">
                 {live.status === "offline" ? (
                   <p className="max-w-xs text-center text-sm text-[var(--muted)]">The graph will appear here when the server is reachable.</p>
                 ) : (
-                  <div className="h-2/3 w-2/3 animate-pulse rounded-[var(--radius-panel)] bg-[var(--fg)]/[0.04]" />
+                  <svg aria-hidden="true" viewBox="0 0 750 330" className="h-2/3 w-2/3 motion-safe:animate-pulse">
+                    {[0, 1, 2, 3].map((c) =>
+                      Array.from({ length: 10 }, (_, r) => <circle key={`${c}-${r}`} cx={60 + c * 210} cy={30 + r * 30} r={3.25} fill="var(--fg)" fillOpacity={0.16} />),
+                    )}
+                  </svg>
                 )}
               </div>
             )}
@@ -349,7 +390,7 @@ export function Dashboard() {
 
             {live.graph && (
               <div className="pointer-events-none absolute bottom-4 left-4 z-10 hidden w-[min(440px,calc(100%-10rem))] sm:block">
-                <StoryCaption demo={demo} run={run} cypher={cypher?.conflict} />
+                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} />
               </div>
             )}
           </main>
@@ -357,38 +398,47 @@ export function Dashboard() {
           <aside className="flex min-h-0 flex-col border-t border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-sm lg:border-l lg:border-t-0">
             {live.graph && (
               <div className="shrink-0 border-b border-[var(--border)] p-3 sm:hidden">
-                <StoryCaption demo={demo} run={run} cypher={cypher?.conflict} />
+                <StoryCaption demo={story} hold={waiting} run={run} cypher={cypher?.conflict} />
               </div>
             )}
-            <nav className="flex shrink-0 gap-1 border-b border-[var(--border)] p-2" aria-label="Panels">
+            <div
+              role="tablist"
+              aria-label="Panels"
+              className="flex shrink-0 gap-1 border-b border-[var(--border)] p-2"
+              onKeyDown={(e) => {
+                const i = TABS.findIndex((t) => t.id === tab);
+                const next =
+                  e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i - 1 + TABS.length) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
+                if (next < 0) return;
+                e.preventDefault();
+                setTab(TABS[next].id);
+                document.getElementById(`tab-${TABS[next].id}`)?.focus();
+              }}
+            >
               {TABS.map((t) => (
                 <button
                   key={t.id}
+                  id={`tab-${t.id}`}
                   type="button"
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  aria-controls="panel"
+                  tabIndex={tab === t.id ? 0 : -1}
                   onClick={() => setTab(t.id)}
-                  className="relative flex-1 rounded-full px-2 py-1.5 text-xs transition"
-                  aria-current={tab === t.id}
+                  className="relative flex-1 touch-manipulation rounded-full px-2 py-1.5 text-xs transition-colors pointer-coarse:py-2.5"
                 >
                   {tab === t.id && <motion.span layoutId="tab" className="absolute inset-0 rounded-full bg-[var(--fg)]/10" transition={{ type: "spring", stiffness: 400, damping: 32 }} />}
                   <span className={`relative transition-colors ${tab === t.id ? "text-[var(--fg)]" : "text-[var(--muted)] hover:text-[var(--fg)]"}`}>{t.label}</span>
                 </button>
               ))}
-            </nav>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={tab}
-                  initial={{ opacity: 0, x: 8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -8 }}
-                  transition={{ duration: 0.18, ease: EXPO }}
-                >
+            </div>
+            <div id="panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto">
+              <motion.div key={tab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12, ease: EASE_OUT }}>
                   {tab === "feed" && <Feed events={live.events} status={live.status} cypher={cypher} onPath={onPath} />}
                   {tab === "inspect" && <Inspect path={selected} claims={live.claims} blast={blast} cypher={cypher} />}
                   {tab === "memory" && <Memory decisions={live.decisions} events={live.events} tasks={briefTasks} />}
                   {tab === "brief" && <Brief tasks={briefTasks} claims={live.claims} />}
-                </motion.div>
-              </AnimatePresence>
+              </motion.div>
             </div>
           </aside>
         </div>
@@ -399,7 +449,7 @@ export function Dashboard() {
 
 /* --------------------------------- Story --------------------------------- */
 
-function StoryCaption({ demo, run, cypher }: { demo: DemoReply | null; run: number; cypher?: string }) {
+function StoryCaption({ demo, hold = false, run, cypher }: { demo: DemoReply | null; hold?: boolean; run: number; cypher?: string }) {
   const want = demo?.path[0];
   // The last sentence is the point: a lock on the file itself would have said yes.
   const cut = demo ? demo.sentence.lastIndexOf("A file lock") : -1;
@@ -438,7 +488,7 @@ function StoryCaption({ demo, run, cypher }: { demo: DemoReply | null; run: numb
               </div>
             )}
           </motion.section>
-        ) : (
+        ) : hold ? null : (
           <motion.section
             key="coach"
             initial={{ opacity: 0, y: 10 }}
@@ -464,9 +514,8 @@ function Tile({ children, className = "", accent = false }: { children: ReactNod
   return (
     <motion.div
       variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: EXPO } } }}
-      whileHover={{ y: -2 }}
-      className={`group relative overflow-hidden rounded-[var(--radius-panel)] border p-3 transition-colors duration-300 ${
-        accent ? "border-[var(--color-signal)]/35 hover:border-[var(--color-signal)]/60" : "border-[var(--border)] hover:border-[var(--fg)]/20"
+      className={`relative overflow-hidden rounded-[var(--radius-panel)] border p-3 ${
+        accent ? "border-[var(--color-signal)]/35" : "border-[var(--border)]"
       } bg-[var(--surface)]/70 ${className}`}
     >
       {children}
@@ -571,11 +620,11 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.35, ease: EXPO }}
+      transition={{ duration: 0.2, ease: EXPO }}
       className="absolute left-3 right-3 top-16 z-10 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/90 p-3 backdrop-blur-md sm:right-auto sm:max-w-[420px]"
     >
       {n === 0 ? (
-        <p className="text-[13px] text-[var(--muted)]">Computing parallel groups with WCC.</p>
+        <p className="text-[13px] text-[var(--muted)]">Computing parallel groups with WCC…</p>
       ) : (
         <>
           <p className="text-[13px] leading-snug">
@@ -628,8 +677,37 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
 
 const AGENTS = ["A", "B", "C", "D"];
 
-function TryClaim({ files, onClose, onSelect }: { files: string[]; onClose: () => void; onSelect: (file: string) => void }) {
+function TryClaim({
+  files,
+  trigger,
+  onClose,
+  onSelect,
+}: {
+  files: string[];
+  trigger: React.RefObject<HTMLButtonElement>;
+  onClose: () => void;
+  onSelect: (file: string) => void;
+}) {
   const [agent, setAgent] = useState("B");
+  const panel = useRef<HTMLDivElement>(null);
+  // Popover behaviour: focus moves in, Escape or an outside press closes, focus returns to the trigger.
+  useEffect(() => {
+    panel.current?.querySelector<HTMLInputElement>("input[name=try-agent]:checked")?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!panel.current?.contains(t) && !trigger.current?.contains(t)) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    const btn = trigger.current;
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+      btn?.focus();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const pick = () => (files.includes("ui/LoginForm.tsx") ? "ui/LoginForm.tsx" : (files[0] ?? ""));
   const [file, setFile] = useState(pick);
   useEffect(() => {
@@ -664,12 +742,11 @@ function TryClaim({ files, onClose, onSelect }: { files: string[]; onClose: () =
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -8, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -8, scale: 0.98 }}
-      transition={{ duration: 0.25, ease: EXPO }}
-      onKeyDown={(e) => e.key === "Escape" && onClose()}
-      className="absolute inset-x-4 top-16 z-40 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-2xl shadow-black/50 sm:left-auto sm:w-[360px]"
+      ref={panel}
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1, transition: { duration: 0.18, ease: EASE_OUT } }}
+      exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.12, ease: EASE_OUT } }}
+      className="absolute inset-x-4 top-16 z-40 origin-top-right rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-2xl shadow-black/50 sm:left-auto sm:w-[360px]"
       role="dialog"
       aria-label="Try a claim"
     >
@@ -683,19 +760,17 @@ function TryClaim({ files, onClose, onSelect }: { files: string[]; onClose: () =
       <div className="mt-4 grid gap-3">
         <div className="grid gap-1.5 text-xs">
           <span id="try-agent">Agent</span>
+          {/* Native radios: one tab stop, arrow keys move the choice. */}
           <div role="radiogroup" aria-labelledby="try-agent" className="grid grid-cols-4 gap-1 rounded-full border border-[var(--border)] bg-[var(--bg)] p-1">
             {AGENTS.map((a) => (
-              <button
+              <label
                 key={a}
-                type="button"
-                role="radio"
-                aria-checked={agent === a}
-                onClick={() => setAgent(a)}
-                className="relative rounded-full py-1 font-mono text-sm transition-colors"
+                className="relative cursor-pointer touch-manipulation rounded-full py-1 text-center font-mono text-sm transition-colors has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-[var(--fg)]/40 pointer-coarse:py-2"
               >
+                <input type="radio" name="try-agent" value={a} checked={agent === a} onChange={() => setAgent(a)} className="sr-only" />
                 {agent === a && <motion.span layoutId="try-agent-pill" className="absolute inset-0 rounded-full bg-[var(--fg)]" transition={{ type: "spring", stiffness: 450, damping: 34 }} />}
                 <span className={`relative ${agent === a ? "text-[var(--bg)]" : "text-[var(--muted)] hover:text-[var(--fg)]"}`}>{a}</span>
-              </button>
+              </label>
             ))}
           </div>
         </div>
@@ -723,8 +798,10 @@ function TryClaim({ files, onClose, onSelect }: { files: string[]; onClose: () =
           onClick={run}
           className="rounded-full bg-[var(--color-signal)] px-4 py-2 text-sm font-medium text-[#1a0d08] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
         >
-          {busy ? "Checking the graph" : "Claim it"}
+          {busy ? "Checking the graph…" : "Claim it"}
         </button>
+        {/* A permanent live region, so the result is announced when it lands inside it. */}
+        <div aria-live="polite">
         <AnimatePresence mode="wait">
           {result && (
             <motion.div
@@ -732,8 +809,7 @@ function TryClaim({ files, onClose, onSelect }: { files: string[]; onClose: () =
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.25, ease: EXPO }}
-              aria-live="polite"
+              transition={{ duration: 0.2, ease: EASE_OUT }}
               className={`grid gap-2.5 rounded-md border p-3 text-sm ${result.conflict ? "border-[var(--color-signal)]/40 bg-[var(--color-signal-soft)]" : "border-[var(--border)]"}`}
             >
               <p className="leading-relaxed">
@@ -758,6 +834,7 @@ function TryClaim({ files, onClose, onSelect }: { files: string[]; onClose: () =
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </div>
     </motion.div>
   );

@@ -1,8 +1,9 @@
 # Installing Switchboard
 
 Switchboard runs in the background. Once it is installed, an agent never has to be told to use it: hooks
-claim each file before the agent edits it, refuse an edit that collides with another agent's work, record
-the edit, and release the claims when the session ends. The MCP server and the skill are there for when the
+claim each file before the agent edits it (or writes it from the shell), refuse an edit that collides with
+another agent's work, tell both agents when one waits on the other, record the edit, and release the claims
+when the session ends. [How it works](HOW-IT-WORKS.md) shows what each agent sees. The MCP server and the skill are there for when the
 agent wants more (a brief, a decision, a handoff).
 
 There are four ways in. All of them talk to the same FalkorDB graph, so a Claude Code session and a Cursor
@@ -19,8 +20,7 @@ session on one repo see each other.
 
 - **Node 22 or newer** on `PATH`. The hooks and the MCP server are single-file Node scripts.
 - **FalkorDB.** `docker run -d -p 6379:6379 falkordb/falkordb`, or point `FALKORDB_URL` at one you have.
-- Nothing else. No `jq`, no clone of this repo, no `npm install` for the plugin. (The from-source hooks in
-  `packages/hooks/hook.sh` still use `jq`.)
+- Nothing else. No `jq`, no clone of this repo, no `npm install` for the plugin.
 
 ## Claude Code plugin
 
@@ -37,7 +37,7 @@ The plugin lives in [`plugins/switchboard`](../plugins/switchboard) and the mark
 
 | Part | File | What it does |
 | --- | --- | --- |
-| Hooks | `hooks/hooks.json` | `SessionStart`: register the agent, re-parse the repo in the background, add a brief to the context. `PreToolUse` on `Edit\|MultiEdit\|Write\|NotebookEdit`: claim the file, or deny with the import path. `PostToolUse`: record the edit and refresh the import graph in the background. `SessionEnd`: release this agent's claims. |
+| Hooks | `hooks/hooks.json` | `SessionStart`: register the agent, re-parse the repo in the background, add a brief to the context. `PreToolUse` on `Edit\|MultiEdit\|Write\|NotebookEdit\|Bash`: claim the file (or a shell command's obvious write targets), or deny with the import path and wait. `PostToolUse`: record the edit (for `Bash`, the files `git status` shows it changed) and refresh the import graph in the background. Both tell the agent who waits on its files and which files it waited on are free. `SessionEnd`: release this agent's claims. |
 | MCP server | `.mcp.json` | `switchboard`, 13 tools (`claim`, `brief_me`, `record_decision`, `handoff`, ...). |
 | Skill | `skills/switchboard/SKILL.md` | What Switchboard is, how to read a refusal, what to do next. |
 | Runtime | `dist/*.mjs` | The hook, the MCP server and the CLI, bundled with esbuild by `npm run build:plugin`. |
@@ -64,15 +64,19 @@ Try it from a checkout without installing: `claude --plugin-dir ./plugins/switch
    switchboard init --cursor
    ```
 
-   This writes `.cursor/hooks.json` (sessionStart, preToolUse on `Write`, afterFileEdit, sessionEnd) and a
-   project `.cursor/mcp.json`, then parses the repo into its graph. It merges: your other hooks and servers stay.
+   This writes `.cursor/hooks.json` (sessionStart, preToolUse on `Write` and `Delete`, beforeShellExecution,
+   afterFileEdit, afterShellExecution, postToolUse on `Write` and `Shell`, sessionEnd) and a project
+   `.cursor/mcp.json`, then parses the repo into its graph. It merges: your other hooks and servers stay.
    Restart Cursor in the repo.
 
 What Cursor's hooks can and cannot do (from Cursor's hooks docs, checked 2026-10-17):
 
 - `preToolUse` with `permission: "deny"` stops the edit and shows the reason to you (`user_message`) and to the
   agent (`agent_message`). This is the check that matters, and it works like Claude Code's.
-- `afterFileEdit` runs after the edit and cannot block it. Switchboard only records the edit there.
+  `beforeShellExecution` does the same for a shell command's obvious write targets.
+- `agent_message` is documented for denials only, so "someone waits on your file" and "the file is free now"
+  arrive on the next `postToolUse`, as `additional_context`.
+- `afterFileEdit` and `afterShellExecution` run afterwards and cannot block. Switchboard only records edits there.
 - `sessionStart` and `sessionEnd` are fire-and-forget. In our earlier tests Cursor did not show the
   session-start brief to the agent, so ask it to call `brief_me` first if you want the brief.
 - Hooks do not run in Cursor's cloud agents, and they skip read-only exploratory turns.
@@ -95,7 +99,8 @@ switchboard --help
 | `switchboard-mcp` | The stdio MCP server. |
 
 `switchboard init [dir] [--cursor] [--claude] [--dry-run]` writes `.cursor/hooks.json` and `.cursor/mcp.json`
-(Cursor), and `.claude/settings.json` hooks and `.mcp.json` (Claude Code); both by default. The configs point at
+(Cursor), and `.claude/settings.json` hooks and `.mcp.json` (Claude Code); both by default. Each MCP config passes
+`SB_EDITOR`, so the MCP server and the hooks use the same agent id. The configs point at
 this install's absolute paths, so run `init` again after moving Node or reinstalling. Run through `npx`, the
 paths land in the npx cache, which npm may clean; `init` warns about that.
 
@@ -109,7 +114,9 @@ All optional, as environment variables.
 | --- | --- | --- |
 | `FALKORDB_URL` | `redis://localhost:6379` | |
 | `SB_GRAPH` | `sb_<repo name>` | The name of the main checkout, so every worktree of a repo shares one graph. |
-| `SB_AGENT` | `<editor>@<branch>` | `claude-code@main`, `cursor@feature-x`. The MCP server and the hooks use the same id. |
+| `SB_AGENT` | `<editor>@<branch>` | `claude@main`, `cursor@feature-x`. The MCP server, the CLI and the hooks use the same id. |
+| `SB_EDITOR` | set by the configs | `claude` or `cursor`: the editor half of the id for the MCP server and the CLI. The hooks get it from their arguments. |
+| `SB_MODE` | `enforce` | `warn` allows every edit and gives the agent the refusal text as context instead. |
 | `SB_URL` | none | A running Switchboard dashboard (from source: `npm run server`), linked in the session brief. |
 | `SWITCHBOARD_OFF` | unset | `1` lets every edit through. |
 | `SB_HOOK_LOG` | `$TMPDIR/switchboard-hook.log` | One line per hook decision. |
@@ -118,27 +125,47 @@ For the Claude Code plugin, put them in your shell environment or in the `env` b
 
 ## What happens when two agents want the same code
 
-Say Claude Code and Cursor both work on one repo, and Cursor edits `src/db.ts` first.
+Say Claude Code and Cursor both work on one repo, and Claude Code edits `auth/session.ts` first.
 
-1. Cursor's `preToolUse` hook claims `src/db.ts` in the graph. The claim lasts 30 minutes and every further
-   edit renews it.
-2. Claude Code's agent tries to edit `src/login.ts`, which imports `src/session.ts`, which imports `src/db.ts`.
-   Its `PreToolUse` hook asks the graph for a claim within 3 import hops, finds Cursor's, and denies the edit:
+1. Claude Code's `PreToolUse` hook claims `auth/session.ts` in the graph. The claim lasts 30 minutes and every
+   further edit renews it.
+2. Cursor's agent tries to edit `ui/LoginForm.tsx`, which imports `api/login.ts`, which imports
+   `auth/session.ts`. Its `preToolUse` hook finds Claude Code's claim within 3 import hops and denies the edit:
 
    ```
    ✗ Switchboard blocked this edit
-   src/login.ts ─imports→ src/session.ts ─imports→ src/db.ts
-   held by cursor@main · free in 30 min
+   ui/LoginForm.tsx ─imports→ api/login.ts ─imports→ auth/session.ts
+   held by claude@main · free in 30 min
    Don't work around this with Bash. Pick another file or call brief_me.
+   You are now waiting on auth/session.ts; Switchboard tells you here when it is free.
    ```
 
-3. Cursor is not interrupted: the first claim wins, and nothing is sent to the agent that holds it.
-   Claude Code reads the refusal (the skill tells it how), says which file and who holds it, and moves to a
-   file that does not touch that path.
-4. When Cursor's session ends, its claims are released. Claude Code's next try on `src/login.ts` goes through.
+3. Claude Code is not blocked: the first claim wins. On its next hook call it reads
+   `cursor@main is waiting on auth/session.ts: it wants ui/LoginForm.tsx, 2 imports from your claim. Release it when you're done: switchboard release auth/session.ts --agent claude@main`.
+4. When Claude Code's session ends (or it releases the file, or the claim expires), Cursor's next hook call reads
+   `auth/session.ts is free now; you can retry ui/LoginForm.tsx.` and the retry goes through.
+
+[How it works](HOW-IT-WORKS.md) has the whole story, shell commands, `SB_MODE=warn` and the graph model.
 
 Two sessions with the same agent id never block each other: that is one agent. Two Claude Code sessions on the
-same branch share `claude-code@<branch>`, so give one its own worktree or set `SB_AGENT`.
+same branch share `claude@<branch>`, so give one its own worktree or set `SB_AGENT`.
+
+## From source: `npm run switchboard -- init <repo>`
+
+From a clone of this repo, `init` wires another repo to this checkout and parses it into `sb_<repo name>`:
+
+- Claude Code's hooks go in `.claude/settings.local.json`, which holds this machine's path to
+  `packages/hooks/hook.sh`. Claude Code reads it like `settings.json`, and `init` adds it to the repo's
+  `.gitignore`, so no machine path is committed. Hooks an older `init` left in `.claude/settings.json` move there.
+- Cursor has no per-machine hooks file, so `.cursor/hooks.json` carries the path. Keep it out of commits, or use
+  `--npx`.
+- `.mcp.json` and `.cursor/mcp.json` start the MCP server from this checkout, with `SB_EDITOR` set.
+- `--npx` writes `npx -y switchboard-agents hook <editor> <phase>` and `npx -y switchboard-agents mcp` everywhere
+  instead: no machine paths, safe to commit. Use it once `switchboard-agents` is published to npm; until then,
+  `npx` would fetch whatever package holds that name.
+
+`init` merges and is idempotent: a second run changes nothing. `--dry-run` prints the diff.
+`packages/hooks/hook.sh` needs no `jq`: it runs the Node hook (`switchboard hook <editor> <phase>`) through `tsx`.
 
 ## Demo: Claude Code and Cursor on one repo, with the live graph
 
@@ -203,8 +230,13 @@ For a new version, bump `version` in `packages/npm/package.json`, `packages/npm/
 ## Limits
 
 - The CLI bundle is about 8 MB because the parser carries the TypeScript compiler (ts-morph). The hook bundle,
-  which runs on every edit, is about 0.7 MB and answers in about 0.1 s.
-- Only TypeScript and JavaScript imports are parsed. A file the parser has not seen (a new file) is allowed,
+  which runs on every edit, is about 0.7 MB and answers in about 0.1 s. From source, `hook.sh` runs the hook
+  through `tsx`, about 0.8 s.
+- Shell commands: only obvious write targets are claimed before a command runs (redirections, `tee`, `sed -i`,
+  `mv`, `cp`, `rm`, `touch`, `git checkout --`). Every changed file is recorded after it, from `git status`.
+- Only TypeScript and JavaScript imports are parsed. The parser skips `node_modules`, `dist`, `out`, `build`,
+  `coverage`, dot directories (`.next`, `.turbo`, `.vercel`) and what the repo's root `.gitignore` lists (simple
+  patterns; nested `.gitignore` files are not read). A file the parser has not seen (a new file) is allowed,
   with a note that no dependency check ran.
 - The background re-parse runs at most every 20 seconds per graph, so an import added inside that window
   shows up on the next edit.

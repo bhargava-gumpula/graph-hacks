@@ -342,7 +342,7 @@ async function run(flags: Flags): Promise<number> {
       if (res.ok) {
         const checked = files.length - (res.unknown?.length ?? 0);
         if (checked > 0) {
-          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within ${hops()} import hops)`);
+          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within ${plural(hops(), "import hop")})`);
         }
         return 0;
       }
@@ -369,7 +369,7 @@ async function run(flags: Flags): Promise<number> {
       }
       const unknown = await unknownPaths(g, [file]);
       if (unknown.length > 0) warnUnknown(unknown);
-      else console.log(`OK no claim within ${hops()} import hops (${ms} ms)`);
+      else console.log(`OK no claim within ${plural(hops(), "import hop")} (${ms} ms)`);
       return 0;
     }
 

@@ -58,12 +58,15 @@ export function route(path: { x: number; y: number }[]) {
     .join(" ");
 }
 
-/** Run a packet along a path element: onPoint gets each position and the share of the path travelled. */
-export function travel(el: SVGPathElement, onPoint: (x: number, y: number, v: number) => void, duration = 1.2) {
+/**
+ * Run a packet along a path element: onPoint gets each position and the share of the path travelled.
+ * power3.in: the packet accelerates into the hit and is at full speed when it lands (cut-the-curve: cut at peak velocity).
+ */
+export function travel(el: SVGPathElement, onPoint: (x: number, y: number, v: number) => void, duration = 1) {
   const len = el.getTotalLength();
   return animate(0, 1, {
     duration,
-    ease: [0.45, 0, 0.2, 1],
+    ease: [0.32, 0, 0.67, 0],
     onUpdate: (v) => {
       const p = el.getPointAtLength(v * len);
       onPoint(p.x, p.y, v);

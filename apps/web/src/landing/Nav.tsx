@@ -26,7 +26,7 @@ export function Nav() {
           <a href="#how" className={`hidden md:inline ${link}`}>How it works</a>
           <a href="#proof" className={`hidden md:inline ${link}`}>Proof</a>
           <a href="/app" className={`hidden sm:inline ${link}`}>Live graph</a>
-          <a href={REPO_URL} className={link} aria-label="Source code on GitHub">
+          <a href={REPO_URL} className={`-m-3 inline-grid place-items-center rounded-full p-3 ${link}`} aria-label="Source code on GitHub">
             <GithubLogo size={20} />
           </a>
         </div>

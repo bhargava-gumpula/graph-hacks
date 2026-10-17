@@ -13,7 +13,7 @@ export function Compare() {
     <section className="mx-auto max-w-7xl px-5 py-20 md:px-8 md:py-28">
       <div className="grid gap-14 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
         <div>
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight md:text-5xl">Why not just…</h2>
+          <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight md:text-5xl">Why not just…</h2>
           <div className="mt-10 rounded-[var(--radius-panel)] border border-[var(--color-signal)]/50 bg-[var(--color-signal-soft)] p-7">
             <Graph size={26} weight="duotone" className="text-[var(--color-signal)]" />
             <p className="mt-4 text-lg font-medium">Switchboard</p>

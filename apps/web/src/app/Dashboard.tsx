@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
-import { ArrowClockwise, Compass, HandGrabbing, MagnifyingGlass, Play, Rows, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, Compass, HandGrabbing, MagnifyingGlass, Play, PlugsConnected, Rows, X } from "@phosphor-icons/react";
 import { StatusIsland, type IslandTask } from "@/components/kokonutui/status-island";
 import { ChartStatFlow } from "@/components/charts/chart-stat-flow";
 import { AsciiField } from "../landing/AsciiField";
-import { api, type Batch, type Blast, type Conflict, type DemoReply, type Health } from "./api";
+import { api, type ApiError, type Batch, type Blast, type Conflict, type DemoReply, type Health } from "./api";
+import { ConnectPanel } from "./ConnectPanel";
 import { GraphView } from "./GraphView";
 import { AgentsPanel, Brief, CypherDisclosure, Feed, Inspect, Memory, PathChips, blockedBy, conflictParams, hops, splitRuns, useCypher } from "./Panels";
 import { useLive, type LiveStatus } from "./useLive";
@@ -52,6 +53,13 @@ export function Dashboard() {
   const [health, setHealth] = useState<Health | null>(null);
   const [hoverAgent, setHoverAgent] = useState<string | null>(null);
   const [demoErr, setDemoErr] = useState<string | null>(null);
+  // Open: a key per opening, so a reopen during the exit animation mounts a fresh dialog. Closed: null.
+  const [connect, setConnect] = useState<number | null>(null);
+  const connectBtn = useRef<HTMLButtonElement>(null);
+  const [resetting, setResetting] = useState(false);
+  // Reset demo replays the story on the server. The refusal it records, in seq (from, to], only sets the scene:
+  // it is left out of the feed, the counter and the canvas.
+  const [scene, setScene] = useState({ from: 0, to: 0 });
   // Guided tour: the step on screen (null when closed) and what to put back when it closes.
   const [tour, setTour] = useState<number | null>(null);
   const [tourFocus, setTourFocus] = useState(false);
@@ -62,8 +70,9 @@ export function Dashboard() {
   // Play clears the previous run's path, so the new refusal draws on a clean graph. A new run from
   // any viewer (a newer parse event) clears it too.
   const [staleHit, setStaleHit] = useState<number | null>(null);
-  const lastParse = useMemo(() => live.events.reduce((m, e) => (e.kind === "parse" && e.seq > m ? e.seq : m), -1), [live.events]);
-  const hit = live.hit && live.hit.id !== staleHit && live.hit.id > lastParse ? live.hit : null;
+  const events = useMemo(() => live.events.filter((e) => !(e.kind === "conflict" && e.seq > scene.from && e.seq <= scene.to)), [live.events, scene]);
+  const lastParse = useMemo(() => events.reduce((m, e) => (e.kind === "parse" && e.seq > m ? e.seq : m), -1), [events]);
+  const hit = live.hit && live.hit.id !== staleHit && live.hit.id > lastParse && live.hit.id > scene.to ? live.hit : null;
   // The refusal's results land on the impact frame, not when the packet leaves.
   const [landed, setLanded] = useState<number | null>(null);
   const shown = hit && (hit.quiet || landed === hit.id) ? hit : null;
@@ -80,19 +89,19 @@ export function Dashboard() {
   const agents = useMemo(() => (live.graph?.nodes ?? []).filter((n) => n.kind === "agent"), [live.graph]);
   const files = useMemo(() => (live.graph?.nodes ?? []).filter((n) => n.kind === "file").map((n) => n.id).sort(), [live.graph]);
   const imports = useMemo(() => (live.graph?.edges ?? []).filter((e) => e.kind === "IMPORTS").length, [live.graph]);
-  const conflicts = useMemo(() => splitRuns(live.events).latest.filter((e) => e.kind === "conflict").length, [live.events]);
+  const conflicts = useMemo(() => splitRuns(events).latest.filter((e) => e.kind === "conflict").length, [events]);
   // The counter ticks with the impact, not with the feed row.
   const collisions = Math.max(0, conflicts - (hit && !hit.quiet && landed !== hit.id ? 1 : 0));
-  const blocked = useMemo(() => blockedBy(shown, live.events), [shown, live.events]);
+  const blocked = useMemo(() => blockedBy(shown, events), [shown, events]);
   // Rings follow the paced feed: a fresh run shows only the claims its beats have reached so far.
   const shownClaims = useMemo(() => {
-    const { latest } = splitRuns(live.events);
+    const { latest } = splitRuns(events);
     const run = latest.find((e) => e.kind === "parse")?.seq ?? 0;
     if (run <= live.seqAtLoad) return live.claims;
     return live.claims.filter((c) =>
       latest.some((e) => e.kind === "claim" && e.agentId === c.agent && ((e.payload as { paths?: string[] } | null)?.paths ?? []).includes(c.path)),
     );
-  }, [live.events, live.claims, live.seqAtLoad]);
+  }, [events, live.claims, live.seqAtLoad]);
 
   // WCC groups, biggest first so G1 is the one that must queue the most.
   const groups = useMemo(() => {
@@ -173,7 +182,7 @@ export function Dashboard() {
   }, [shown?.id, demo?.checkMs]);
 
   const playDemo = async () => {
-    if (playing) return;
+    if (playing || resetting) return;
     setPlaying(true);
     setSelected(null);
     setStaleHit(live.hit?.id ?? null);
@@ -197,6 +206,54 @@ export function Dashboard() {
     }
   };
 
+  /**
+   * Back to the opening scene: Agent A holds session.ts, B is not blocked. The server replays the story
+   * (single flight, same route as Play); the refusal it records is history, so the caption, the tiles and
+   * the path clear. In replay mode only the screen resets.
+   */
+  const resetDemo = async () => {
+    if (playing || resetting) return;
+    setResetting(true);
+    const prev = scene;
+    const id = `reset-${Date.now()}`;
+    // A Play still pacing its refusal leaves a running demo- task; the reset hides that refusal, so drop it too.
+    setTasks((t) => [
+      ...t.filter((x) => !x.id.startsWith("hit-") && !(x.id.startsWith("demo-") && x.status === "running")).slice(-3),
+      { id, label: "Resetting the demo", status: "running" },
+    ]);
+    try {
+      const before = Math.max(live.hit?.id ?? 0, ...live.events.map((e) => e.seq));
+      if (live.status === "replay") setScene({ from: 0, to: before });
+      else {
+        // Hide whatever lands while the server replays; the real end is known once it answers.
+        setScene({ from: before, to: Infinity });
+        await api.demo().catch((e) => {
+          setScene(prev);
+          throw e;
+        });
+        const end = Math.max(before, (await api.health().catch(() => null))?.seq ?? 0);
+        // The scene is not a story to watch: show it at once, so a Play right after does not queue behind it.
+        await live.flush(end);
+        setScene({ from: before, to: end });
+      }
+      setSelected(null);
+      setDemo(null);
+      setDemoHit(null);
+      setDemoErr(null);
+      setLanded(null);
+      armed.current = false;
+      setWaiting(false);
+      setTasks((t) => t.map((x) => (x.id === id ? { ...x, status: "done", label: "Demo reset", detail: `Agent A holds ${name(A_FILE)}. B is free.` } : x)));
+    } catch (e) {
+      const err = e as ApiError;
+      const detail =
+        err.status === 429 ? `Too many resets. Try again in ${err.retryAfter ?? 60} s.` : err.message;
+      setTasks((t) => t.map((x) => (x.id === id ? { ...x, status: "error", label: "Not reset", detail } : x)));
+    } finally {
+      setResetting(false);
+    }
+  };
+
   // /app?play=1 plays once, as soon as the first data is on screen, then drops the param.
   const autoPlayed = useRef(false);
   useEffect(() => {
@@ -217,6 +274,7 @@ export function Dashboard() {
   const startTour = (focus = false) => {
     if (tour != null) return;
     tourSaved.current = { tab, batch: batchMode };
+    setConnect(null);
     tourPlayed.current = false;
     setTryOpen(false);
     setSelected(null);
@@ -402,7 +460,7 @@ export function Dashboard() {
                 <circle cx="17" cy="6" r="3" fill="var(--color-signal)" />
                 <path d="M7.5 14 L14.5 8" stroke="var(--fg)" strokeWidth="1.6" strokeLinecap="round" />
               </svg>
-              Switchboard
+              <span className="sr-only sm:not-sr-only">Switchboard</span>
             </a>
             <span className="hidden truncate text-xs text-[var(--muted)] xl:inline">
               Live demo: two scripted agents on a {files.length || 35}-file repo
@@ -413,10 +471,25 @@ export function Dashboard() {
                   live.status === "live" ? "bg-[var(--fg)]" : live.status === "offline" ? "bg-[var(--color-signal)]" : "bg-[var(--muted)]"
                 }`}
               />
-              <span className="hidden sm:inline">{STATUS_LABEL[live.status]}</span>
+              <span className="hidden sm:inline md:hidden lg:inline">{STATUS_LABEL[live.status]}</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              ref={connectBtn}
+              type="button"
+              onClick={() => {
+                if (tour != null) endTour();
+                setTryOpen(false);
+                setConnect(Date.now());
+              }}
+              aria-haspopup="dialog"
+              aria-expanded={connect != null}
+              aria-label="Connect your agent"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 lg:px-3"
+            >
+              <PlugsConnected size={14} /> <span className="hidden lg:inline">Connect</span>
+            </button>
             <button
               type="button"
               onClick={() => (tour == null ? startTour(true) : endTour())}
@@ -439,6 +512,17 @@ export function Dashboard() {
             >
               <Rows size={14} /> <span className="hidden md:inline">Parallel batches</span>
             </button>
+            <button
+              type="button"
+              onClick={resetDemo}
+              disabled={playing || resetting || !live.graph}
+              aria-label="Reset demo"
+              title="Back to the start: Agent A holds session.ts, B is free"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 disabled:opacity-50 lg:px-3"
+            >
+              <ArrowCounterClockwise size={14} className={resetting ? "motion-safe:animate-spin [animation-direction:reverse]" : undefined} />{" "}
+              <span className="hidden lg:inline">{resetting ? "Resetting" : "Reset demo"}</span>
+            </button>
             <div data-tour="actions" className="flex items-center gap-2">
             <button
               ref={tryBtn}
@@ -454,7 +538,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={playDemo}
-              disabled={playing}
+              disabled={playing || resetting}
               className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full bg-[var(--color-signal)] px-3.5 py-1.5 text-xs font-medium text-[#1a0d08] shadow-[0_0_24px_-6px_var(--color-signal)] transition hover:brightness-110 active:scale-95 disabled:opacity-70"
             >
               <Play size={14} weight="fill" />
@@ -477,6 +561,13 @@ export function Dashboard() {
                 setSelected(f);
               }}
             />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {connect != null && (
+            // Only this opening may close: a panel still exiting can fire a late native close event.
+            <ConnectPanel key={connect} trigger={connectBtn} onClose={() => setConnect((k) => (k === connect ? null : k))} />
           )}
         </AnimatePresence>
 
@@ -536,7 +627,7 @@ export function Dashboard() {
                   setHoverAgent(li?.getAttribute("data-agent") ?? null);
                 }}
               >
-                <AgentsPanel agents={agents} claims={shownClaims} events={live.events} status={live.status} hit={fresh ? null : shown} onPick={setSelected} onPath={onPath} />
+                <AgentsPanel agents={agents} claims={shownClaims} events={events} status={live.status} hit={fresh ? null : shown} onPick={setSelected} onPath={onPath} />
               </div>
             </div>
           </aside>
@@ -643,9 +734,9 @@ export function Dashboard() {
             </div>
             <div id="panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto">
               <motion.div key={tab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12, ease: EASE_OUT }}>
-                  {tab === "feed" && <Feed events={live.events} status={live.status} cypher={cypher} onPath={onPath} />}
+                  {tab === "feed" && <Feed events={events} status={live.status} cypher={cypher} onPath={onPath} />}
                   {tab === "inspect" && <Inspect path={selected} claims={live.claims} blast={blast} cypher={cypher} />}
-                  {tab === "memory" && <Memory decisions={live.decisions} events={live.events} tasks={briefTasks} />}
+                  {tab === "memory" && <Memory decisions={live.decisions} events={events} tasks={briefTasks} />}
                   {tab === "brief" && <Brief tasks={briefTasks} claims={live.claims} />}
               </motion.div>
             </div>

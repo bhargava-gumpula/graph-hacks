@@ -121,10 +121,16 @@ export async function loadReplay(): Promise<Replay> {
   return r;
 }
 
+/** A failed API call: the HTTP status, and on a 429 the seconds the server asks us to wait. */
+export type ApiError = Error & { status?: number; retryAfter?: number };
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
+    const err: ApiError = new Error(body.error ?? `HTTP ${res.status}`);
+    err.status = res.status;
+    err.retryAfter = Number(res.headers.get("retry-after")) || undefined;
+    throw err;
   }
   return (await res.json()) as T;
 }

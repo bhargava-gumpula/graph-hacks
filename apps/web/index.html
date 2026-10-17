@@ -8,6 +8,13 @@
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f6f7" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Installable app: Chrome/Edge read the manifest (no service worker needed); Safari "Add to Dock" reads it plus the apple-* tags. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Switchboard" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <!--
       Share cards. SITE_URL = https://switchboard-agents.xyz
       Crawlers need absolute URLs, so og:url, og:image and twitter:image spell it out.

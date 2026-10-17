@@ -44,7 +44,7 @@ export function Story() {
       aria-label="How a collision happens"
     >
       <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
-        <div className="sticky top-16 z-10 order-first -mx-5 bg-[var(--bg)]/90 px-5 py-4 backdrop-blur-sm md:-mx-8 md:px-8 lg:order-last lg:mx-0 lg:flex lg:h-[calc(100dvh-4rem)] lg:items-center lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+        <div className="sticky top-16 z-10 order-first -mx-5 bg-[var(--bg)]/90 px-5 py-4 backdrop-blur-sm md:-mx-8 md:px-8 max-lg:after:pointer-events-none max-lg:after:absolute max-lg:after:inset-x-0 max-lg:after:top-full max-lg:after:h-16 max-lg:after:bg-gradient-to-b max-lg:after:from-[var(--bg)] max-lg:after:to-transparent lg:order-last lg:mx-0 lg:flex lg:h-[calc(100dvh-4rem)] lg:items-center lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
           <div className="w-full">
             <StoryGraph stage={stage} />
           </div>
@@ -59,8 +59,8 @@ export function Story() {
                 className="max-w-md"
                 aria-current={stage === i ? "step" : undefined}
               >
-                <h2 className="text-3xl font-semibold leading-tight tracking-tight md:text-4xl">{s.title}</h2>
-                <p className="mt-4 text-base leading-relaxed text-[var(--muted)] md:text-lg">{s.body}</p>
+                <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">{s.title}</h2>
+                <p className="mt-4 text-pretty text-base leading-relaxed text-[var(--muted)] md:text-lg">{s.body}</p>
               </motion.div>
             </li>
           ))}

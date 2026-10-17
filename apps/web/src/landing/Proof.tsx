@@ -26,7 +26,7 @@ function Flow({ value, digits = 0 }: { value: number; digits?: number }) {
 function useCell(i: number) {
   const reduce = useReducedMotion();
   return {
-    initial: reduce ? false : { opacity: 0, scale: 0.85 },
+    initial: reduce ? false : { opacity: 0, scale: 0.95 },
     whileInView: { opacity: 1, scale: 1 },
     viewport: { once: true, amount: 0.8 },
     transition: { duration: 0.5, delay: i * STAGGER, ease: EASE },
@@ -44,7 +44,7 @@ function Cell({ run, i }: { run: string; i: number }) {
   const cell = CELLS[run] ?? CELLS.landed!;
   const anim = useCell(i);
   return (
-    <motion.li {...anim} className={`flex h-7 items-center justify-center gap-0.5 rounded-[4px] font-mono text-[10px] ${cell.cls}`}>
+    <motion.li {...anim} className={`flex h-7 items-center justify-center gap-0.5 rounded-[4px] font-mono text-[11px] ${cell.cls}`}>
       {cell.text}
       {run === "tsc-fail" && <X size={10} weight="bold" aria-hidden />}
       {run === "ok" && <Check size={10} weight="bold" aria-hidden />}
@@ -104,8 +104,8 @@ export function Proof() {
 
   return (
     <section id="proof" className="mx-auto max-w-7xl px-5 py-20 md:px-8 md:py-28">
-      <h2 className="max-w-2xl text-3xl font-semibold leading-tight tracking-tight md:text-5xl">Same edit, {n} runs each way.</h2>
-      <p className="mt-5 max-w-[60ch] text-lg leading-relaxed text-[var(--muted)]">
+      <h2 className="max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-5xl">Same edit, {n} runs each way.</h2>
+      <p className="mt-5 max-w-[60ch] text-pretty text-lg leading-relaxed text-[var(--muted)]">
         Agent {bench.claim.agent} holds <File>{bench.claim.file}</File>; Agent {bench.edit.agent} edits <File>{bench.edit.file}</File>
         {hops ? `, ${hops} import hops away` : ""}. Each edit passes on its own. We merge both and run the real TypeScript compiler.
       </p>
@@ -138,14 +138,14 @@ export function Proof() {
             <span className="text-3xl text-[var(--muted)]"> ms</span>
           </p>
           <p className="mt-3 text-[var(--muted)]">
-            range {bench.checkMsMin}–{bench.checkMsMax} ms over {n} runs
+            range {bench.checkMsMin} to {bench.checkMsMax} ms over {n} runs
           </p>
           <Bars samples={bench.checkMsSamples} />
         </div>
       </div>
 
       <div className="mt-20 border-t border-[var(--border)] pt-12">
-        <h3 className="max-w-2xl text-2xl font-semibold leading-tight tracking-tight md:text-3xl">Which collisions can each check see?</h3>
+        <h3 className="max-w-2xl text-balance text-2xl font-semibold leading-tight tracking-tight md:text-3xl">Which collisions can each check see?</h3>
         <p className="mt-4 max-w-[60ch] leading-relaxed text-[var(--muted)]">
           Every pair of the demo repo&apos;s {demo.files} files, counted from the graph.
         </p>
@@ -163,10 +163,10 @@ export function Proof() {
           <span className={`font-semibold ${SIGNAL}`}>
             <Flow value={demo.hidden} />
           </span>{" "}
-          of {demo.graph} dependent pairs are 2–3 hops apart: a one-hop checker misses them, and a file lock misses every one.
+          of {demo.graph} dependent pairs are 2 or 3 hops apart: a one-hop checker misses them, and a file lock misses every one.
         </p>
         <p className="mt-4 max-w-[60ch] leading-relaxed text-[var(--muted)]">
-          The same census on this project&apos;s own web app ({real.files} files): {real.hidden} of {real.graph} dependent pairs are 2–3 hops apart,
+          The same census on this project&apos;s own web app ({real.files} files): {real.hidden} of {real.graph} dependent pairs are 2 or 3 hops apart,
           and a file lock sees none of the {fmt(real.pairs)} pairs.
         </p>
       </div>

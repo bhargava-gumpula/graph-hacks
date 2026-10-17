@@ -30,28 +30,35 @@ export function Hero() {
   }, [reduce]);
 
   const rise = (delay: number) =>
-    reduce ? {} : { initial: { opacity: 0, y: 18 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.8, delay, ease: EASE } };
+    reduce
+      ? {}
+      : {
+          initial: { opacity: 0, transform: "translateY(18px)" },
+          animate: { opacity: 1, transform: "translateY(0px)" },
+          transition: { duration: 0.6, delay, ease: EASE },
+        };
 
   return (
     <section className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-7xl items-center gap-10 px-5 pb-16 pt-12 md:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-6 lg:pt-16">
       <div className="max-w-xl">
-        <h1 ref={h1} className="text-4xl font-semibold leading-[1.05] tracking-tighter md:text-5xl lg:text-6xl">
+        <h1 ref={h1} className="text-balance text-4xl font-semibold leading-[1.05] tracking-tighter md:text-5xl lg:text-6xl">
           Coding agents can't see each other. <span className="text-[var(--muted)]">Switchboard can.</span>
         </h1>
-        <motion.p {...rise(0.12)} className="mt-6 max-w-[46ch] text-lg leading-relaxed text-[var(--muted)]">
+        {/* Headline first, then the subtitle, then the CTAs: each enters as the one before it settles. */}
+        <motion.p {...rise(0.55)} className="mt-6 max-w-[46ch] text-pretty text-lg leading-relaxed text-[var(--muted)]">
           One FalkorDB graph checks every edit against your code's real dependencies, and stops two agents before they collide.
         </motion.p>
-        <motion.div {...rise(0.24)} className="mt-9 flex flex-wrap items-center gap-3">
+        <motion.div {...rise(0.65)} className="mt-9 flex flex-wrap items-center gap-3">
           <a
             href="#story"
-            className="group inline-flex items-center gap-2 rounded-full bg-[var(--color-signal)] px-5 py-3 text-sm font-medium text-[#1a0d08] transition active:scale-[0.98]"
+            className="group inline-flex items-center gap-2 rounded-full bg-[var(--color-signal)] px-5 py-3 text-sm font-medium text-[#1a0d08] transition-[scale,filter] duration-150 ease-snap hover:brightness-110 active:scale-[0.98]"
           >
             See it catch one
             <ArrowRight size={16} weight="bold" className="transition-transform group-hover:translate-x-0.5" />
           </a>
           <a
             href="/app?play=1"
-            className="inline-flex items-center rounded-full border border-[var(--border)] px-5 py-3 text-sm font-medium transition hover:border-[var(--muted)] active:scale-[0.98]"
+            className="inline-flex items-center rounded-full border border-[var(--border)] px-5 py-3 text-sm font-medium transition-[scale,border-color] duration-150 ease-snap hover:border-[var(--muted)] active:scale-[0.98]"
           >
             Open the live graph
           </a>

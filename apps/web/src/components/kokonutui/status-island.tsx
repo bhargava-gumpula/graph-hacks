@@ -329,7 +329,8 @@ export function StatusIsland({
         <output aria-live="polite" className="sr-only">
           {announcement}
         </output>
-        <AnimatePresence>
+        {/* popLayout takes the leaving pill out of flow, so the swap overlaps in place instead of stacking. */}
+        <AnimatePresence initial={false} mode="popLayout">
           {current ? (
             <motion.div
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}

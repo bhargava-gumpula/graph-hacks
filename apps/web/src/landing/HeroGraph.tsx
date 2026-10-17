@@ -9,18 +9,25 @@ import { pulse } from "./AsciiField";
 const W = 640;
 const H = 520;
 const EXPO = [0.16, 1, 0.3, 1] as const;
+/** power4.out: the hit's own deceleration (cut-the-curve §3, the entry half after the cut). */
+const IMPACT_OUT = [0.25, 1, 0.5, 1] as const;
 const SIGNAL_TEXT = "var(--signal-text, var(--color-signal))";
 const HOPS = CONFLICT_PATH.length - 1;
-/** How long the verdict holds before the story plays again, while the hero stays in view. */
+/** How long the verdict holds before the story plays again (once), while the hero stays in view. */
 const REPLAY_MS = 14000;
+/** The packet's flight. The camera pushes in over exactly this time, so it stops dead with the hit. */
+const TRAVEL_S = 1;
+/** Impact to verdict: the core flash, then stillness before the result (motion-doctrine: 0.3-0.75s comma). */
+const VERDICT_AFTER_MS = 850;
 
 /**
  * The hero, as one causal chain (motion-doctrine): the graph draws in, A takes
  * session.ts, B reaches for LoginForm.tsx, B's claim travels the real import path
  * as a packet, hits A's claim, the field shakes, a beat of stillness, then the refusal.
- * Steps: -1 waiting to be seen · 0 draw · 1 A claims · 2 B arrives · 3 packet travelling · 4 impact · 5 verdict
+ * Steps: -1 waiting to be seen · 0 draw · 1 A claims · 2 B arrives · 3 packet travelling · 4 impact · 5 verdict.
+ * Steps 0-3 are timed; the impact fires when the packet lands, and the verdict follows the impact.
  */
-const BEATS = [0, 1200, 2100, 2800, 4050, 4600];
+const BEATS = [0, 1200, 2100, 2800];
 
 export function HeroGraph() {
   const reduce = useReducedMotion();
@@ -28,6 +35,9 @@ export function HeroGraph() {
   const [step, setStep] = useState(reduce ? 5 : -1);
   const [run, setRun] = useState(0);
   const [hover, setHover] = useState<string | null>(null);
+  /** How many hops of the conflict path the packet has reached; hops light as it gets there. */
+  const [reached, setReached] = useState(0);
+  const lastCardClose = useRef(-Infinity);
   const figRef = useRef<HTMLDivElement>(null);
   // In view = most of the graph is above the bottom fifth of the screen, so on a phone (where the
   // hero text pushes the graph to the fold) the story waits until the reader scrolls to it.
@@ -43,11 +53,10 @@ export function HeroGraph() {
   const routeD = route(pathNodes);
   const a = nodes.get(HELD)!;
   const b = nodes.get(WANTED)!;
-  const focus = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const drawn = step >= 0;
 
-  // The story plays only while the figure is on screen: it starts when half of it is visible,
-  // replays on re-entry, and plays again REPLAY_MS after the verdict while it stays in view.
+  // The story plays only while the figure is on screen: it starts when half of it is visible
+  // and replays on re-entry. The route is not reset here, so on a replay it fades out at full length.
   useEffect(() => {
     if (reduce) {
       travelled.set(1);
@@ -55,32 +64,58 @@ export function HeroGraph() {
     }
     if (!inView) return;
     setStep(0);
-    travelled.set(0);
+    setReached(0);
     const timers = BEATS.slice(1).map((t, i) => setTimeout(() => setStep(i + 1), t));
-    timers.push(setTimeout(() => setRun((r) => r + 1), BEATS[5] + REPLAY_MS));
     return () => timers.forEach(clearTimeout);
   }, [run, reduce, travelled, inView]);
 
   // Step 3: B's claim travels the import path as a packet (motion values, no re-renders).
+  // Each hop lights as the packet reaches it, and the impact fires on the frame it lands.
   useEffect(() => {
     if (step !== 3 || !routeRef.current) return;
-    const c = travel(routeRef.current, (x, y, v) => {
-      px.set(x);
-      py.set(y);
-      travelled.set(v);
-    });
-    return () => c.stop();
+    const el = routeRef.current;
+    const hopAt = hopFractions(el, pathNodes);
+    let live = true;
+    travelled.set(0);
+    const c = travel(
+      el,
+      (x, y, v) => {
+        px.set(x);
+        py.set(y);
+        travelled.set(v);
+        const k = hopAt.filter((f) => v >= f).length - 1;
+        setReached((r) => (k > r ? k : r));
+      },
+      TRAVEL_S,
+    );
+    c.then(() => live && setStep(4));
+    return () => {
+      live = false;
+      c.stop();
+    };
   }, [step, px, py, travelled]);
 
-  // Step 4: impact. Send the shockwave into the ASCII field at session.ts.
+  // Step 4: impact. Send the shockwave into the ASCII field at session.ts, then hold still before the verdict.
   useEffect(() => {
     if (step !== 4 || !svgRef.current) return;
     travelled.set(1);
+    setReached(HOPS);
     const r = svgRef.current.getBoundingClientRect();
     pulse(r.left + (a.x / W) * r.width, r.top + (a.y / H) * r.height);
+    const t = setTimeout(() => setStep(5), VERDICT_AFTER_MS);
+    return () => clearTimeout(t);
   }, [step, a.x, a.y, travelled]);
 
-  const camera = step >= 3 && step < 5 && !reduce;
+  // Play the story once more REPLAY_MS after the verdict, then rest on the verdict frame (the replay button stays).
+  useEffect(() => {
+    if (step !== 5 || reduce || !inView || run >= 1) return;
+    const t = setTimeout(() => setRun((r) => r + 1), REPLAY_MS);
+    return () => clearTimeout(t);
+  }, [step, reduce, inView, run]);
+
+  // The camera pushes in on session.ts while the packet flies (linear, so it is still moving on the impact
+  // frame and stops dead with the hit), holds through the comma, and pulls back as the verdict arrives.
+  const camera = (step === 3 || step === 4) && !reduce;
   const hovered = hover ? nodes.get(hover) : undefined;
 
   return (
@@ -99,9 +134,9 @@ export function HeroGraph() {
           </title>
 
           <motion.g
-            style={{ transformOrigin: `${focus.x}px ${focus.y}px` }}
-            animate={{ scale: camera ? 1.07 : 1 }}
-            transition={{ duration: 1.4, ease: EXPO }}
+            style={{ originX: a.x / W, originY: a.y / H, transformBox: "view-box" }}
+            animate={{ scale: camera ? 1.08 : 1 }}
+            transition={camera ? { duration: TRAVEL_S, ease: "linear" } : { duration: 0.6, ease: EXPO }}
           >
             {FOLDERS.map((f, i) => (
               <motion.text
@@ -109,7 +144,7 @@ export function HeroGraph() {
                 x={colX(i)}
                 y={H - 8}
                 textAnchor="middle"
-                className="fill-[var(--muted)] font-mono text-[11px]"
+                className="fill-[var(--muted)] font-mono text-[18px] sm:text-[13px] lg:text-[11px]"
                 initial={reduce ? false : { opacity: 0, y: 14 }}
                 animate={{ opacity: drawn ? 1 : 0, y: drawn ? 0 : 14 }}
                 transition={{ duration: 0.7, delay: reduce ? 0 : i * 0.08, ease: EXPO }}
@@ -153,16 +188,22 @@ export function HeroGraph() {
             {[...nodes.values()].map((n, i) => {
               const hop = CONFLICT_PATH.indexOf(n.id);
               const onPath = hop >= 0;
-              const lit = onPath && step >= 3;
+              const lit = onPath && (step >= 4 || (step === 3 && hop <= reached));
               const showLabel = (onPath && step >= 2) || hover === n.id;
               return (
                 <g
                   key={n.id}
                   data-node={n.id}
                   onMouseEnter={() => setHover(n.id)}
-                  onMouseLeave={() => setHover(null)}
+                  onMouseLeave={() => {
+                    lastCardClose.current = performance.now();
+                    setHover(null);
+                  }}
                   onFocus={() => setHover(n.id)}
-                  onBlur={() => setHover(null)}
+                  onBlur={() => {
+                    lastCardClose.current = performance.now();
+                    setHover(null);
+                  }}
                   tabIndex={onPath ? 0 : undefined}
                   aria-label={onPath ? describe(n, nodes, edges).join(". ") : undefined}
                   className="outline-none focus-visible:outline-none"
@@ -193,23 +234,25 @@ export function HeroGraph() {
               stroke="var(--color-signal)"
               strokeWidth={1.5}
               initial={false}
-              animate={step >= 1 ? { r: 13, opacity: 1 } : { r: 30, opacity: 0 }}
-              transition={{ duration: reduce ? 0 : 0.55, ease: EXPO }}
+              animate={
+                step === 4 && !reduce ? { r: [13, 18, 13], opacity: 1 } : step >= 1 ? { r: 13, opacity: 1 } : { r: 30, opacity: 0 }
+              }
+              transition={
+                step === 4 ? { duration: 0.4, times: [0, 0.2, 1], ease: IMPACT_OUT } : { duration: reduce ? 0 : 0.55, ease: EXPO }
+              }
             />
 
-            {/* Impact burst where B's claim meets A's. */}
+            {/* Impact: a core flash where B's claim meets A's. The ASCII field carries the shockwave itself. */}
             <AnimatePresence>
               {step === 4 && (
                 <motion.circle
                   cx={a.x}
                   cy={a.y}
-                  fill="none"
-                  stroke="var(--color-signal)"
-                  strokeWidth={2}
+                  fill="var(--color-signal)"
                   initial={{ r: 8, opacity: 1 }}
-                  animate={{ r: 70, opacity: 0 }}
+                  animate={{ r: 24, opacity: 0 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.7, ease: [0.2, 0.7, 0.3, 1] }}
+                  transition={{ duration: 0.3, ease: IMPACT_OUT }}
                 />
               )}
             </AnimatePresence>
@@ -219,7 +262,7 @@ export function HeroGraph() {
             {step === 3 && <motion.circle cx={px} cy={py} r={6} fill="var(--color-signal)" />}
           </motion.g>
 
-          <AgentChip x={a.x - 24} y={a.y - 56} anchor="start" show={step >= 1} label="Agent A" detail="editing session.ts" from={40} reduce={!!reduce} />
+          <AgentChip x={a.x - 24} y={a.y - 56} anchor="start" show={step >= 1} label="Agent A" detail="editing session.ts" from={-40} reduce={!!reduce} />
           <AgentChip
             x={b.x}
             y={b.y + 24}
@@ -236,7 +279,14 @@ export function HeroGraph() {
 
         {/* Hover or focus a node: what the graph knows about it. */}
         <AnimatePresence>
-          {hovered && <NodeCard key={hovered.id} n={hovered} lines={describe(hovered, nodes, edges)} reduce={!!reduce} />}
+          {hovered && (
+            <NodeCard
+              key={hovered.id}
+              n={hovered}
+              lines={describe(hovered, nodes, edges)}
+              instant={!!reduce || performance.now() - lastCardClose.current < 300}
+            />
+          )}
         </AnimatePresence>
       </div>
 
@@ -254,8 +304,8 @@ export function HeroGraph() {
                 <GlitchText
                   as="span"
                   text="Edit refused."
-                  trigger="idle"
-                  intensity="strong"
+                  trigger="mount"
+                  intensity="subtle"
                   accent="var(--color-signal)"
                   className="font-medium text-[var(--signal-text,var(--color-signal))] dark:text-[var(--signal-text,var(--color-signal))]"
                 />{" "}
@@ -301,11 +351,24 @@ function NodeLabel({ n, lit, reduce }: { n: LaidNode; lit: boolean; reduce: bool
       x={x}
       y={y}
       textAnchor={anchor}
-      className={`font-mono text-[11px] ${lit ? "fill-[var(--fg)]" : "fill-[var(--muted)]"}`}
+      className={`font-mono text-[20px] sm:text-[14px] lg:text-[11px] ${lit ? "fill-[var(--fg)]" : "fill-[var(--muted)]"}`}
     >
       {n.name}
     </motion.text>
   );
+}
+
+/** Where each node of the path sits along the route, as a share of its length (nearest of 200 samples). */
+function hopFractions(el: SVGPathElement, path: { x: number; y: number }[]) {
+  const len = el.getTotalLength();
+  const samples = Array.from({ length: 201 }, (_, i) => el.getPointAtLength((i / 200) * len));
+  return path.map((n) => {
+    let best = 0;
+    samples.forEach((p, i) => {
+      if (Math.hypot(p.x - n.x, p.y - n.y) < Math.hypot(samples[best].x - n.x, samples[best].y - n.y)) best = i;
+    });
+    return best / 200;
+  });
 }
 
 /** What the hover card says about a node, from the same graph the check runs on. */
@@ -322,7 +385,7 @@ function describe(n: LaidNode, nodes: Map<string, LaidNode>, edges: { source: La
 }
 
 /** An HTML card over the SVG, placed by converting the node's SVG coordinates to percentages of the figure. */
-function NodeCard({ n, lines, reduce }: { n: LaidNode; lines: string[]; reduce: boolean }) {
+function NodeCard({ n, lines, instant }: { n: LaidNode; lines: string[]; instant: boolean }) {
   const [title, ...rest] = lines;
   const col = FOLDERS.indexOf(n.folder as (typeof FOLDERS)[number]);
   const tx = col === 0 ? "-14px" : col === FOLDERS.length - 1 ? "calc(-100% + 14px)" : "-50%";
@@ -336,10 +399,13 @@ function NodeCard({ n, lines, reduce }: { n: LaidNode; lines: string[]; reduce: 
     >
       <motion.div
         role="status"
-        initial={reduce ? false : { opacity: 0, y: below ? -6 : 6, scale: 0.97 }}
+        style={{
+          transformOrigin: `${col === 0 ? "14px" : col === FOLDERS.length - 1 ? "calc(100% - 14px)" : "50%"} ${below ? "0%" : "100%"}`,
+        }}
+        initial={instant ? false : { opacity: 0, y: below ? -6 : 6, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, transition: { duration: 0.12 } }}
-        transition={{ duration: 0.28, ease: EXPO }}
+        transition={{ duration: 0.16, ease: EXPO }}
         className={`w-max max-w-[14rem] rounded-[var(--radius-panel)] border bg-[var(--surface)]/95 px-3.5 py-2.5 font-mono text-[11px] leading-relaxed shadow-lg shadow-black/20 backdrop-blur-sm sm:max-w-[16rem] ${
           held ? "border-[var(--color-signal)]/50" : "border-[var(--border)]"
         }`}
@@ -375,6 +441,7 @@ function AgentChip(props: {
   const x = props.anchor === "start" ? props.x - 14 : props.x - w + 14;
   return (
     <motion.g
+      className="max-sm:hidden"
       initial={false}
       animate={
         props.shake && !props.reduce

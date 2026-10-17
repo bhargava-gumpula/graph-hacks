@@ -58,14 +58,31 @@ export function Query() {
   const seen = new Set<Key>();
   return (
     <section className="mx-auto max-w-7xl px-5 py-20 md:px-8 md:py-28">
-      <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <div className="min-w-0">
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One query decides.</h2>
-          <p className="mt-5 max-w-[52ch] text-lg leading-relaxed text-[var(--muted)]">
-            The check is one Cypher query in FalkorDB: three path matches joined by UNION ALL. Point at a line to see what it does.
-          </p>
+      {/* One column (the hero, story and breakdown are already splits): the note stays pinned right above the code it explains. */}
+      <div className="max-w-4xl">
+        <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One query decides.</h2>
+        <p className="mt-5 max-w-[52ch] text-pretty text-lg leading-relaxed text-[var(--muted)]">
+          The check is one Cypher query in FalkorDB: three path matches joined by UNION ALL. Point at a line to see what it does.
+        </p>
+        <div className="sticky top-16 z-10 -mx-5 mt-8 bg-[var(--bg)]/90 px-5 py-4 backdrop-blur-sm after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-6 after:bg-gradient-to-b after:from-[var(--bg)]/90 after:to-transparent md:-mx-8 md:px-8">
+          {/* Fixed height (the longest note), so swapping notes never moves the code under the pointer. */}
+          <div className="relative min-h-[9rem] md:min-h-[7.5rem] lg:min-h-[6rem]" aria-live="polite">
+            {/* popLayout: the new note enters while the old one leaves, so it is readable in about 150 ms. */}
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.p
+                key={active}
+                initial={reduce ? false : { opacity: 0, transform: "translateY(4px)" }}
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.1 } }}
+                transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
+                className="text-base font-medium leading-snug tracking-tight md:text-xl"
+              >
+                {NOTES[active]}
+              </motion.p>
+            </AnimatePresence>
+          </div>
         </div>
-        <pre className="order-last min-w-0 overflow-x-auto rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)] p-4 font-mono text-[12px] leading-6 md:p-5 md:text-[13px] lg:order-none lg:col-start-1 lg:row-start-2">
+        <pre className="mt-2 min-w-0 overflow-x-auto rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)] p-4 font-mono text-[12px] leading-6 md:p-5 md:text-[13px]">
           {PARTS.map((p, i) => {
             const first = !seen.has(p.k);
             seen.add(p.k);
@@ -84,22 +101,6 @@ export function Query() {
             );
           })}
         </pre>
-        <div className="lg:col-start-2 lg:row-start-2">
-          <div className="min-h-[11rem] lg:sticky lg:top-32 lg:min-h-0" aria-live="polite">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.p
-                key={active}
-                initial={reduce ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduce ? undefined : { opacity: 0, y: -8 }}
-                transition={{ duration: 0.25 }}
-                className="text-xl font-medium leading-snug tracking-tight md:text-2xl"
-              >
-                {NOTES[active]}
-              </motion.p>
-            </AnimatePresence>
-          </div>
-        </div>
       </div>
     </section>
   );

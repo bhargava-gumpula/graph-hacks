@@ -26,8 +26,9 @@ import { cn } from "@/lib/utils";
  * - `idle`: a burst every 4-9s while on screen, plus on text changes.
  * - `hover`: a burst on pointer enter (or tap), plus on text changes.
  * - `change`: only text changes glitch; the burst is the transition.
+ * - `mount`: one burst the first time it is on screen, then never again (an arrival, not a loop).
  */
-export type GlitchTextTrigger = "idle" | "hover" | "change";
+export type GlitchTextTrigger = "idle" | "hover" | "change" | "mount";
 
 export type GlitchTextIntensity = "subtle" | "medium" | "strong";
 
@@ -38,7 +39,7 @@ export interface GlitchTextProps {
   trigger?: GlitchTextTrigger;
   /** Band count, displacement and channel split. Defaults to `medium`. */
   intensity?: GlitchTextIntensity;
-  /** Color of the leading channel during a burst. The other one is cyan. */
+  /** Color of the leading channel during a burst. The other one is the page's foreground (one accent only). */
   accent?: string;
   className?: string;
   /** Root element. A span by default, so it also fits inside a heading. */
@@ -67,7 +68,8 @@ const INTENSITY: Record<GlitchTextIntensity, Settings> = {
 const MAX_BANDS = 5;
 const BAND_IDS = Array.from({ length: MAX_BANDS }, (_, i) => `band-${i}`);
 const DEFAULT_ACCENT = "oklch(0.63 0.24 25)";
-const CYAN = "oklch(0.78 0.14 205)";
+// Switchboard: the second channel is neutral, not cyan, so the page keeps one accent.
+const SECOND_CHANNEL = "var(--fg, currentColor)";
 // Each keyframe holds until the next one: a glitch cuts, it doesn't glide.
 const HOLD = "steps(1, end)";
 const FIRST_IDLE = 1200;
@@ -277,6 +279,25 @@ const GlitchText = ({
     burst(true, settle);
   }, [shown.from, shown.id, burst]);
 
+  // Mount: one burst the first time it is on screen.
+  useEffect(() => {
+    const root = layersRef.current;
+    if (trigger !== "mount" || !root) {
+      return;
+    }
+    const io = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting) {
+        return;
+      }
+      io.disconnect();
+      if (!(document.hidden || prefersReducedMotion())) {
+        burst(false);
+      }
+    });
+    io.observe(root);
+    return () => io.disconnect();
+  }, [trigger, burst]);
+
   // Idle: a rare burst every 4-9s, only while on screen and the tab is visible.
   useEffect(() => {
     const root = layersRef.current;
@@ -359,7 +380,7 @@ const GlitchText = ({
         <span
           className={cn(LAYER, GHOST)}
           data-layer="channel"
-          style={{ color: CYAN }}
+          style={{ color: SECOND_CHANNEL }}
         >
           <LayerText from={from} to={to} />
         </span>

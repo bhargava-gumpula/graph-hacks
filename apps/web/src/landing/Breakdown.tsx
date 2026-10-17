@@ -45,7 +45,7 @@ function AgentsArt() {
     <>
       <path d={curve(B, task, -20)} stroke={soft} strokeWidth="1.2" fill="none" />
       <path d={curve(A, task, 20)} stroke={soft} strokeWidth="1.2" fill="none" />
-      <text x="160" y="112" textAnchor="middle" fontSize="9" fill="var(--muted)" style={mono}>
+      <text x="160" y="112" textAnchor="middle" fontSize="11" fill="var(--muted)" style={mono}>
         WORKS_ON
       </text>
       {[
@@ -60,7 +60,7 @@ function AgentsArt() {
         </g>
       ))}
       <rect x={task.x - 30} y={task.y - 13} width="60" height="26" rx="13" fill="var(--surface)" stroke="var(--fg)" strokeWidth="1.2" />
-      <text x={task.x} y={task.y + 4} textAnchor="middle" fontSize="10" fill="var(--fg)" style={mono}>
+      <text x={task.x} y={task.y + 4} textAnchor="middle" fontSize="13" fill="var(--fg)" style={mono}>
         Task
       </text>
     </>
@@ -82,7 +82,7 @@ function ClaimsArt() {
           </text>
         </g>
       ))}
-      <text x={A.x - 30} y={A.y + 4} textAnchor="end" fontSize="9.5" fill="var(--signal-text)" style={mono}>
+      <text x={A.x - 30} y={A.y + 4} textAnchor="end" fontSize="11" fill="var(--signal-text)" style={mono}>
         :CLAIMS {"{until}"}
       </text>
     </>
@@ -103,10 +103,10 @@ function Chip(props: { x: number; y: number; name: string; tag: string; ghost?: 
         strokeOpacity="0.55"
         strokeDasharray={props.ghost ? "3 3" : undefined}
       />
-      <text x={props.x + 10} y={props.y + 15} fontSize="10.5" fill="var(--fg)" style={mono}>
+      <text x={props.x + 10} y={props.y + 16} fontSize="13" fill="var(--fg)" style={mono}>
         {props.name}
       </text>
-      <text x={props.x + 10} y={props.y + 28} fontSize="8.5" fill="var(--muted)" style={mono}>
+      <text x={props.x + 10} y={props.y + 29} fontSize="11" fill="var(--muted)" style={mono}>
         {props.tag}
       </text>
     </g>
@@ -124,7 +124,7 @@ function MemoryArt() {
       </defs>
       <Chip x={204} y={18} name="Decision" tag="superseded" ghost />
       <path d="M112 36 L198 36" stroke={soft} strokeWidth="1.2" markerEnd="url(#sb-arrow)" />
-      <text x="155" y="30" textAnchor="middle" fontSize="8.5" fill="var(--muted)" style={mono}>
+      <text x="155" y="30" textAnchor="middle" fontSize="11" fill="var(--muted)" style={mono}>
         SUPERSEDES
       </text>
       <Chip x={18} y={128} name="Lesson" tag="procedural" />
@@ -149,7 +149,7 @@ function CodeArt() {
       {imports.map(([p, q], i) => (
         <path key={i} d={curve(p, q, 10)} stroke={soft} strokeWidth="1" fill="none" />
       ))}
-      <text x="70" y="112" fontSize="8.5" fill="var(--muted)" style={mono}>
+      <text x="70" y="112" fontSize="11" fill="var(--muted)" style={mono}>
         IMPORTS
       </text>
       {/* The conflict: B's file reaches A's file in three imports, never through the hub. */}
@@ -161,7 +161,7 @@ function CodeArt() {
       )}
       <circle cx={HUB.x} cy={HUB.y} r="8" fill="var(--fg)" />
       <circle cx={HUB.x} cy={HUB.y} r="15" fill="none" stroke="var(--fg)" strokeOpacity="0.5" strokeDasharray="3 3" />
-      <text x={HUB.x} y={HUB.y + 30} textAnchor="middle" fontSize="10" fill="var(--fg)" style={mono}>
+      <text x={HUB.x} y={HUB.y + 30} textAnchor="middle" fontSize="13" fill="var(--fg)" style={mono}>
         PageRank hub
       </text>
     </>
@@ -221,8 +221,8 @@ export function Breakdown() {
   return (
     <section id="how" ref={ref} className="mx-auto max-w-7xl px-5 py-24 md:px-8 md:py-32">
       <div className="max-w-2xl">
-        <h2 className="text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One graph, four layers.</h2>
-        <p className="mt-5 max-w-[56ch] text-lg leading-relaxed text-[var(--muted)]">
+        <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight md:text-5xl">One graph, four layers.</h2>
+        <p className="mt-5 max-w-[56ch] text-pretty text-lg leading-relaxed text-[var(--muted)]">
           Claims live next to the code they touch, so a collision is just a path between two of them.
         </p>
       </div>
@@ -273,14 +273,14 @@ export function Breakdown() {
               <l.Icon size={22} weight="duotone" className="mt-1 shrink-0 text-[var(--signal-text)]" />
               <div className="min-w-0">
                 <h3 className={`text-lg font-medium transition-colors ${active === i ? "text-[var(--signal-text)]" : ""}`}>{l.name}</h3>
-                <div className="mt-1 min-h-[3.25rem] max-w-[48ch]">
-                  <AnimatePresence mode="wait" initial={false}>
+                <div className="relative mt-1 min-h-[3.25rem] max-w-[48ch]">
+                  <AnimatePresence mode="popLayout" initial={false}>
                     <motion.p
                       key={active === i ? "can" : "body"}
-                      initial={reduce ? false : { opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={reduce ? undefined : { opacity: 0, y: -6 }}
-                      transition={{ duration: 0.18 }}
+                      initial={reduce ? false : { opacity: 0, transform: "translateY(4px)" }}
+                      animate={{ opacity: 1, transform: "translateY(0px)" }}
+                      exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.1 } }}
+                      transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
                       className={active === i ? "font-mono text-[15px] leading-relaxed text-[var(--fg)]" : "leading-relaxed text-[var(--muted)]"}
                     >
                       {active === i ? l.can : l.body}

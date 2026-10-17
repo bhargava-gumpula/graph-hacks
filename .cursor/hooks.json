@@ -2,8 +2,17 @@
   "version": 1,
   "hooks": {
     "sessionStart": [{ "command": "packages/hooks/hook.sh cursor start" }],
-    "preToolUse": [{ "command": "packages/hooks/hook.sh cursor pre", "matcher": "Write" }],
+    "preToolUse": [
+      { "command": "packages/hooks/hook.sh cursor pre", "matcher": "Write" },
+      { "command": "packages/hooks/hook.sh cursor pre", "matcher": "Delete" }
+    ],
+    "beforeShellExecution": [{ "command": "packages/hooks/hook.sh cursor pre" }],
     "afterFileEdit": [{ "command": "packages/hooks/hook.sh cursor post" }],
+    "afterShellExecution": [{ "command": "packages/hooks/hook.sh cursor post" }],
+    "postToolUse": [
+      { "command": "packages/hooks/hook.sh cursor notify", "matcher": "Write" },
+      { "command": "packages/hooks/hook.sh cursor notify", "matcher": "Shell" }
+    ],
     "sessionEnd": [{ "command": "packages/hooks/hook.sh cursor end" }]
   }
 }

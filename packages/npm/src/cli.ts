@@ -18,7 +18,8 @@ Installed package
                                             Claude Code (.claude/settings.json hooks, .mcp.json); both by default.
                                             Then parse it into its graph (sb_<repo name>).
   mcp                                       run the stdio MCP server (13 tools)
-  hook <claude|cursor> <start|pre|post|end> run the editor hook (JSON event on stdin)
+  hook <claude|cursor> <start|pre|post|notify|end>
+                                            run the editor hook (JSON event on stdin)
 
 Defaults outside a Switchboard checkout: the graph is sb_<repo name> (shared by every worktree), paths
 are relative to the git root, the agent id is <editor>@<branch>. FALKORDB_URL, SB_GRAPH and SB_AGENT override.`;
@@ -28,7 +29,7 @@ type Json = Record<string, unknown>;
 const quote = (s: string) => (/[\s"]/.test(s) ? JSON.stringify(s) : s);
 const hookCmd = (editor: string, event: string) =>
   `${quote(process.execPath)} ${quote(join(HERE, "hook.mjs"))} ${editor} ${event}`;
-const isOurs = (cmd: unknown) => typeof cmd === "string" && /hook\.mjs"? (claude|cursor) (start|pre|post|end)$/.test(cmd);
+const isOurs = (cmd: unknown) => typeof cmd === "string" && /hook\.mjs"? (claude|cursor) (start|pre|post|notify|end)$/.test(cmd);
 
 function readJson(file: string): Json {
   if (!existsSync(file)) return {};
@@ -40,7 +41,7 @@ function readJson(file: string): Json {
 /** Claude Code settings: drop our old hook entries (and groups they emptied), then add ours. */
 function claudeSettings(cur: Json): Json {
   const hooks = { ...((cur.hooks as Json | undefined) ?? {}) };
-  const matcher = "Edit|MultiEdit|Write|NotebookEdit";
+  const matcher = "Edit|MultiEdit|Write|NotebookEdit|Bash";
   const wanted: Record<string, Json> = {
     SessionStart: { hooks: [{ type: "command", command: hookCmd("claude", "start"), timeout: 15 }] },
     PreToolUse: { matcher, hooks: [{ type: "command", command: hookCmd("claude", "pre"), timeout: 5 }] },
@@ -58,15 +59,20 @@ function claudeSettings(cur: Json): Json {
 
 function cursorHooks(cur: Json): Json {
   const hooks = { ...((cur.hooks as Json | undefined) ?? {}) };
-  const wanted: Record<string, Json> = {
-    sessionStart: { command: hookCmd("cursor", "start") },
-    preToolUse: { command: hookCmd("cursor", "pre"), matcher: "Write" },
-    afterFileEdit: { command: hookCmd("cursor", "post") },
-    sessionEnd: { command: hookCmd("cursor", "end") },
+  // The same events as packages/cli/src/init.ts: claims on preToolUse and beforeShellExecution, records after,
+  // notices (who waits, what is free) on postToolUse.
+  const wanted: Record<string, Json[]> = {
+    sessionStart: [{ command: hookCmd("cursor", "start") }],
+    preToolUse: [{ command: hookCmd("cursor", "pre"), matcher: "Write" }, { command: hookCmd("cursor", "pre"), matcher: "Delete" }],
+    beforeShellExecution: [{ command: hookCmd("cursor", "pre") }],
+    afterFileEdit: [{ command: hookCmd("cursor", "post") }],
+    afterShellExecution: [{ command: hookCmd("cursor", "post") }],
+    postToolUse: [{ command: hookCmd("cursor", "notify"), matcher: "Write" }, { command: hookCmd("cursor", "notify"), matcher: "Shell" }],
+    sessionEnd: [{ command: hookCmd("cursor", "end") }],
   };
-  for (const [event, entry] of Object.entries(wanted)) {
+  for (const [event, entries] of Object.entries(wanted)) {
     const kept = (Array.isArray(hooks[event]) ? (hooks[event] as Json[]) : []).filter((e) => !isOurs(e.command));
-    hooks[event] = [...kept, entry];
+    hooks[event] = [...kept, ...entries];
   }
   return { version: 1, ...cur, hooks };
 }
@@ -93,7 +99,7 @@ async function init(argv: string[]): Promise<number> {
     files.push([".cursor/hooks.json", cursorHooks], [".cursor/mcp.json", (c) => mcpServers(c, "cursor")]);
   }
   if (both || argv.includes("--claude")) {
-    files.push([".claude/settings.json", claudeSettings], [".mcp.json", (c) => mcpServers(c, "claude-code")]);
+    files.push([".claude/settings.json", claudeSettings], [".mcp.json", (c) => mcpServers(c, "claude")]);
   }
   for (const [rel, merge] of files) {
     const path = join(p.root, rel);

@@ -2,7 +2,8 @@
   "mcpServers": {
     "switchboard": {
       "command": "npx",
-      "args": ["tsx", "${workspaceFolder}/packages/mcp/src/index.ts"]
+      "args": ["tsx", "${workspaceFolder}/packages/mcp/src/index.ts"],
+      "env": { "SB_EDITOR": "cursor" }
     }
   }
 }

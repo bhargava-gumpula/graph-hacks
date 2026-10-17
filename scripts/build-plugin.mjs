@@ -40,7 +40,7 @@ const stub = (modules) => ({
 const entries = [
   { src: "packages/npm/src/cli.ts", out: "switchboard.mjs", stubs: [] },
   { src: "packages/npm/src/mcp.ts", out: "switchboard-mcp.mjs", stubs: ["ts-morph"] },
-  { src: "packages/npm/src/hook.ts", out: "hook.mjs", stubs: ["ts-morph", "@anthropic-ai/sdk"] },
+  { src: "packages/hooks/src/hook.ts", out: "hook.mjs", stubs: ["ts-morph", "@anthropic-ai/sdk"] },
 ];
 
 const check = process.argv.includes("--check");

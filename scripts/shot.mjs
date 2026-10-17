@@ -1,3 +1,4 @@
+/* global process, window, console */
 // Screenshot helper: node scripts/shot.mjs <url> <out.png> [w] [h] [scrollY] [waitMs]; env FULL=1 full page, LIGHT=1 light scheme.
 import { chromium } from "@playwright/test";
 const [url, out, w = "1440", h = "900", scroll = "0", wait = "6000"] = process.argv.slice(2);

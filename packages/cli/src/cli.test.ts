@@ -101,9 +101,8 @@ test("blast, plan, batches, decide, and why", async () => {
   expect((await run(["plan", "t-login", "ui/LoginForm.tsx"])).code).toBe(0);
   const batches = await run(["batches"]);
   expect(batches.code, batches.stderr).toBe(0);
-  expect(batches.stdout).toContain("t-about");
-  expect(batches.stdout).toContain("t-login");
-  expect(batches.stdout).not.toMatch(/t-about t-login|t-login t-about/);
+  // They share only the hub, so they run in the same round: one line.
+  expect(batches.stdout).toBe("t-about t-login\n");
 
   const decided = await run([
     "decide",

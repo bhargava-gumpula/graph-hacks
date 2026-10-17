@@ -352,10 +352,10 @@ export function createServer(): McpServer {
   server.registerTool(
     "parallel_batches",
     {
-      title: "Parallel batches",
+      title: "Parallel rounds",
       description:
-        "Group open tasks so tasks in different groups touch unrelated code and can run at the same time. " +
-        "Tasks in the same group should run one after another.",
+        "Split open tasks into rounds. Tasks in one round touch unrelated code and can run at the same time; " +
+        "run round 0 first, then round 1, and so on. Each item's componentId is its round index.",
       inputSchema: z.object({}),
       outputSchema: z.object({
         batches: z.array(z.object({ componentId: z.number(), tasks: z.array(z.string()), paths: z.array(z.string()) })),
@@ -363,7 +363,8 @@ export function createServer(): McpServer {
     },
     async () => {
       const batches = await parallelBatches(await graph());
-      const text = batches.length === 0 ? "no open tasks" : batches.map((b) => b.tasks.join(" ")).join("\n");
+      const text =
+        batches.length === 0 ? "no open tasks" : batches.map((b) => `round ${b.componentId}: ${b.tasks.join(" ")}`).join("\n");
       return reply(text, { batches });
     },
   );

@@ -1,3 +1,4 @@
+import { animate } from "motion/react";
 import raw from "../data/graph.json";
 
 export interface LaidNode {
@@ -16,8 +17,10 @@ export interface LaidEdge {
 }
 
 export const FOLDERS = ["ui", "api", "auth", "lib"] as const;
-/** The real conflict from the demo repo: B wants LoginForm.tsx while A is editing crypto.ts. */
-export const CONFLICT_PATH = ["ui/LoginForm.tsx", "api/login.ts", "auth/session.ts", "lib/crypto.ts"];
+/** The real conflict from the demo repo (same as the scenario and bench): B wants LoginForm.tsx while A holds session.ts, 2 hops away. */
+export const CONFLICT_PATH = ["ui/LoginForm.tsx", "api/login.ts", "auth/session.ts"];
+export const HELD = CONFLICT_PATH[CONFLICT_PATH.length - 1];
+export const WANTED = CONFLICT_PATH[0];
 
 /** Lay the demo repo out in folder columns so an import chain reads left to right. */
 export function layout(width: number, height: number, padX = 70, padY = 56) {
@@ -44,4 +47,26 @@ export function layout(width: number, height: number, padX = 70, padY = 56) {
 export function curve(a: { x: number; y: number }, b: { x: number; y: number }) {
   const dx = Math.max(40, (b.x - a.x) * 0.5);
   return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
+}
+
+/** One continuous path through the given nodes, for a packet to travel with getPointAtLength. */
+export function route(path: { x: number; y: number }[]) {
+  return path
+    .slice(1)
+    .map((n, i) => curve(path[i], n))
+    .map((d, i) => (i === 0 ? d : d.replace(/^M [^C]+/, "")))
+    .join(" ");
+}
+
+/** Run a packet along a path element: onPoint gets each position and the share of the path travelled. */
+export function travel(el: SVGPathElement, onPoint: (x: number, y: number, v: number) => void, duration = 1.2) {
+  const len = el.getTotalLength();
+  return animate(0, 1, {
+    duration,
+    ease: [0.45, 0, 0.2, 1],
+    onUpdate: (v) => {
+      const p = el.getPointAtLength(v * len);
+      onPoint(p.x, p.y, v);
+    },
+  });
 }

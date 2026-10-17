@@ -163,6 +163,7 @@ export function GraphView(props: GraphViewProps) {
     if (!focusAgent) return null;
     const m = new Map<string, number>();
     let frontier = claims.filter((c) => c.agent === focusAgent).map((c) => c.path);
+    if (!frontier.length) return null; // holds nothing: nothing to light, so dim nothing
     frontier.forEach((p) => m.set(p, 0));
     for (let h = 1; h <= 3 && frontier.length; h++) {
       const next: string[] = [];

@@ -395,6 +395,10 @@ export function Dashboard() {
 
 function StoryCaption({ demo, run, cypher }: { demo: DemoReply | null; run: number; cypher?: string }) {
   const want = demo?.path[0];
+  // The last sentence is the point: a lock on the file itself would have said yes.
+  const cut = demo ? demo.sentence.lastIndexOf("A file lock") : -1;
+  const lead = demo ? (cut > 0 ? demo.sentence.slice(0, cut) : demo.sentence) : "";
+  const punch = demo && cut > 0 ? demo.sentence.slice(cut) : "";
   return (
     <div className="pointer-events-none">
       <AnimatePresence mode="wait">
@@ -409,7 +413,10 @@ function StoryCaption({ demo, run, cypher }: { demo: DemoReply | null; run: numb
             className="pointer-events-auto relative overflow-hidden rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/90 p-4 shadow-2xl shadow-black/40 backdrop-blur-md"
           >
             <div aria-hidden className="pointer-events-none absolute -left-16 -top-16 size-48 rounded-full bg-[var(--color-signal)]/10 blur-3xl" />
-            <p className="relative line-clamp-3 text-[13px] leading-relaxed text-[var(--fg)]/85 sm:line-clamp-none">{demo.sentence}</p>
+            <p className="relative line-clamp-3 text-[13px] leading-relaxed text-[var(--fg)]/80 sm:line-clamp-none">
+              {lead}
+              {punch && <span className="font-medium text-[var(--fg)]">{punch}</span>}
+            </p>
             {demo.path.length > 0 && (
               <div className="relative mt-3">
                 <PathChips path={demo.path} />
@@ -532,7 +539,7 @@ function Tiles({
         </Tile>
         <Tile>
           {groups == null ? (
-            <Pending label="Parallel groups (WCC)" />
+            <Pending label={compact ? "Groups (WCC)" : "Parallel groups (WCC)"} />
           ) : (
             <div className="flex flex-col">
               <ChartStatFlow value={groups} label={compact ? "Groups (WCC)" : "Parallel groups (WCC)"} valueClassName={`${value} text-[color:var(--fg)]`} labelClassName={label} />
@@ -619,7 +626,12 @@ const AGENTS = ["A", "B", "C", "D"];
 
 function TryClaim({ files, onClose, onSelect }: { files: string[]; onClose: () => void; onSelect: (file: string) => void }) {
   const [agent, setAgent] = useState("B");
-  const [file, setFile] = useState(files.includes("ui/LoginForm.tsx") ? "ui/LoginForm.tsx" : (files[0] ?? ""));
+  const pick = () => (files.includes("ui/LoginForm.tsx") ? "ui/LoginForm.tsx" : (files[0] ?? ""));
+  const [file, setFile] = useState(pick);
+  useEffect(() => {
+    if (!file && files.length) setFile(pick());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files]);
   const [result, setResult] = useState<{ ok: boolean; agent: string; file: string; conflict?: Conflict; error?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const folders = useMemo(() => {

@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { animate, splitText, stagger } from "animejs";
+import { animate, splitText, stagger, utils } from "animejs";
 import { ArrowRight } from "@phosphor-icons/react";
 import { HeroGraph } from "./HeroGraph";
 
@@ -11,9 +11,11 @@ export function Hero() {
   const h1 = useRef<HTMLHeadingElement>(null);
 
   // Waterfall entry (cut-the-curve §6): words rise from below a clipped line, staggered, with anime.js.
-  useEffect(() => {
+  // Layout effect + an explicit start state, so the unsplit headline never paints for a frame.
+  useLayoutEffect(() => {
     if (reduce || !h1.current) return;
     const split = splitText(h1.current, { words: { wrap: "clip" } });
+    utils.set(split.words, { y: "105%", opacity: 0 });
     const a = animate(split.words, {
       y: ["105%", "0%"],
       opacity: [0, 1],
@@ -34,7 +36,7 @@ export function Hero() {
     <section className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-7xl items-center gap-10 px-5 pb-16 pt-12 md:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-6 lg:pt-16">
       <div className="max-w-xl">
         <h1 ref={h1} className="text-4xl font-semibold leading-[1.05] tracking-tighter md:text-5xl lg:text-6xl">
-          Agents can't see each other. <span className="text-[var(--muted)]">Switchboard can.</span>
+          Coding agents can't see each other. <span className="text-[var(--muted)]">Switchboard can.</span>
         </h1>
         <motion.p {...rise(0.12)} className="mt-6 max-w-[46ch] text-lg leading-relaxed text-[var(--muted)]">
           One FalkorDB graph checks every edit against your code's real dependencies, and stops two agents before they collide.
@@ -48,7 +50,7 @@ export function Hero() {
             <ArrowRight size={16} weight="bold" className="transition-transform group-hover:translate-x-0.5" />
           </a>
           <a
-            href="/app"
+            href="/app?play=1"
             className="inline-flex items-center rounded-full border border-[var(--border)] px-5 py-3 text-sm font-medium transition hover:border-[var(--muted)] active:scale-[0.98]"
           >
             Open the live graph

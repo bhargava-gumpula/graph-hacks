@@ -26,6 +26,8 @@
   --muted: var(--color-fog);
   --surface: var(--color-panel);
   --border: var(--color-line);
+  /* Orange for TEXT. Fills and strokes keep --color-signal; light mode darkens text for contrast. */
+  --signal-text: #ff6a3d;
   --chart-1: oklch(0.32 0 none);
   --chart-2: oklch(0.41 0 none);
   --chart-3: oklch(0.54 0 none);
@@ -62,6 +64,7 @@
     --muted: #5c5c66;
     --surface: #ffffff;
     --border: #dcdce1;
+    --signal-text: #bf4219; /* 4.85:1 on --bg, 5.24:1 on --surface (WCAG AA) */
   }
 }
 

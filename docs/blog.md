@@ -39,16 +39,16 @@ Before we wrote the product, we tested whether an editor can be stopped at all. 
 
 Two surprises. Cursor also runs Claude Code's hook config, so one edit was checked twice. Our Claude hook now does nothing when the input carries Cursor's `cursor_version` field. And Cursor runs the session-start hook but drops what it returns, so a briefing cannot be pushed into Cursor. The agent has to pull it with an MCP call.
 
-## WCC and PageRank
+## Rounds and PageRank
 
-Which tasks can run together is also a graph question. We plan five tasks. FalkorDB connects two of them when one's files can reach the other's through imports, and `algo.WCC` splits the result into connected components. We get three groups: the login chain together, the settings pair together, and the about page alone. Nobody typed the groups.
+Which tasks can run together is also a graph question. We plan five tasks. One read query links two of them when one's files reach the other's within 3 imports. We first split the links with `algo.WCC`, but a connected component runs a chain A-B-C in turn, though A and C never touch. Now a greedy colouring puts the tasks into rounds: the task with the most links goes first, and each takes the lowest round its neighbours leave free. The five tasks need two rounds. The about page, the login form and the prefs module go first. The session and the settings panel go next. Nobody typed the rounds.
 
 PageRank answers a different question. `lib/utils.ts` is imported by 20 of the 35 files. If you follow imports in both directions, as the briefing does, that one file puts all 20 importers within two hops of each other and would pull files from all over the repo into every briefing. `algo.pageRank` scores each file, and a rule flags the hubs: 10 or more importers, or at least 3 importers and a score at least 4 times the average. A path that runs through a hub in the middle does not count.
 
 ## Four FalkorDB gotchas
 
 1. `shortestPath()` is allowed only in `WITH` and `RETURN`. Inside `MATCH` FalkorDB rejects it, and it cannot carry a hub filter anyway. We enumerate the paths, which is cheap at 3 hops, and keep the shortest in TypeScript.
-2. A variable-length bound cannot be a parameter. `*1..$k` fails, so `k` is checked to be an integer from 1 to 4 and written into the query text.
+2. A variable-length bound cannot be a parameter. `*1..$k` fails, so `k` is checked to be an integer from 1 to 5 and written into the query text.
 3. In one projection, `same + count(c)` returned null, and a null guard let every claim through. A silent "safe" is the worst answer a coordination tool can give. Each count now has its own `WITH`, and the filter comes after the last one.
 4. `algo.pageRank` errors on a graph with no `File` nodes. We count the files first.
 
@@ -66,7 +66,7 @@ Without Switchboard, a plain file lock lets B in, both edits land, and the build
 
 It is still a scripted benchmark. The agents are not live models, it is one scenario on a 35-file repo, and it is deterministic, so ten runs show that it repeats, not a statistic.
 
-One number is not scripted. We count every pair of files in the demo repo: 595 pairs, and 78 of them are linked by imports within 3 hops. For 27 of those 78 the files are 2 or 3 hops apart, so a one-hop checker misses them, and a file lock misses all 78. The tables are in `bench/results.json` and `bench/pairs.json`, and the README generates its numbers from them.
+One number is not scripted. We count every pair of files in the demo repo: 595 pairs, and 72 of them are linked by imports within 3 hops, counted by the conflict check's rules. For 24 of those 72 the files are 2 or 3 hops apart, so a one-hop checker misses them, and a file lock misses all 72. The tables are in `bench/results.json` and `bench/pairs.json`, and the README generates its numbers from them.
 
 ## What we cut and what is next
 

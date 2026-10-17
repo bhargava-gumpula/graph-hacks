@@ -53,7 +53,8 @@ export function Dashboard() {
   const [health, setHealth] = useState<Health | null>(null);
   const [hoverAgent, setHoverAgent] = useState<string | null>(null);
   const [demoErr, setDemoErr] = useState<string | null>(null);
-  const [connectOpen, setConnectOpen] = useState(false);
+  // Open: a key per opening, so a reopen during the exit animation mounts a fresh dialog. Closed: null.
+  const [connect, setConnect] = useState<number | null>(null);
   const connectBtn = useRef<HTMLButtonElement>(null);
   const [resetting, setResetting] = useState(false);
   // Reset demo replays the story on the server. The refusal it records, in seq (from, to], only sets the scene:
@@ -230,7 +231,10 @@ export function Dashboard() {
           setScene(prev);
           throw e;
         });
-        setScene({ from: before, to: Math.max(before, (await api.health().catch(() => null))?.seq ?? 0) });
+        const end = Math.max(before, (await api.health().catch(() => null))?.seq ?? 0);
+        // The scene is not a story to watch: show it at once, so a Play right after does not queue behind it.
+        await live.flush(end);
+        setScene({ from: before, to: end });
       }
       setSelected(null);
       setDemo(null);
@@ -270,7 +274,7 @@ export function Dashboard() {
   const startTour = (focus = false) => {
     if (tour != null) return;
     tourSaved.current = { tab, batch: batchMode };
-    setConnectOpen(false);
+    setConnect(null);
     tourPlayed.current = false;
     setTryOpen(false);
     setSelected(null);
@@ -477,10 +481,10 @@ export function Dashboard() {
               onClick={() => {
                 if (tour != null) endTour();
                 setTryOpen(false);
-                setConnectOpen(true);
+                setConnect(Date.now());
               }}
               aria-haspopup="dialog"
-              aria-expanded={connectOpen}
+              aria-expanded={connect != null}
               aria-label="Connect your agent"
               className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 lg:px-3"
             >
@@ -560,7 +564,12 @@ export function Dashboard() {
           )}
         </AnimatePresence>
 
-        <AnimatePresence>{connectOpen && <ConnectPanel trigger={connectBtn} onClose={() => setConnectOpen(false)} />}</AnimatePresence>
+        <AnimatePresence>
+          {connect != null && (
+            // Only this opening may close: a panel still exiting can fire a late native close event.
+            <ConnectPanel key={connect} trigger={connectBtn} onClose={() => setConnect((k) => (k === connect ? null : k))} />
+          )}
+        </AnimatePresence>
 
         <AnimatePresence initial={false}>
           {(live.status === "replay" || live.status === "offline") && (

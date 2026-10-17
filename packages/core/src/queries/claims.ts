@@ -4,6 +4,7 @@ import { releaseStaleAgents } from "./agents.js";
 import { type Conflict, conflictGuard, findConflicts } from "./conflict.js";
 import { ALLOCATE_EVENT, readSeq, recordEvent } from "./events.js";
 import { latestSeq } from "./feed.js";
+import { dropWaits, freeFiles, waitedOn } from "./waits.js";
 
 /** Default claim lifetime. An agent that dies stops blocking others after this. */
 export const DEFAULT_TTL_MS = 30 * 60 * 1000;
@@ -166,23 +167,39 @@ export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult>
         payload: { requested: paths, conflicts },
         now,
       });
+      await g.query(LINK_VIA, { seq, paths: [...new Set(conflicts.flatMap((c) => c.path))] });
       return { ok: false, conflicts, seq, unknown, safe: await safeNow(g, input.agent, paths, now, k) };
     }
   }
 }
 
-/** Release an agent's claims on `paths`, or all of its claims. */
+/** A conflict event links every file on the refused import path, so the history is queryable. */
+export const LINK_VIA = `
+MATCH (e:Event {seq: $seq})
+UNWIND $paths AS path
+MATCH (f:File {path: path})
+MERGE (e)-[:VIA]->(f)
+`;
+
+/**
+ * Release an agent's claims on `paths`, or all of its claims. A released file someone waits on gets a
+ * `free` event. Releasing everything (the session ended) also ends this agent's own waits.
+ */
 export async function release(
   g: SbGraph,
   input: { agent: string; paths?: string[]; now?: number },
 ): Promise<{ released: number; seq: number }> {
   const paths = input.paths ? input.paths.map(normPath) : null;
+  const now = input.now ?? Date.now();
+  const waited = await waitedOn(g, input.agent, paths);
   const rows = await g.query(RELEASE_CLAIMS, {
     kind: "release",
-    at: input.now ?? Date.now(),
+    at: now,
     payload: JSON.stringify({ paths }),
     agent: input.agent,
     paths,
   });
+  await freeFiles(g, waited, now);
+  if (paths === null) await dropWaits(g, input.agent);
   return { released: Number(rows[0]?.released ?? 0), seq: readSeq(rows, "release") };
 }

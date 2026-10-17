@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { Node, Project, ts, type SourceFile, type StringLiteral } from "ts-morph";
 
@@ -26,7 +26,8 @@ export interface ParseResult {
   imports: ParsedImport[];
 }
 
-const SKIP_DIRS = ["node_modules", "dist"];
+/** Dependencies and build output, skipped in every repo (dot directories like .next, .turbo, .vercel too). */
+const SKIP_DIRS = ["node_modules", "dist", "out", "build", "coverage"];
 const SOURCE_GLOBS = ["**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}", ...SKIP_DIRS.map((d) => `!**/${d}/**`), "!**/*.d.ts"];
 
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/;
@@ -49,6 +50,55 @@ export function isSourcePath(path: string): boolean {
 }
 
 /**
+ * A matcher for the repo root's .gitignore: is this repo-relative path ignored?
+ * Simple patterns only: `dir/`, `*.gen.ts`, `/anchored`, `**` globs, `!negation`. Last match wins, and a path
+ * inside an ignored directory stays ignored. Nested .gitignore files are not read.
+ * ponytail: a subset of git's rules; `git ls-files` would be exact but needs git and a checkout.
+ */
+export function gitignore(root: string): (path: string) => boolean {
+  let text: string;
+  try {
+    text = readFileSync(join(root, ".gitignore"), "utf8");
+  } catch {
+    return () => false;
+  }
+  const rules = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"))
+    .map((line) => {
+      const negate = line.startsWith("!");
+      let pat = negate ? line.slice(1) : line;
+      const dirOnly = pat.endsWith("/");
+      pat = pat.replace(/\/+$/, "");
+      const anchored = pat.includes("/");
+      pat = pat.replace(/^\//, "");
+      const body = pat
+        .split(/(\*\*\/|\/\*\*|\*|\?)/)
+        .map((part) =>
+          part === "**/" ? "(?:.*/)?" : part === "/**" ? "/.*" : part === "*" ? "[^/]*" : part === "?" ? "[^/]" : part.replace(/[.+^${}()|[\]\\]/g, "\\$&"),
+        )
+        .join("");
+      return { negate, dirOnly, anchored, re: new RegExp(`^${body}$`) };
+    });
+  const ignored = (path: string, isDir: boolean, last: string) => {
+    let out = false;
+    for (const r of rules) {
+      if (r.dirOnly && !isDir) continue;
+      if (r.re.test(r.anchored ? path : last)) out = !r.negate;
+    }
+    return out;
+  };
+  return (path) => {
+    const parts = path.split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      if (ignored(parts.slice(0, i).join("/"), i < parts.length, parts[i - 1]!)) return true;
+    }
+    return false;
+  };
+}
+
+/**
  * Parse a TS/JS repo into files and file→file import edges.
  *
  * The root tsconfig.json (if any) supplies compiler options only, so path aliases
@@ -67,7 +117,11 @@ export function parseRepo(root: string): ParseResult {
   );
 
   const toPath = (abs: string) => relative(absRoot, abs).split(sep).join("/");
-  const sources = project.getSourceFiles().filter((sf) => isSourcePath(toPath(sf.getFilePath())));
+  const ignored = gitignore(absRoot);
+  const sources = project.getSourceFiles().filter((sf) => {
+    const path = toPath(sf.getFilePath());
+    return isSourcePath(path) && !ignored(path);
+  });
   const known = new Set(sources.map((sf) => toPath(sf.getFilePath())));
   const resolveTarget = resolverFor(project, absRoot);
 
@@ -97,7 +151,7 @@ export function parseFile(root: string, path: string): { file: ParsedFile; impor
   const absRoot = resolve(root);
   const abs = join(absRoot, path);
   const toPath = (p: string) => relative(absRoot, p).split(sep).join("/");
-  if (!isSourcePath(toPath(abs)) || !existsSync(abs)) return null;
+  if (!isSourcePath(toPath(abs)) || gitignore(absRoot)(toPath(abs)) || !existsSync(abs)) return null;
 
   let project = projects.get(absRoot);
   if (!project) projects.set(absRoot, (project = createProject(absRoot)));

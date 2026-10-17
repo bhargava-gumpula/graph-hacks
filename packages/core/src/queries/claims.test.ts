@@ -4,7 +4,7 @@ import { connect } from "../graph.js";
 import { parseRepo } from "../parser.js";
 import { useTestGraph } from "../test-helpers.js";
 import { heartbeat } from "./agents.js";
-import { claim, release, unknownPaths } from "./claims.js";
+import { claim, othersOn, release, unknownPaths } from "./claims.js";
 import { recordEdit } from "./edits.js";
 import { findConflicts } from "./conflict.js";
 import { feedSince, latestSeq } from "./feed.js";
@@ -231,4 +231,16 @@ test("a denied claim lists open-task files that are safe right now", async () =>
   // api/login.ts imports session.ts and LoginForm.tsx was asked for: only AboutPage.tsx is free.
   expect(res).toMatchObject({ ok: false, safe: ["ui/AboutPage.tsx"] });
   for (const id of ["t-about", "t-api"]) await g().query(SET_TASK_STATUS, { id, status: "done" });
+});
+
+test("othersOn: another agent's active claim or an edit since the snapshot, never the caller's own", async () => {
+  expect((await claim(g(), { agent: "A", paths: ["lib/crypto.ts"] })).ok).toBe(true);
+  // A time no other test's edit reaches, so only this edit counts as recent.
+  const since = 8e15;
+  await recordEdit(g(), { agentId: "B", path: "ui/Footer.tsx", now: since + 1 });
+  const paths = ["lib/crypto.ts", "ui/Footer.tsx", "ui/Header.tsx"];
+  expect(await othersOn(g(), { agent: "B", paths, since })).toEqual(["lib/crypto.ts"]);
+  expect(await othersOn(g(), { agent: "A", paths, since })).toEqual(["ui/Footer.tsx"]);
+  expect(await othersOn(g(), { agent: "A", paths, since: since + 2 })).toEqual([]);
+  expect(await othersOn(g(), { agent: "A", paths: [], since })).toEqual([]);
 });

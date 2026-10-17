@@ -48,11 +48,28 @@ MATCH (f:File)
 RETURN count(f) AS n
 `;
 
+export const COUNT_IMPORTS = `
+MATCH ()-[r:IMPORTS]->()
+RETURN count(r) AS n
+`;
+
+/** A repo whose files import nothing has no hubs. */
+export const NO_HUBS = `
+MATCH (f:File)
+SET f.rank = 0.0, f.hub = false
+RETURN f.path AS path
+`;
+
 /** Recompute rank and hub flags for every file. `loadParse` calls this after each parse. */
 export async function markHubs(g: SbGraph): Promise<HubScore[]> {
-  // algo.pageRank errors on a graph with no File nodes.
+  // algo.pageRank errors on a graph with no File nodes, and on files with no IMPORTS edges at all.
   const [count] = await g.roQuery(COUNT_FILES);
   if (Number(count?.n ?? 0) === 0) return [];
+  const [edges] = await g.roQuery(COUNT_IMPORTS);
+  if (Number(edges?.n ?? 0) === 0) {
+    const rows = await g.query(NO_HUBS);
+    return rows.map((row) => ({ path: String(row.path), rank: 0, indegree: 0, hub: false }));
+  }
   const rows = await g.query(MARK_HUBS, {
     minDegree: HUB_INDEGREE,
     floor: HUB_MIN_INDEGREE,

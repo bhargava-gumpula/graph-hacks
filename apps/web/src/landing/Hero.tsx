@@ -46,7 +46,7 @@ export function Hero() {
         </h1>
         {/* Headline first, then the subtitle, then the CTAs: each enters as the one before it settles. */}
         <motion.p {...rise(0.55)} className="mt-6 max-w-[46ch] text-pretty text-lg leading-relaxed text-[var(--muted)]">
-          One FalkorDB graph checks every edit against your code's real dependencies, and stops two agents before they collide.
+          One FalkorDB graph checks every edit a connected agent makes against your code's real dependencies, and stops two agents before they collide.
         </motion.p>
         <motion.div {...rise(0.65)} className="mt-9 flex flex-wrap items-center gap-3">
           <a

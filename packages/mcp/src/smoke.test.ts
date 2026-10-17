@@ -1,8 +1,11 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { afterAll, expect, test } from "vitest";
 import { claim, connect, ensureSchema, loadParse, parseRepo } from "@switchboard/core";
+import { defaultAgent, projectDir } from "./index.js";
 
 const root = join(import.meta.dirname, "../../..");
 const tsx = join(root, "node_modules/.bin/tsx");
@@ -104,8 +107,15 @@ test("stdio server: tools list, register, status, claim conflict, bad input", as
         "plan_task",
         "parallel_batches",
         "handoff",
+        "search_memory",
+        "hotspots",
       ]),
     );
+    const schemaOf = (name: string) =>
+      (listed.result?.tools?.find((tool) => tool.name === name) as { inputSchema?: { properties?: object } } | undefined)
+        ?.inputSchema?.properties;
+    expect(Object.keys(schemaOf("search_memory") ?? {})).toEqual(["words", "limit"]);
+    expect(Object.keys(schemaOf("hotspots") ?? {})).toEqual(["days", "limit"]);
 
     for (const tool of listed.result?.tools ?? []) {
       expect(tool.description, tool.name).toBeTruthy();
@@ -152,6 +162,20 @@ test("stdio server: tools list, register, status, claim conflict, bad input", as
     expect(b.files.length).toBeGreaterThan(30);
     expect(b.events.length).toBeLessThanOrEqual(5);
 
+    const spots = await call(12, "tools/call", { name: "hotspots", arguments: {} });
+    expect(spots.result?.structuredContent?.hotspots).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: "api/login.ts", refusals: 2 })]),
+    );
+
+    await call(13, "tools/call", {
+      name: "record_decision",
+      arguments: { text: "keep sessions short", why: "the auditors flagged idle tokens", affects: ["auth/session.ts"] },
+    });
+    const found = await call(14, "tools/call", { name: "search_memory", arguments: { words: "auditors" } });
+    expect(found.result?.structuredContent?.hits).toEqual([
+      expect.objectContaining({ kind: "decision", text: "keep sessions short", paths: ["auth/session.ts"] }),
+    ]);
+
     const bad = await call(7, "tools/call", { name: "claim", arguments: { paths: [] } });
     expect(bad.error ?? bad.result?.isError).toBeTruthy();
   } finally {
@@ -159,3 +183,29 @@ test("stdio server: tools list, register, status, claim conflict, bad input", as
     child.kill();
   }
 }, 20_000);
+
+test("the default agent id comes from the configured checkout, not the server's working directory", () => {
+  // Cursor may start the server anywhere; the hook names the checkout's branch, so the server must too.
+  const repo = mkdtempSync(join(tmpdir(), "sb-mcp-id-"));
+  const keys = ["SB_AGENT", "SB_EDITOR", "SB_PROJECT_DIR", "CLAUDE_PROJECT_DIR", "SB_ROOT"] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  try {
+    execFileSync("git", ["-C", repo, "init", "-q", "-b", "feature-x"]);
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"]);
+    for (const k of keys) delete process.env[k];
+    process.env.SB_EDITOR = "cursor";
+    process.env.SB_PROJECT_DIR = repo;
+    expect(defaultAgent()).toBe("cursor@feature-x");
+    process.env.SB_AGENT = "pinned";
+    expect(defaultAgent()).toBe("pinned");
+    // An unresolved ${workspaceFolder} is skipped for the next candidate.
+    expect(projectDir({ SB_PROJECT_DIR: "${workspaceFolder}", SB_ROOT: repo })).toBe(repo);
+    expect(projectDir({ SB_PROJECT_DIR: "${workspaceFolder}" })).toBeUndefined();
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(repo, { recursive: true, force: true });
+  }
+});

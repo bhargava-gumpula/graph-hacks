@@ -6,6 +6,7 @@ import type { Hit } from "./useLive";
 import { curve, layoutGraph } from "./layoutGraph";
 import { pulse } from "../landing/AsciiField";
 import { Legend } from "./Legend";
+import { agentBadge, agentList, agentName } from "./agents";
 
 const EXPO = [0.16, 1, 0.3, 1] as const;
 /** Camera moves on screen: strong ease-in-out, under 300ms. */
@@ -429,7 +430,7 @@ export function GraphView(props: GraphViewProps) {
                 data-node
                 tabIndex={0}
                 role="button"
-                aria-label={`${n.id}${claimers.length ? `, claimed by Agent ${claimers.join(", ")}` : ""}`}
+                aria-label={`${n.id}${claimers.length ? `, claimed by ${agentList(claimers)}` : ""}`}
                 aria-pressed={isSel}
                 // Focus reuses the hover visual (bigger node, label, card) as its indicator.
                 className="cursor-pointer focus-visible:outline-none"
@@ -458,7 +459,7 @@ export function GraphView(props: GraphViewProps) {
                     <circle cx={n.x} cy={n.y} r={10} fill="var(--fg)" fillOpacity={0.36 - (batch % 4) * 0.08} />
                     <rect x={n.x - 40} y={n.y - 7} width={24} height={14} rx={7} fill="var(--surface)" stroke="var(--fg)" strokeOpacity={0.35 - (batch % 4) * 0.06} />
                     <text x={n.x - 28} y={n.y + 3} textAnchor="middle" className="fill-[var(--fg)] font-mono text-[9px] font-semibold">
-                      G{batch + 1}
+                      R{batch + 1}
                     </text>
                   </motion.g>
                 )}
@@ -484,7 +485,7 @@ export function GraphView(props: GraphViewProps) {
                       <circle data-ring={n.id} cx={n.x} cy={n.y} r={11} fill="none" stroke={onShot ? "var(--color-signal)" : "var(--fg)"} strokeWidth={1.5} style={{ transformBox: "fill-box", transformOrigin: "center" }} />
                       <rect x={n.x - 22} y={n.y - 26} width={20} height={14} rx={7} fill="var(--fg)" />
                       <text x={n.x - 12} y={n.y - 16} textAnchor="middle" className="fill-[var(--bg)] font-mono text-[9px] font-semibold">
-                        {claimers[0].slice(0, 2)}
+                        {agentBadge(claimers[0])}
                       </text>
                     </motion.g>
                   )}
@@ -502,7 +503,7 @@ export function GraphView(props: GraphViewProps) {
                       <circle cx={n.x} cy={n.y} r={m.wants ? 14 : 11} fill="none" stroke="var(--fg)" strokeWidth={1.5} strokeDasharray={m.wants ? "3 3" : undefined} />
                       <rect x={n.x - 24} y={n.y - 28} width={20} height={14} rx={7} fill={m.wants ? "var(--bg)" : "var(--fg)"} stroke="var(--fg)" strokeWidth={m.wants ? 1.2 : 0} />
                       <text x={n.x - 14} y={n.y - 18} textAnchor="middle" className={`font-mono text-[9px] font-semibold ${m.wants ? "fill-[var(--fg)]" : "fill-[var(--bg)]"}`}>
-                        {m.agent}
+                        {agentBadge(m.agent)}
                       </text>
                     </motion.g>
                   ))}
@@ -520,7 +521,7 @@ export function GraphView(props: GraphViewProps) {
                       <circle cx={n.x} cy={n.y} r={15} fill="none" stroke="var(--color-signal)" strokeWidth={1.5} strokeDasharray="3 3" />
                       <rect x={n.x - 24} y={n.y - 30} width={20} height={14} rx={7} fill="var(--bg)" stroke="var(--color-signal)" strokeWidth={1.2} />
                       <text x={n.x - 14} y={n.y - 20} textAnchor="middle" className="fill-[var(--color-signal)] font-mono text-[9px] font-semibold">
-                        {ghost.agent.slice(0, 2)}
+                        {agentBadge(ghost.agent)}
                       </text>
                     </motion.g>
                   )}
@@ -583,7 +584,7 @@ export function GraphView(props: GraphViewProps) {
             </p>
             {hovered.hub && <p className="mt-1 text-[var(--muted)]">hub: conflict checks skip it</p>}
             <p className="mt-1 text-[var(--muted)]">
-              {ghost?.file === hovered.id ? `refused to Agent ${ghost.agent}` : hoveredClaims.length ? `claimed by ${hoveredClaims.map((a) => `Agent ${a}`).join(", ")}` : "not claimed"}
+              {ghost?.file === hovered.id ? `refused to ${agentName(ghost.agent)}` : hoveredClaims.length ? `claimed by ${agentList(hoveredClaims)}` : "not claimed"}
             </p>
           </motion.div>
         )}
@@ -604,7 +605,7 @@ export function GraphView(props: GraphViewProps) {
               {hit.conflict.file} → {hit.conflict.claimed}
             </p>
             <p className="mt-1.5 text-[var(--muted)]">
-              {hit.conflict.hops} hop{hit.conflict.hops === 1 ? "" : "s"} to Agent {hit.conflict.agent}'s claim
+              {hit.conflict.hops} hop{hit.conflict.hops === 1 ? "" : "s"} to {agentName(hit.conflict.agent)}'s claim
               {checkMs != null ? `, found in ${checkMs} ms` : ""}
             </p>
             {conflictCypher && (

@@ -17,7 +17,10 @@ import {
   ensureSchema,
   findConflicts,
   formatBrief,
+  formatHit,
   handoff,
+  hops,
+  hotspots,
   loadParse,
   markHubs,
   parallelBatches,
@@ -27,6 +30,7 @@ import {
   recordLiveEdit,
   recordLesson,
   release,
+  searchMemory,
   summarizeBrief,
   unknownPaths,
   watchRepo,
@@ -36,7 +40,7 @@ import {
   type FileUpdate,
   type SbGraph,
 } from "@switchboard/core";
-import { applyInit, lineDiff, planInit, SWITCHBOARD_ROOT } from "./init.js";
+import { applyInit, keepsBackup, lineDiff, planInit, SWITCHBOARD_ROOT } from "./init.js";
 
 const USAGE = `switchboard: coordinate AI coding agents through a shared FalkorDB graph.
 
@@ -64,9 +68,14 @@ Memory
   handoff <task> --to <agent> --note <text>
 
 Setup
-  init [repoDir] [--dry-run]                wire Switchboard into another repo: hooks in .claude/settings.json
-                                            and .cursor/hooks.json, the MCP server in .mcp.json, then parse it
-                                            into its own graph sb_<repo name>. Merges; --dry-run prints the diff.
+  init [repoDir] [--npx] [--dry-run]        wire Switchboard into another repo: Claude Code hooks in the
+                                            git-ignored .claude/settings.local.json (this checkout's path),
+                                            Cursor hooks in .cursor/hooks.json, the MCP server in .mcp.json and
+                                            .cursor/mcp.json, then parse it into its own graph sb_<repo name>.
+                                            --npx points every file at the npm package instead (no machine
+                                            paths, safe to commit). Merges; --dry-run prints the diff.
+  hook <claude|cursor> <start|pre|post|notify|end>
+                                            run the editor hook (JSON event on stdin, JSON answer on stdout)
 
 Planning
   parse [dir]                               load a repo's import graph (default demo-repo)
@@ -74,9 +83,13 @@ Planning
                                             by an agent or a person (default: the parsed repo)
   blast <file>                              files that import <file>, hop by hop
   plan <task> <file...> [--title text]      open a task with its files
-  batches                                   open tasks grouped into parallel-safe batches
+  batches                                   open tasks in rounds, one line each: tasks on a line can
+                                            run at the same time; run the first line first
+  search <words...>                         decisions and lessons that mention any of these words
+  hotspots [days]                           files on the most refused import paths (default: last 7 days)
 
-Agent id: --agent, else SB_AGENT, else the git branch of the current directory.
+Agent id: --agent, else SB_AGENT, else <SB_EDITOR>@<branch> of the current directory (claude@main,
+cursor@main; the hooks and the MCP server use the same id), else the bare branch.
 Graph: SB_GRAPH (default sb_demo). FalkorDB: FALKORDB_URL (default redis://localhost:6379; a FalkorDB
 Cloud rediss:// URL works too, see docs/CLOUD.md). Repo on disk: SB_REPO, else the git top level plus
 SB_PREFIX (default demo-repo).
@@ -96,6 +109,7 @@ interface Flags {
   title?: string;
   kind?: string;
   dryRun: boolean;
+  npx: boolean;
   help: boolean;
 }
 
@@ -126,6 +140,7 @@ function parseArgs(argv: string[]): Flags {
   let kind: string | undefined;
   let help = false;
   let dryRun = false;
+  let npx = false;
   const take = (flag: string, i: number) => {
     const value = argv[i + 1];
     if (value === undefined) throw new Error(`${flag} needs a value`);
@@ -146,10 +161,11 @@ function parseArgs(argv: string[]): Flags {
     else if (arg === "--kind") kind = take(arg, i++);
     else if (arg === "--help" || arg === "-h") help = true;
     else if (arg === "--dry-run") dryRun = true;
+    else if (arg === "--npx") npx = true;
     else if (arg.startsWith("--")) throw new Error(`unknown flag ${arg}`);
     else positional.push(arg);
   }
-  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, dryRun, help };
+  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, dryRun, npx, help };
 }
 
 function agentOf(flags: Flags): string {
@@ -164,6 +180,7 @@ const KINDS: readonly AgentKind[] = ["cursor", "claude", "human"];
 
 const COMMANDS = new Set([
   "init",
+  "hook",
   "register",
   "heartbeat",
   "status",
@@ -181,6 +198,8 @@ const COMMANDS = new Set([
   "plan",
   "batches",
   "handoff",
+  "search",
+  "hotspots",
 ]);
 
 /** The parsed repo on disk, found the way the hook finds it: SB_REPO, else SB_ROOT or the git top level, plus SB_PREFIX. */
@@ -219,7 +238,7 @@ async function watchCmd(g: SbGraph, dir: string): Promise<number> {
 async function init(flags: Flags): Promise<number> {
   if (flags.positional.length > 2) throw new Error("init takes one directory");
   // npm run moves cwd to this checkout; INIT_CWD is where the user typed the command.
-  const plan = planInit(resolve(process.env.INIT_CWD ?? process.cwd(), flags.positional[1] ?? "."));
+  const plan = planInit(resolve(process.env.INIT_CWD ?? process.cwd(), flags.positional[1] ?? "."), SWITCHBOARD_ROOT, { npx: flags.npx });
   const shown = (path: string) => relative(plan.repo, path);
   if (flags.dryRun) {
     if (plan.changes.length === 0) console.log(`${plan.repo} is already wired to Switchboard. Nothing to change.`);
@@ -231,7 +250,7 @@ async function init(flags: Flags): Promise<number> {
   }
   applyInit(plan);
   for (const c of plan.changes) {
-    console.log(`${c.before === null ? "created" : "updated"} ${shown(c.path)}${c.before === null ? "" : ` (original kept in ${shown(c.path)}.bak)`}`);
+    console.log(`${c.before === null ? "created" : "updated"} ${shown(c.path)}${keepsBackup(c) ? ` (original kept in ${shown(c.path)}.bak)` : ""}`);
   }
   if (plan.changes.length === 0) console.log("configs already wired, nothing changed");
 
@@ -261,9 +280,6 @@ Next steps:
   2. Open http://localhost:${plan.port}/app to watch claims and conflicts.
   3. Run claude or cursor in ${plan.repo}. Approve the switchboard MCP server when asked.
      The graph updates on every save (SB_WATCH=1). After a branch switch or a big refactor: ${parseCmd}`);
-  if (spawnSync("jq", ["--version"]).status !== 0) {
-    console.log("\nWarning: jq is not installed, so the hooks let every edit through. Install it (brew install jq).");
-  }
   return 0;
 }
 
@@ -278,6 +294,13 @@ async function run(flags: Flags): Promise<number> {
     return 1;
   }
   if (command === "init") return init(flags);
+  if (command === "hook") {
+    // A variable specifier: the hook lives outside this package's rootDir, and tsx loads it at run time.
+    const hookModule = "../../hooks/src/hook.js";
+    const hook = (await import(hookModule)) as { main(editor?: string, phase?: string): Promise<void> };
+    await hook.main(flags.positional[1], flags.positional[2]);
+    return 0;
+  }
   if (flags.kind !== undefined && !(KINDS as readonly string[]).includes(flags.kind)) {
     throw new Error(`--kind must be one of ${KINDS.join(", ")}`);
   }
@@ -333,7 +356,7 @@ async function run(flags: Flags): Promise<number> {
       if (res.ok) {
         const checked = files.length - (res.unknown?.length ?? 0);
         if (checked > 0) {
-          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within 3 import hops)`);
+          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within ${plural(hops(), "import hop")})`);
         }
         return 0;
       }
@@ -360,7 +383,7 @@ async function run(flags: Flags): Promise<number> {
       }
       const unknown = await unknownPaths(g, [file]);
       if (unknown.length > 0) warnUnknown(unknown);
-      else console.log(`OK no claim within 3 import hops (${ms} ms)`);
+      else console.log(`OK no claim within ${plural(hops(), "import hop")} (${ms} ms)`);
       return 0;
     }
 
@@ -446,6 +469,23 @@ async function run(flags: Flags): Promise<number> {
       if (!taskId || !flags.to || !flags.note) throw new Error("handoff needs a task, --to, and --note");
       await handoff(g, { from: agent, to: flags.to, taskId, note: flags.note });
       console.log(`handed ${taskId} to ${flags.to}`);
+      return 0;
+    }
+
+    if (command === "search") {
+      if (files.length === 0) throw new Error("search needs words");
+      const hits = await searchMemory(g, files.join(" "), 10);
+      if (hits.length === 0) console.log(`nothing recorded mentions: ${files.join(" ")}`);
+      for (const h of hits) console.log(formatHit(h));
+      return 0;
+    }
+
+    if (command === "hotspots") {
+      const days = files[0] === undefined ? 7 : Number(files[0]);
+      if (!(days > 0)) throw new Error("hotspots takes a positive number of days");
+      const spots = await hotspots(g, { days });
+      if (spots.length === 0) console.log(`no refusals in the last ${days} days`);
+      for (const h of spots) console.log(`${h.refusals} ${h.path}`);
       return 0;
     }
 

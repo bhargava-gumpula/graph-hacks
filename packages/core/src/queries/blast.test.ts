@@ -59,8 +59,8 @@ test("dependents list the agents claiming them", async () => {
   expect(later.dependents.every((d) => d.agents.length === 0)).toBe(true);
 });
 
-test("k outside 1..4 is rejected before any Cypher is built", () => {
+test("k outside 1..5 is rejected before any Cypher is built", () => {
   expect(() => blastQuery(0)).toThrow();
-  expect(() => blastQuery(5)).toThrow();
+  expect(() => blastQuery(6)).toThrow();
   expect(() => blastQuery(1.5)).toThrow();
 });

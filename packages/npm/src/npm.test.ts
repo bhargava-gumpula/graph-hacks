@@ -1,6 +1,6 @@
 // The installed package's own logic: which graph and agent id a directory maps to, and the refusal text.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -29,7 +29,7 @@ describe("project", () => {
     const b = project(wt, "cursor");
     expect(a.graph).toBe("sb_my_app");
     expect(b.graph).toBe("sb_my_app");
-    expect(a.agent).toBe("claude-code@main");
+    expect(a.agent).toBe("claude@main");
     expect(b.agent).toBe("cursor@feature");
     expect(a.git && b.git).toBe(true);
   });
@@ -64,5 +64,33 @@ describe("denyReason", () => {
         "Don't work around this with Bash. Pick another file or call brief_me.",
       ].join("\n"),
     );
+  });
+});
+
+describe("init", () => {
+  it("puts the Claude Code hooks in the git-ignored settings.local.json, never the committed settings.json", () => {
+    const repo = join(base, "wired");
+    mkdirSync(join(repo, ".claude"), { recursive: true });
+    git(repo, "init", "-q", "-b", "main");
+    const mine = { type: "command", command: "echo mine" };
+    const old = { type: "command", command: "/old/node /old/dist/hook.mjs claude pre" };
+    const settings = `${JSON.stringify({ model: "x", hooks: { PreToolUse: [{ hooks: [mine] }, { matcher: "Edit", hooks: [old] }] } }, null, 2)}\n`;
+    writeFileSync(join(repo, ".claude/settings.json"), settings);
+
+    const tsx = join(import.meta.dirname, "../../../node_modules/.bin/tsx");
+    const out = execFileSync(tsx, [join(import.meta.dirname, "cli.ts"), "init", repo, "--claude", "--dry-run"], {
+      encoding: "utf8",
+    });
+    const file = (rel: string) => {
+      const m = out.match(new RegExp(`^--- ${rel.replace(/\./g, "\\.")}\\n([\\s\\S]*?)(?=^--- |^Would parse)`, "m"));
+      return m?.[1];
+    };
+    const local = JSON.parse(file(".claude/settings.local.json")!) as { hooks: Record<string, unknown> };
+    expect(Object.keys(local.hooks)).toEqual(["SessionStart", "PreToolUse", "PostToolUse", "SessionEnd"]);
+    expect(JSON.stringify(local)).toContain("hook.mjs claude pre");
+    // Ours is gone from settings.json; the user's own hook and settings stay.
+    expect(JSON.parse(file(".claude/settings.json")!)).toEqual({ model: "x", hooks: { PreToolUse: [{ hooks: [mine] }] } });
+    expect(file(".gitignore")?.trim()).toBe(".claude/settings.local.json");
+    expect(readFileSync(join(repo, ".claude/settings.json"), "utf8")).toBe(settings); // --dry-run wrote nothing
   });
 });

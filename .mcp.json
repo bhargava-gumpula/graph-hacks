@@ -2,7 +2,8 @@
   "mcpServers": {
     "switchboard": {
       "command": "npx",
-      "args": ["tsx", "packages/mcp/src/index.ts"]
+      "args": ["tsx", "packages/mcp/src/index.ts"],
+      "env": { "SB_EDITOR": "claude" }
     }
   }
 }

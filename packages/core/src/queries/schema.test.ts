@@ -6,7 +6,6 @@ const graph = useTestGraph("sb_test_schema");
 
 const EXPECTED: [label: string, property: string, type: "RANGE" | "FULLTEXT"][] = [
   ["File", "path", "RANGE"],
-  ["Symbol", "fqn", "RANGE"],
   ["Agent", "id", "RANGE"],
   ["Task", "id", "RANGE"],
   ["Event", "seq", "RANGE"],

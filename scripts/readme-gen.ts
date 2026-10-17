@@ -8,6 +8,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
+// The Cypher sections show the default query text, whatever the shell exports.
+delete process.env.SB_HOPS;
+delete process.env.SB_TYPE_IMPORTS;
 const README = resolve(ROOT, "README.md");
 const K = 3;
 
@@ -32,8 +35,8 @@ interface Entry {
 
 async function entries(): Promise<Entry[]> {
   const load = (file: string) => import(`../packages/core/src/queries/${file}.js`) as Promise<Mod>;
-  const [conflict, claims, blast, schedule, hubs, why, brief] = await Promise.all(
-    ["conflict", "claims", "blast", "schedule", "hubs", "why", "brief"].map(load),
+  const [conflict, claims, blast, schedule, hubs, why, brief, search, history] = await Promise.all(
+    ["conflict", "claims", "blast", "schedule", "hubs", "why", "brief", "search", "history"].map(load),
   );
   const fn = (mod: Mod, file: string, name: string) => need<(k: number) => string>(mod, file, name);
   const str = (mod: Mod, file: string, name: string) => need<string>(mod, file, name);
@@ -44,7 +47,7 @@ async function entries(): Promise<Entry[]> {
       call: `conflictQuery(${K})`,
       file: "conflict",
       text: fn(conflict!, "conflict", "conflictQuery")(K),
-      what: "For each file an agent asks for, find another agent's live claim on the same file (SAME), on a file it imports within 3 hops (UPSTREAM), or on a file that imports it within 3 hops (DOWNSTREAM). The path comes back with the row.",
+      what: "For each file an agent asks for, find another agent's live claim on the same file (SAME), on a file it imports within 3 hops (UPSTREAM), or on a file that imports it within 3 hops (DOWNSTREAM). The path comes back with the row. `SB_HOPS` sets the hop limit (1 to 5). A path may not run through a hub or use an `import type` edge; `SB_TYPE_IMPORTS=1` counts type-only imports again.",
       lock: "it compares names, so `LoginForm.tsx` and `session.ts` never meet. Here the import path is the answer.",
     },
     {
@@ -68,7 +71,7 @@ async function entries(): Promise<Entry[]> {
       call: `blastQuery(${K})`,
       file: "blast",
       text: fn(blast!, "blast", "blastQuery")(K),
-      what: "Every file that imports the changed file within 3 hops, with its nearest hop count and the agents that hold a live claim on it. Zero rows means nothing depends on it.",
+      what: "Every file that imports the changed file within 3 hops (`SB_HOPS`), with its nearest hop count and the agents that hold a live claim on it. Zero rows means nothing depends on it. Type-only importers count here: a changed type breaks them at compile time.",
       lock: "it has no idea who depends on a file.",
     },
     {
@@ -76,15 +79,15 @@ async function entries(): Promise<Entry[]> {
       call: `interfereQuery(${K})`,
       file: "schedule",
       text: fn(schedule!, "schedule", "interfereQuery")(K),
-      what: "For every pair of unfinished tasks, find the closest connection between their files: the same file, or an import path within 3 hops either way. The scheduler writes each row as an `INTERFERES` edge.",
+      what: "For every pair of unfinished tasks, find the closest connection between their files: the same file, or an import path within 3 hops either way, with the conflict check's hub and type-only rules. It is a read query: the scheduler colours its rows and stores nothing.",
       lock: "a lock exists only once an agent starts editing. This compares tasks before anyone has claimed anything.",
     },
     {
-      title: "Parallel batches (WCC)",
-      call: "WCC_BATCHES",
+      title: "Rounds: tasks that can run at once",
+      call: "TASK_FOOTPRINTS",
       file: "schedule",
-      text: str(schedule!, "schedule", "WCC_BATCHES"),
-      what: "Weakly connected components over the `INTERFERES` edges. Tasks in one component run one after another. Different components can run at the same time.",
+      text: str(schedule!, "schedule", "TASK_FOOTPRINTS"),
+      what: "Every unfinished task's files, planned and claimed. `parallelBatches` passes them to the interference query above, then colours the interference graph: the task with the most interfering tasks goes first, and each task takes the lowest round none of them holds. Tasks in one round can run at the same time; round 0 runs first. On a chain where A touches B and B touches C, A and C share a round. One weakly connected component per batch, the old rule, ran all three in turn. Reading the rounds writes nothing to the graph.",
       lock: "it tells you who is waiting, not which tasks could never have collided.",
     },
     {
@@ -92,8 +95,24 @@ async function entries(): Promise<Entry[]> {
       call: "MARK_HUBS",
       file: "hubs",
       text: str(hubs!, "hubs", "MARK_HUBS"),
-      what: "PageRank over `IMPORTS`, then a flag on heavily imported files (`lib/utils.ts` in the demo repo). A conflict path may not pass through a flagged file, so a shared helper that imports other code cannot chain all its callers into one conflict. In the demo repo `lib/utils.ts` imports nothing, so the rule changes no result there.",
+      what: "PageRank over `IMPORTS`, then a flag on heavily imported files (`lib/utils.ts` in the demo repo). A conflict path may not pass through a flagged file, so a shared helper that imports other code cannot chain all its callers into one conflict. In the demo repo `lib/utils.ts` imports nothing, so the rule changes no result there. We measured it against `algo.betweenness`; the numbers are under Limits.",
       lock: "it cannot tell a file everyone imports from a file two agents really share, so a path through it would look like a dependency.",
+    },
+    {
+      title: "Memory search (full-text)",
+      call: "SEARCH_DECISIONS",
+      file: "search",
+      text: str(search!, "search", "SEARCH_DECISIONS"),
+      what: "The full-text index on `Decision(text, why)`, so a word that only appears in the reason still finds the decision, with the files it affects. `SEARCH_LESSONS` does the same over `Lesson(text)`. The agent's words are cut to plain words joined by OR before they reach the index. `brief_me` with `about` and the `search_memory` tool use it. `search_memory` marks a replaced decision (superseded); `brief_me` leaves it out (`$activeOnly`).",
+      lock: "it holds names and owners, no text to search.",
+    },
+    {
+      title: "Refusal hotspots",
+      call: "HOTSPOTS",
+      file: "history",
+      text: str(history!, "history", "HOTSPOTS"),
+      what: "Every refusal is an `Event` linked by `VIA` to each file on its import path. This ranks the files that sat on the most refused paths since `$since`, including files in the middle of a path that nobody asked for.",
+      lock: "it forgets a refusal as soon as it answers it.",
     },
     {
       title: "Why",
@@ -206,7 +225,7 @@ function benchBlock(): string {
   if (pairs?.demo) {
     lines.push(
       "",
-      "Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once. A file lock collides only on the same path, so by definition it catches none of them:",
+      "Pair census, one query over the parsed import graph (`npm run pairs`). A pair is two different files, counted once, by the conflict check's default rules: no path through a hub, no `import type` edge. A file lock collides only on the same path, so by definition it catches none of them:",
       "",
       "| Repo | Files | Pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |",
       "|---|---|---|---|---|---|---|",
@@ -241,7 +260,7 @@ function quickstartBlock(): string {
     "npm run switchboard -- init ~/code/my-app",
     "```",
     "",
-    "`init` merges the Switchboard hooks into the repo's `.claude/settings.json` and `.cursor/hooks.json` and adds the MCP server to `.mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.",
+    "`init` merges the Switchboard hooks into the repo's git-ignored `.claude/settings.local.json` (so this machine's paths are never committed) and `.cursor/hooks.json`, and adds the MCP server to `.mcp.json` and `.cursor/mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. With the npm package, `npx switchboard-agents init` writes `npx` commands instead, which can be committed and shared. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.",
   ].join("\n");
 }
 

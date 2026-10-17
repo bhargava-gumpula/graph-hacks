@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SbGraph } from "../graph.js";
 import { recordEvent } from "./events.js";
+import { type MemoryHit, searchMemory } from "./search.js";
 
 /** How far (undirected import hops) a briefing looks around its files. */
 const NEAR_HOPS = 2;
@@ -30,6 +31,8 @@ export interface Brief {
   events: { seq: number; kind: string; path: string; agentId: string | null }[];
   tasks: { id: string; title: string | null }[];
   handoff: { note: string; from: string; to: string } | null;
+  /** Decisions and lessons anywhere in the repo whose words match `text`, minus the ones listed above. */
+  related?: MemoryHit[];
 }
 
 export interface BriefInput {
@@ -39,6 +42,8 @@ export interface BriefInput {
   prefix?: string;
   /** Explicit files. */
   paths?: string[];
+  /** What the agent is about to do, in its own words. Adds matching decisions and lessons (full-text). */
+  text?: string;
   now?: number;
 }
 
@@ -156,10 +161,23 @@ function notes(rows: Record<string, unknown>[]): BriefNote[] {
 
 const EMPTY: Omit<Brief, "files"> = { claims: [], decisions: [], lessons: [], events: [], tasks: [], handoff: null };
 
+/** At most this many full-text matches join a briefing. */
+const RELATED_LIMIT = 5;
+
+/** Full-text matches for the agent's own words that the graph neighbourhood did not already surface. */
+async function related(g: SbGraph, text: string | undefined, shown: BriefNote[]): Promise<MemoryHit[]> {
+  if (!text) return [];
+  const seen = new Set(shown.map((n) => n.id));
+  // Active only, like the brief's own decisions: a replaced decision is not advice.
+  return (await searchMemory(g, text, RELATED_LIMIT + seen.size, true)).filter((h) => !seen.has(h.id)).slice(0, RELATED_LIMIT);
+}
+
 /**
  * Q4. What a fresh or replacement agent needs about an area: claims, decisions,
  * lessons, recent events, open tasks and the latest handoff note. Claims, decisions
  * and lessons are ranked by import-hop distance from the area, then by recency.
+ * With `text`, decisions and lessons that mention its words join as `related`,
+ * found through the full-text indexes rather than the import graph.
  */
 export async function brief(g: SbGraph, input: BriefInput): Promise<Brief> {
   const now = input.now ?? Date.now();
@@ -172,7 +190,7 @@ export async function brief(g: SbGraph, input: BriefInput): Promise<Brief> {
   if (files.length === 0) {
     // A task with no files can still have a handoff note.
     const handoff = input.taskId ? await latestHandoff(g, [input.taskId]) : null;
-    return { files, ...EMPTY, handoff };
+    return { files, ...EMPTY, handoff, related: await related(g, input.text, []) };
   }
 
   const near = (await g.roQuery(NEAR_FILES, { paths: files })).map((row) => ({
@@ -189,6 +207,8 @@ export async function brief(g: SbGraph, input: BriefInput): Promise<Brief> {
 
   const tasks = taskRows.map((row) => ({ id: String(row.id), title: str(row.title) }));
   const taskIds = [...new Set([...(input.taskId ? [input.taskId] : []), ...tasks.map((t) => t.id)])];
+  const decisions = notes(decisionRows);
+  const lessons = notes(lessonRows);
 
   return {
     files,
@@ -199,8 +219,8 @@ export async function brief(g: SbGraph, input: BriefInput): Promise<Brief> {
       taskId: str(row.taskId),
       until: Number(row.until),
     })),
-    decisions: notes(decisionRows),
-    lessons: notes(lessonRows),
+    decisions,
+    lessons,
     events: eventRows.map((row) => ({
       seq: Number(row.seq),
       kind: String(row.kind),
@@ -209,6 +229,7 @@ export async function brief(g: SbGraph, input: BriefInput): Promise<Brief> {
     })),
     tasks,
     handoff: await latestHandoff(g, taskIds),
+    related: await related(g, input.text, [...decisions, ...lessons]),
   };
 }
 
@@ -268,6 +289,10 @@ export function formatBrief(b: Brief): string {
   }
   for (const d of b.decisions) lines.push(`Decision: ${d.text} (${d.path}, ${hopLabel(d.hops)})`);
   for (const l of b.lessons) lines.push(`Lesson: ${l.text} (${l.path}, ${hopLabel(l.hops)})`);
+  for (const r of b.related ?? []) {
+    const files = r.paths.length > 0 ? ` (${r.paths.join(", ")})` : "";
+    lines.push(`Related ${r.kind}: ${r.text}${r.why ? `. Why: ${r.why}` : ""}${files}`);
+  }
   for (const t of b.tasks) lines.push(`Open task: ${t.id}${t.title && t.title !== t.id ? ` ${t.title}` : ""}`);
   // Events are newest first, so the first edit seen per path is its newest.
   const edited = new Map<string, Brief["events"][number]>();

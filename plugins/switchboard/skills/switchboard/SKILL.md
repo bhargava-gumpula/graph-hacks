@@ -10,10 +10,10 @@ It keeps the repo's import graph in FalkorDB. Each agent's edits become claims o
 
 You do not have to call anything for this to work. The plugin's hooks run on their own:
 
-- **Session start**: you get a brief: the graph, your agent id (`claude-code@<branch>`), who holds what, recent decisions and lessons. The repo is re-parsed in the background.
-- **Before every Edit, MultiEdit, Write or NotebookEdit**: the file is claimed for you. If another agent holds that file, or a file within 3 import hops of it, the edit is refused.
-- **After every edit**: the edit is recorded in the graph and the import graph is refreshed in the background.
-- **Session end**: your claims are released.
+- **Session start**: you get a brief: the graph, your agent id (`claude@<branch>`; Cursor on the same branch is `cursor@<branch>`, a different agent), who holds what, recent decisions and lessons. The repo is re-parsed in the background.
+- **Before every Edit, MultiEdit, Write, NotebookEdit or Bash write**: the file is claimed for you. For Bash, only obvious write targets count: `>` and `>>` redirections, `tee`, `sed -i`, `mv`, `cp`, `rm`, `touch` and `git checkout -- <file>`. Read-only commands, and anything Switchboard cannot parse, are never refused. If another agent holds that file, or a file within 3 import hops of it, the edit is refused.
+- **After every edit**: the edit is recorded in the graph and the import graph is refreshed in the background. After a Bash command, the files it changed (git status before and after) are recorded, except files another agent claims or edited while it ran.
+- **Session end**: your claims are released. Anyone waiting on them is told the files are free.
 
 ## Reading a refusal
 
@@ -36,16 +36,34 @@ Don't work around this with Bash. Pick another file or call brief_me.
 3. Pick a safe file, or a part of the task that does not touch that path, and carry on.
 4. If you need the blocked file, wait for the claim to free up, or ask the user to coordinate. The `handoff` tool passes a task to the other agent with a note.
 
+A refusal also ends with `You are now waiting on <file>; Switchboard tells you here when it is free.`
+Switchboard records the wait, so you do not need to poll.
+
+## Wait and free notices
+
+These arrive as extra context on your next edit (before or after it), once each:
+
+- **Someone waits on you**: `cursor@main is waiting on src/db.ts: it wants src/login.ts, 2 imports from your claim. Release it when you're done: switchboard release src/db.ts --agent claude@main`.
+  When you are done with that file, release it: the `release` tool with its path, or that command in a shell.
+- **Your file is free**: `src/db.ts is free now; you can retry src/login.ts.` Retry the edit you were refused.
+
+## Warn mode
+
+With `SB_MODE=warn` nothing is refused. The edit goes ahead and the refusal text comes back as context,
+starting `⚠ Switchboard warning (SB_MODE=warn, the edit goes ahead)`. No wait is recorded. Treat it as
+advice: tell the user, and avoid the held file if you can. The default is enforce.
+
 ## Leave memory for the next agent
 
-The MCP server `switchboard` has 13 tools. The ones worth calling yourself:
+The MCP server `switchboard` has 15 tools. The ones worth calling yourself:
 
 - `brief_me`: who is working near a file or task, decisions and lessons about it. Call it before a big change.
 - `record_decision`: when you choose an approach others must respect (text, why, affected files).
 - `record_lesson`: a gotcha about a file that the next agent needs.
 - `handoff`: pass a task to another agent with a note.
 - `blast_radius`: the files that import a file, hop by hop, before you change its exports.
-- `status`, `why`, `parallel_batches`, `plan_task`, `release`.
+- `search_memory`: find past decisions and lessons by words, such as "session ttl".
+- `status`, `why`, `hotspots`, `parallel_batches`, `plan_task`, `release`.
 
 Paths are repo-relative, such as `src/db.ts`.
 
@@ -56,5 +74,6 @@ Start FalkorDB with `docker run -d -p 6379:6379 falkordb/falkordb`, then start a
 A file the parser has not seen yet (a new file) is allowed with a note that no dependency check ran.
 
 Settings, as environment variables: `FALKORDB_URL` (default `redis://localhost:6379`), `SB_GRAPH`
-(default `sb_<repo name>`, shared by every worktree of the repo), `SB_AGENT` (default `claude-code@<branch>`),
-`SB_URL` (a Switchboard dashboard to link in the brief), `SWITCHBOARD_OFF=1` to turn the hooks off.
+(default `sb_<repo name>`, shared by every worktree of the repo), `SB_AGENT` (default `claude@<branch>`),
+`SB_MODE` (`enforce`, the default, or `warn`), `SB_URL` (a Switchboard dashboard to link in the brief),
+`SWITCHBOARD_OFF=1` to turn the hooks off.

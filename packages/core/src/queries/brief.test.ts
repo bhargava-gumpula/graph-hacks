@@ -98,7 +98,7 @@ test("expired claims drop out", async () => {
 
 test("an unknown area is an empty briefing, not an error", async () => {
   const b = await brief(g(), { taskId: "nope" });
-  expect(b).toEqual({ files: [], claims: [], decisions: [], lessons: [], events: [], tasks: [], handoff: null });
+  expect(b).toEqual({ files: [], claims: [], decisions: [], lessons: [], events: [], tasks: [], handoff: null, related: [] });
   expect(formatBrief(b)).toBe("Files: (none)");
 });
 
@@ -115,4 +115,24 @@ test("formatBrief reads top to bottom: handoff, claims, decisions, lessons, edit
     "Lesson: run codegen before tsc (api/login.ts, 1 hop away)",
     expect.stringMatching(/^Recent edit: auth\/session.ts by A \(#\d+\)$/),
   ]);
+});
+
+test("with the agent's own words, full-text matches from anywhere join as related", async () => {
+  // D-about sits past the hub, out of the import neighbourhood; its words still find it.
+  const b = await brief(g(), { taskId: "T1", text: "make the about page static", now: NOW });
+  expect(b.decisions.map((d) => d.id)).not.toContain("D-about");
+  expect(b.related?.map((r) => r.id)).toEqual(["D-about"]);
+  expect(formatBrief(b)).toContain("Related decision: about is static. Why: SEO (ui/AboutPage.tsx)");
+  // Words that match a decision already listed add nothing.
+  expect((await brief(g(), { taskId: "T1", text: "session TTL", now: NOW })).related).toEqual([]);
+  expect((await brief(g(), { taskId: "T1", now: NOW })).related).toEqual([]);
+});
+
+test("related never lists a superseded decision next to the one that replaced it", async () => {
+  await recordDecision(g(), { agent: "A", text: "session ttl 30m for mobile", why: "logouts", paths: ["auth/session.ts"], id: "D-ttl-old", now: 1_700 });
+  await recordDecision(g(), { agent: "A", text: "session ttl 60m for mobile", why: "fewer logins", paths: ["auth/session.ts"], id: "D-ttl-new", supersedes: ["D-ttl-old"], now: 1_800 });
+  const b = await brief(g(), { prefix: "ui/AboutPage", text: "session ttl mobile", now: NOW });
+  expect(b.related?.map((r) => r.id)).toContain("D-ttl-new");
+  expect(b.related?.map((r) => r.id)).not.toContain("D-ttl-old");
+  expect(formatBrief(b)).not.toContain("30m");
 });

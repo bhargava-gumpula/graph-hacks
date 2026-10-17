@@ -1,6 +1,5 @@
 import type { SbGraph } from "../graph.js";
-
-const MAX_K = 4;
+import { hops, pathFilter } from "./conflict.js";
 
 export const SET_TASK_STATUS = `
 MATCH (t:Task {id: $id})
@@ -35,24 +34,19 @@ RETURN t.id AS id, collect(DISTINCT path) AS paths
 ORDER BY id
 `;
 
-/** Drop the previous interference edges so each pass starts clean. */
-export const CLEAR_INTERFERES = `
-MATCH (:Task)-[r:INTERFERES]->(:Task)
-DELETE r
-`;
-
 /**
  * Q3 step 1. Two tasks interfere when a file of one is the same file as, or within
  * k import hops of, a file of the other. Same rule as the Q1 claim check, so two
- * tasks in different batches can never get a CONFLICT from each other:
+ * tasks in one round can never get a CONFLICT from each other:
  *  - same file: always, even a hub (hop 0);
- *  - otherwise a directed IMPORTS path either way that does not pass through a hub
- *    (a hub at either end counts).
+ *  - otherwise a directed IMPORTS path either way that passes Q1's `pathFilter`:
+ *    no hub inside it (a hub at either end counts), no type-only edge by default.
  * Returns one row per interfering pair: the closest connecting file and its hops.
- * `k` is inlined because Cypher can't take a parameter as a variable-length bound.
+ * `k` is inlined because Cypher can't take a parameter as a variable-length bound;
+ * `hops(k)` validates it (1..5) and applies SB_HOPS.
  */
 export function interfereQuery(k: number): string {
-  if (!Number.isInteger(k) || k < 1 || k > MAX_K) throw new Error(`k must be an integer 1..${MAX_K}, got ${k}`);
+  k = hops(k);
   return `
 UNWIND $tasks AS a
 UNWIND $tasks AS b
@@ -61,9 +55,9 @@ UNWIND a.paths AS p1
 UNWIND b.paths AS p2
 MATCH (f1:File {path: p1}), (f2:File {path: p2})
 OPTIONAL MATCH up = (f1)-[:IMPORTS*1..${k}]->(f2)
-WHERE none(n IN nodes(up)[1..-1] WHERE coalesce(n.hub, false))
+WHERE ${pathFilter("up")}
 OPTIONAL MATCH down = (f2)-[:IMPORTS*1..${k}]->(f1)
-WHERE none(n IN nodes(down)[1..-1] WHERE coalesce(n.hub, false))
+WHERE ${pathFilter("down")}
 WITH a, b, f1, f2, min(length(up)) AS u, min(length(down)) AS d
 WITH a, b, f1.path AS via,
      CASE WHEN f1 = f2 THEN 0 WHEN u IS NULL THEN d WHEN d IS NULL THEN u WHEN u < d THEN u ELSE d END AS hops
@@ -76,31 +70,19 @@ ORDER BY a, b
 }
 
 /**
- * Q3 step 1, write half. Kept apart from the read because FalkorDB returns no rows
- * when this two-node MATCH follows the aggregation above (falkordb:latest, Oct 2026).
+ * Kept for the server's "show the query" panel, which imports this name: the rounds
+ * path runs TASK_FOOTPRINTS, then `interfereQuery`, and colours the result.
+ * algo.WCC is gone from this path: it needs stored INTERFERES edges, and reading
+ * the schedule must not write.
+ * @deprecated use TASK_FOOTPRINTS and interfereQuery.
  */
-export const WRITE_INTERFERES = `
-UNWIND $edges AS e
-MATCH (t1:Task {id: e.a}), (t2:Task {id: e.b})
-CREATE (t1)-[:INTERFERES {via: e.via, hops: e.hops}]->(t2)
-`;
-
-/**
- * Q3 step 2. Weakly connected components over INTERFERES. Tasks in one component
- * must run one after another (or go to one agent); different components can run
- * at the same time. A task with no INTERFERES edge is its own component.
- */
-export const WCC_BATCHES = `
-CALL algo.WCC({nodeLabels: ['Task'], relationshipTypes: ['INTERFERES']}) YIELD node, componentId
-WITH node, componentId WHERE node.id IN $ids
-RETURN componentId, collect(node.id) AS tasks
-ORDER BY componentId
-`;
+export const WCC_BATCHES = TASK_FOOTPRINTS;
 
 export interface Batch {
+  /** The round: 0 runs first. Tasks in one round can run at the same time. */
   componentId: number;
   tasks: string[];
-  /** The batch's files: the union of its tasks' footprints (planned and claimed), sorted. */
+  /** The round's files: the union of its tasks' footprints (planned and claimed), sorted. */
   paths: string[];
 }
 
@@ -118,29 +100,52 @@ export async function planTask(
 }
 
 /**
- * Rebuild INTERFERES from the code graph, then split unfinished tasks into batches
- * with WCC. Batches are ordered by their smallest task id; tasks inside are sorted.
- * The clear and rebuild are separate writes, so two schedulers running at once can
- * briefly see each other's half-built edges; each call ends with a full rebuild.
+ * Greedy graph colouring. Tasks go highest degree first (ties by id); each takes the
+ * lowest round that none of its interfering tasks holds. Colouring the whole graph
+ * gives the same rounds as colouring each connected component on its own, so no
+ * separate component split is needed. On the chain A-B-C, B goes first and A and C
+ * share the next round, where one component per batch would run all three in turn.
+ * ponytail: greedy, not optimal; exact colouring is NP-hard and task counts are small.
  */
-export async function parallelBatches(g: SbGraph, k = 3, now = Date.now()): Promise<Batch[]> {
-  const interfere = interfereQuery(k);
+export function colourRounds(ids: string[], edges: { a: string; b: string }[]): string[][] {
+  const near = new Map(ids.map((id) => [id, new Set<string>()]));
+  for (const { a, b } of edges) {
+    near.get(a)?.add(b);
+    near.get(b)?.add(a);
+  }
+  // Ties by plain code-unit order, the same order `.sort()` gives inside a round, so no locale can change a schedule.
+  const order = [...ids].sort((x, y) => near.get(y)!.size - near.get(x)!.size || (x < y ? -1 : x > y ? 1 : 0));
+  const round = new Map<string, number>();
+  for (const id of order) {
+    const taken = new Set([...near.get(id)!].map((n) => round.get(n)));
+    let r = 0;
+    while (taken.has(r)) r++;
+    round.set(id, r);
+  }
+  const rounds: string[][] = [];
+  for (const id of order) (rounds[round.get(id)!] ??= []).push(id);
+  return rounds.map((tasks) => tasks.sort());
+}
+
+/**
+ * Q3. Split unfinished tasks into rounds: tasks in one round touch unrelated code
+ * and can run at the same time; round 0 first. Read-only: interference is computed
+ * by a read query each time (fresh claims and expiry included), never stored.
+ */
+export async function parallelBatches(g: SbGraph, k?: number, now = Date.now()): Promise<Batch[]> {
   const tasks = (await g.roQuery(TASK_FOOTPRINTS, { now })).map((row) => ({
     id: String(row.id),
     paths: (row.paths as unknown[]).map(String),
   }));
-  await g.query(CLEAR_INTERFERES);
   if (tasks.length === 0) return [];
-  const edges = await g.roQuery(interfere, { tasks });
-  if (edges.length > 0) await g.query(WRITE_INTERFERES, { edges });
-
-  const rows = await g.roQuery(WCC_BATCHES, { ids: tasks.map((t) => t.id) });
+  const edges = (await g.roQuery(interfereQuery(hops(k)), { tasks })).map((row) => ({ a: String(row.a), b: String(row.b) }));
   const footprint = new Map(tasks.map((t) => [t.id, t.paths]));
-  return rows
-    .map((row) => {
-      const ids = (row.tasks as unknown[]).map(String).sort();
-      const paths = [...new Set(ids.flatMap((id) => footprint.get(id) ?? []))].sort();
-      return { componentId: Number(row.componentId), tasks: ids, paths };
-    })
-    .sort((x, y) => x.tasks[0]!.localeCompare(y.tasks[0]!));
+  return colourRounds(
+    tasks.map((t) => t.id),
+    edges,
+  ).map((ids, i) => ({
+    componentId: i,
+    tasks: ids,
+    paths: [...new Set(ids.flatMap((id) => footprint.get(id) ?? []))].sort(),
+  }));
 }

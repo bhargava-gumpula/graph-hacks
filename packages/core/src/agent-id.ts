@@ -1,21 +1,32 @@
 import { execFileSync } from "node:child_process";
 
+/** The editor half of an agent id: `claude` or `cursor`. `claude-code` is the older spelling of `claude`. */
+export function editorName(editor: string | undefined): string | undefined {
+  const e = editor?.trim().toLowerCase();
+  if (!e) return undefined;
+  return e === "claude-code" ? "claude" : e;
+}
+
 /**
- * Who is calling. Both the MCP server and the CLI use this.
- * `SB_AGENT` wins; otherwise the git branch of `cwd` (the checkout the agent is in).
+ * Who is calling. The hooks, the MCP server and the CLI all use this, so one editor gets one id.
+ * `SB_AGENT` wins; otherwise `<editor>@<branch>` of `cwd` (the checkout the agent is in), where the
+ * editor is the argument or `SB_EDITOR`. So Claude Code and Cursor on one branch are two agents:
+ * `claude@main` and `cursor@main`. With no editor it is the bare branch, as before.
  */
-export function agentId(cwd?: string): string {
+export function agentId(cwd?: string, editor: string | undefined = process.env.SB_EDITOR): string {
   const fromEnv = process.env.SB_AGENT?.trim();
   if (fromEnv) return fromEnv;
+  const ed = editorName(editor);
+  let branch: string | undefined;
   try {
-    const branch = git(cwd, "--abbrev-ref", "HEAD");
+    const b = git(cwd, "--abbrev-ref", "HEAD");
     // A detached HEAD prints "HEAD"; every detached checkout would then share one id.
-    if (branch === "HEAD") return `detached-${git(cwd, "--short", "HEAD")}`;
-    if (branch) return branch;
+    branch = b === "HEAD" ? `detached-${git(cwd, "--short", "HEAD")}` : b || undefined;
   } catch {
     // Not a git checkout, a repo with no commits, or git isn't on PATH.
   }
-  return "unknown";
+  if (ed) return branch ? `${ed}@${branch}` : ed;
+  return branch ?? "unknown";
 }
 
 function git(cwd: string | undefined, ...args: string[]): string {

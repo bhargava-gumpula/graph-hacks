@@ -3,13 +3,18 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
-import { agentId } from "./agent-id.js";
+import { agentId, editorName } from "./agent-id.js";
 
-const saved = process.env.SB_AGENT;
-beforeEach(() => delete process.env.SB_AGENT);
+const saved = { agent: process.env.SB_AGENT, editor: process.env.SB_EDITOR };
+beforeEach(() => {
+  delete process.env.SB_AGENT;
+  delete process.env.SB_EDITOR;
+});
 afterEach(() => {
-  if (saved === undefined) delete process.env.SB_AGENT;
-  else process.env.SB_AGENT = saved;
+  for (const [key, value] of [["SB_AGENT", saved.agent], ["SB_EDITOR", saved.editor]] as const) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 const dirs: string[] = [];
@@ -44,4 +49,22 @@ test("the branch of the checkout", () => {
 
 test("not a git checkout gives unknown", () => {
   expect(agentId(tempDir())).toBe("unknown");
+});
+
+test("one id per editor: <editor>@<branch>, so Claude Code and Cursor on one branch are two agents", () => {
+  const repo = tempDir();
+  git(repo, "init", "-q", "-b", "main");
+  git(repo, "commit", "-q", "--allow-empty", "-m", "x");
+  expect(agentId(repo, "claude")).toBe("claude@main");
+  expect(agentId(repo, "claude-code")).toBe("claude@main");
+  expect(agentId(repo, "cursor")).toBe("cursor@main");
+  process.env.SB_EDITOR = "cursor";
+  expect(agentId(repo)).toBe("cursor@main");
+  process.env.SB_AGENT = "pinned";
+  expect(agentId(repo, "claude")).toBe("pinned");
+  expect(agentId(tempDir(), "cursor")).toBe("pinned");
+  delete process.env.SB_AGENT;
+  expect(agentId(tempDir(), "cursor")).toBe("cursor");
+  expect(editorName(" Claude-Code ")).toBe("claude");
+  expect(editorName("")).toBeUndefined();
 });

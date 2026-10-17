@@ -1,0 +1,61 @@
+# Judge Q&A: the truth sheet
+
+Twelve questions, each answered in at most two sentences. Every answer was checked against the code or the logs named in it. If a fact here and the code disagree, the code wins: fix this file.
+
+## 1. Why a graph and not SQL?
+
+Conflict, blast radius and the why-trace are paths of unknown length between moving sets of files. A recursive CTE can walk imports, but you write one per direction and build the path column yourself, while FalkorDB returns the path from `-[:IMPORTS*1..3]->` and runs `algo.WCC` and `algo.pageRank` in one call each.
+
+## 2. How does the conflict query work?
+
+For each file an agent asks for, it looks for another agent's live claim on the same file, on a file the request imports within 3 hops (UPSTREAM), or on a file that imports the request within 3 hops (DOWNSTREAM), and any row is a refusal that carries the path. A hub in the middle of a path is ignored, and an empty result means no live claim sits within 3 hops.
+
+## 3. What does WCC add?
+
+It groups the open tasks whose files can reach each other through imports, so you know which tasks must queue behind each other and which can run at the same time. FalkorDB computes the groups in one call over `INTERFERES` edges that come from the import graph, so nobody types them.
+
+## 4. What is the exact hub rule?
+
+A file is a hub when 10 or more files import it, or when at least 3 files import it and its PageRank score is at least 4 times the average (`packages/core/src/queries/hubs.ts`). On the demo repo only `lib/utils.ts` is a hub, with 20 importers; a path through a hub does not count, but a claim on a hub itself still does.
+
+## 5. What does the benchmark show, and what does it not?
+
+Ten times it copies the demo repo, applies two edits that each pass `tsc` alone (agent A in `session.ts`, agent B in `LoginForm.tsx`) and runs the real compiler: merged, the build breaks every time without Switchboard and never with it (`bench/results.json`). It does not show how often real agents collide, because the agents are scripted, it is one scenario, and it is deterministic, so N = 10 shows only that it repeats.
+
+## 6. Did you use Switchboard to build Switchboard?
+
+No, not beyond parsing our own repo once (60 files and 81 imports on Oct 15). The build was coordinated with task briefs, one git worktree per task, and review and merge by the main chat.
+
+## 7. Who wrote what?
+
+AI coding agents wrote almost all of the code: Cursor with Claude Opus 5.5 and Grok 4.7, and Claude Code with Claude Opus 5.5. The owner made the product decisions in `docs/PLAN.md` §0.6 (the idea, the two tracks, the AI briefing summary, the benchmark), ran the editor tests that needed a person, and directed the UI rebuild, while the main Opus 5.5 chat wrote the task briefs and reviewed and merged the branches.
+
+## 8. What breaks without FalkorDB?
+
+Everything the product does, because FalkorDB is the only store: the claim check, the event feed (the `seq` counter lives in the graph), the batches, the why-trace and the briefing all stop. The web app then shows a recorded run, labelled as a recording.
+
+## 9. What happens when two agents claim at once?
+
+A claim is one write query that runs the conflict guard and the write together, and FalkorDB runs the write queries of one graph one at a time, so two racing claims cannot both pass the check. The test `ten agents race for the same file` fires ten claims at once and exactly one wins.
+
+## 10. What memory types does it keep?
+
+Episodic memory is `Event` nodes (`BY`, `ON`, `UNDER`) numbered by a gap-free `seq`, and semantic memory is `Decision` with `AFFECTS` and `SUPERSEDES`. Procedural memory is `Lesson` with `ABOUT`, and shared state and handoffs are `CLAIMS`, `WORKS_ON` and `HANDED_OFF`, with one graph per project for separation.
+
+## 11. What are the limits?
+
+It reads TypeScript only (static imports, re-exports and `import("literal")`), works at file level, looks at most 3 import hops by default, and ignores a path that runs through a hub. The import graph is a snapshot from the last parse, and a claim blocks an edit only where the editor runs the hook.
+
+## 12. How is it deployed?
+
+The server and FalkorDB run on an always-on Mac behind a Cloudflare Tunnel, and the web app is static on Cloudflare Pages, which falls back to a recorded run if the API is down. The exact steps are in `deploy/RUNBOOK.md`, and a GitHub Actions job pings the API and the site every 15 minutes.
+
+## Numbers you can quote
+
+| Fact | Value | Where to check |
+|---|---|---|
+| Demo repo | 35 files, 51 import edges | `npm run parse -- demo-repo` |
+| Importers of `lib/utils.ts` | 20 | the `MARK_HUBS` result |
+| Conflict query, inside FalkorDB | about 0.15 ms | `GRAPH.PROFILE`, see the README |
+| MCP tools | 13 | `packages/mcp/src/index.ts` |
+| First code commit | Oct 14, 11:09 PM PT, after the 11:31 AM PT start | `git log --reverse` |

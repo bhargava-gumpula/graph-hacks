@@ -44,7 +44,7 @@ function Cell({ run, i }: { run: string; i: number }) {
   const cell = CELLS[run] ?? CELLS.landed!;
   const anim = useCell(i);
   return (
-    <motion.li {...anim} className={`flex h-7 items-center justify-center gap-0.5 rounded-[4px] font-mono text-[10px] ${cell.cls}`}>
+    <motion.li {...anim} className={`flex h-7 items-center justify-center gap-0.5 rounded-[4px] font-mono text-[11px] ${cell.cls}`}>
       {cell.text}
       {run === "tsc-fail" && <X size={10} weight="bold" aria-hidden />}
       {run === "ok" && <Check size={10} weight="bold" aria-hidden />}

@@ -109,7 +109,11 @@ export function GraphView(props: GraphViewProps) {
   const routeRef = useRef<SVGPathElement>(null);
   const routeLen = useMotionValue(0);
   useEffect(() => {
-    if (!hit) return;
+    if (!hit) {
+      setShot(null);
+      setImpact(null);
+      return;
+    }
     const pts = hit.conflict.path.map((p) => L.nodes.get(p)).filter(Boolean) as { x: number; y: number }[];
     if (pts.length < 1) return;
     const d =
@@ -192,6 +196,9 @@ export function GraphView(props: GraphViewProps) {
       top: Math.max(8, Math.min(H - h - 8, ty.get() + y * k.get() - 10)),
     };
   };
+  // First paint: columns arrive left to right, imports draw after their source.
+  const colOf = useMemo(() => new Map(L.folders.map((f, i) => [f, i])), [L.folders]);
+  const enter = (n: { folder: string; y: number }) => 0.1 + (colOf.get(n.folder) ?? 0) * 0.08 + (n.y / L.height) * 0.2;
   const halo = { paintOrder: "stroke", stroke: "var(--bg)", strokeWidth: 3, strokeLinejoin: "round" } as const;
 
   return (
@@ -217,9 +224,19 @@ export function GraphView(props: GraphViewProps) {
       <svg ref={svg} className="absolute inset-0 h-full w-full" role="img" aria-label="Live code graph">
         <motion.g style={{ x: tx, y: ty, scale: k, originX: 0, originY: 0 }}>
           {L.folders.map((f, i) => (
-            <text key={f} x={L.colX(i)} y={28} textAnchor="middle" className="fill-[var(--muted)] font-mono text-[11px]" style={halo}>
+            <motion.text
+              key={f}
+              x={L.colX(i)}
+              y={28}
+              textAnchor="middle"
+              className="fill-[var(--muted)] font-mono text-[11px]"
+              style={halo}
+              initial={reduce ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.05 + i * 0.08 }}
+            >
               {f}/
-            </text>
+            </motion.text>
           ))}
 
           {L.edges.map((e) => {
@@ -228,9 +245,12 @@ export function GraphView(props: GraphViewProps) {
             const inFocus = focus && focus.has(e.s.id) && focus.has(e.t.id);
             const touch = hover && (e.s.id === hover || e.t.id === hover);
             return (
-              <path
+              <motion.path
                 key={e.id}
                 d={curve(e.s, e.t)}
+                initial={reduce ? false : { pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 0.9, ease: EXPO, delay: enter(e.s) }}
                 fill="none"
                 stroke="var(--fg)"
                 strokeOpacity={onShot ? 0 : inBlast || inFocus ? 0.55 : touch ? 0.45 : e.hub ? 0.05 : focus || selected ? 0.06 : 0.14}
@@ -282,6 +302,12 @@ export function GraphView(props: GraphViewProps) {
                 onClick={() => onSelect(isSel ? null : n.id)}
                 style={{ opacity: dimmed ? 0.22 : 1, transition: "opacity .35s" }}
               >
+                <motion.g
+                  initial={reduce ? false : { opacity: 0, scale: 0.3 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 22, delay: enter(n) }}
+                  style={{ originX: `${n.x}px`, originY: `${n.y}px` }}
+                >
                 <circle cx={n.x} cy={n.y} r={12} fill="transparent" />
                 {batch !== undefined && (
                   <>
@@ -347,6 +373,7 @@ export function GraphView(props: GraphViewProps) {
                     {hop ? <tspan className="fill-[var(--muted)]"> · {hop} hop{hop > 1 ? "s" : ""}</tspan> : null}
                   </text>
                 )}
+                </motion.g>
               </g>
             );
           })}

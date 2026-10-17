@@ -44,6 +44,9 @@ export function Dashboard() {
   const [run, setRun] = useState(0);
   const [health, setHealth] = useState<Health | null>(null);
   const [hoverAgent, setHoverAgent] = useState<string | null>(null);
+  // Play clears the previous run's path, so the new refusal draws on a clean graph.
+  const [staleHit, setStaleHit] = useState<number | null>(null);
+  const hit = live.hit && live.hit.id !== staleHit ? live.hit : null;
   const armed = useRef(false); // a demo run is waiting for its refusal
   const demoHit = useRef<number | null>(null);
   const timers = useRef<number[]>([]);
@@ -54,7 +57,7 @@ export function Dashboard() {
   const files = useMemo(() => (live.graph?.nodes ?? []).filter((n) => n.kind === "file").map((n) => n.id).sort(), [live.graph]);
   const imports = useMemo(() => (live.graph?.edges ?? []).filter((e) => e.kind === "IMPORTS").length, [live.graph]);
   const collisions = useMemo(() => splitRuns(live.events).latest.filter((e) => e.kind === "conflict").length, [live.events]);
-  const blocked = useMemo(() => blockedBy(live.hit, live.events), [live.hit, live.events]);
+  const blocked = useMemo(() => blockedBy(hit, live.events), [hit, live.events]);
 
   // WCC groups, biggest first so G1 is the one that must queue the most.
   const groups = useMemo(() => {
@@ -134,6 +137,7 @@ export function Dashboard() {
     if (playing) return;
     setPlaying(true);
     setSelected(null);
+    setStaleHit(live.hit?.id ?? null);
     armed.current = true;
     const id = `demo-${Date.now()}`;
     setTasks((t) => [...t.slice(-3), { id, label: "Running the demo", detail: "two agents, one hidden dependency", status: "running" }]);
@@ -143,6 +147,7 @@ export function Dashboard() {
       setRun((n) => n + 1);
     } catch (e) {
       armed.current = false;
+      setStaleHit(null);
       setTasks((t) => t.map((x) => (x.id === id ? { ...x, status: "error", label: "Demo failed", detail: (e as Error).message } : x)));
     } finally {
       setPlaying(false);
@@ -293,7 +298,7 @@ export function Dashboard() {
                   setHoverAgent(li?.getAttribute("data-agent") ?? null);
                 }}
               >
-                <AgentsPanel agents={agents} claims={live.claims} events={live.events} status={live.status} hit={live.hit} onPick={setSelected} onPath={onPath} />
+                <AgentsPanel agents={agents} claims={live.claims} events={live.events} status={live.status} hit={hit} onPick={setSelected} onPath={onPath} />
               </div>
             </div>
           </aside>
@@ -309,7 +314,7 @@ export function Dashboard() {
               <GraphView
                 graph={live.graph}
                 claims={live.claims}
-                hit={live.hit}
+                hit={hit}
                 selected={selected}
                 blast={blastMap}
                 batchOf={batchOf}

@@ -18,6 +18,7 @@ Branch `night/n5`. Files changed: `apps/web/src/app/Dashboard.tsx`, `Panels.tsx`
 - **Top bar at 390 px**: one line (`whitespace-nowrap`); Try a claim and Parallel batches are icon-only below sm/md, status text hidden below sm, Play reads "Play" below sm.
 - **Status island**: a resting pill "Live · FalkorDB {dbMs} ms" (health polled every 15 s) or "Replay · recorded {time}". Done icon is neutral white, error icon is signal orange (one accent).
 - **/app?play=1**: after the first refresh (live or replay) it plays once and `history.replaceState` drops the param.
+- **First paint**: folder columns arrive left to right, nodes spring in and imports draw after their source (skipped under reduced motion). **Play clears the previous run's path** (and B's blocked row) so the new refusal draws on a clean graph; a failed Play restores it.
 - **Stretch, all done**: (a) a wide invisible hit path on the orange route shows a card (file → claim, hops, ms, the UPSTREAM part of the conflict query) that follows the pointer; hovering an agent card lights its claims and their importers within 3 hops (client-side over the import edges, hubs skipped) and dims the rest; (b) the why trace above; (c) claim rings land with a spring.
 
 ## Decisions and deviations

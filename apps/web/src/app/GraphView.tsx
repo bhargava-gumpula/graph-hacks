@@ -7,6 +7,10 @@ import { curve, layoutGraph } from "./layoutGraph";
 import { pulse } from "../landing/AsciiField";
 
 const EXPO = [0.16, 1, 0.3, 1] as const;
+/** Camera moves on screen: strong ease-in-out, under 300ms. */
+const CAM = { duration: 0.22, ease: [0.77, 0, 0.175, 1] as const };
+/** Touch screens get a bigger hit circle per node. Springs below use damping = 1.7 * sqrt(stiffness) (ratio about 0.85). */
+const coarse = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
 /** The multi-hop (UPSTREAM) part of the conflict query, which is the one that drew this route. */
 function upstreamPart(q: string) {
@@ -33,6 +37,8 @@ export interface GraphViewProps {
   checkMs?: number | null;
   conflictCypher?: string;
   onSelect: (id: string | null) => void;
+  /** Called on the impact frame of a conflict (at once for a restored or reduced-motion one). */
+  onLanded?: (id: number) => void;
 }
 
 /**
@@ -41,43 +47,73 @@ export interface GraphViewProps {
  * real dependency path to the claim it hit, then an impact that ripples the field.
  */
 export function GraphView(props: GraphViewProps) {
-  const { graph, claims, hit, selected, blast, batchOf, ghost, focusAgent, checkMs, conflictCypher, onSelect } = props;
+  const { graph, claims, hit, selected, blast, batchOf, ghost, focusAgent, checkMs, conflictCypher, onSelect, onLanded } = props;
   const reduce = useReducedMotion();
-  const L = useMemo(() => layoutGraph(graph), [graph]);
+  // Phone-width canvases get tighter folder columns, so labels stay readable after fit.
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  const L = useMemo(() => layoutGraph(graph, narrow ? 110 : 210), [graph, narrow]);
   const wrap = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<string | null>(null);
-  const [routeHover, setRouteHover] = useState<{ x: number; y: number } | null>(null);
+  // Route card position as motion values: pointermove never re-renders the graph.
+  const [onRoute, setOnRoute] = useState(false);
+  const rx = useMotionValue(0);
+  const ry = useMotionValue(0);
 
   // Camera: pan and zoom as motion values (no React re-render per frame).
   const tx = useMotionValue(0);
   const ty = useMotionValue(0);
   const k = useMotionValue(1);
-  const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; tx: number; ty: number; live: boolean } | null>(null);
+  const stopCam = () => {
+    tx.stop();
+    ty.stop();
+    k.stop();
+  };
+  /** Glide the camera, or jump under reduced motion. */
+  const moveCam = (nk: number, ntx: number, nty: number, duration = CAM.duration) => {
+    stopCam();
+    if (reduce) {
+      k.set(nk);
+      tx.set(ntx);
+      ty.set(nty);
+      return;
+    }
+    const t = { ...CAM, duration };
+    animate(k, nk, t);
+    animate(tx, ntx, t);
+    animate(ty, nty, t);
+  };
   const fit = () => {
     const el = wrap.current;
     if (!el) return;
     const s = Math.min(el.clientWidth / L.width, el.clientHeight / L.height) * 0.94;
-    animate(k, s, { duration: 0.6, ease: EXPO });
-    animate(tx, (el.clientWidth - L.width * s) / 2, { duration: 0.6, ease: EXPO });
-    animate(ty, (el.clientHeight - L.height * s) / 2, { duration: 0.6, ease: EXPO });
+    moveCam(s, (el.clientWidth - L.width * s) / 2, (el.clientHeight - L.height * s) / 2, 0.3);
   };
   useEffect(() => {
     fit();
-    const ro = new ResizeObserver(fit);
+    const ro = new ResizeObserver(() => {
+      setNarrow((wrap.current?.clientWidth ?? 1024) < 640);
+      fit();
+    });
     if (wrap.current) ro.observe(wrap.current);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [L.width, L.height]);
 
-  const zoomBy = (f: number, cx?: number, cy?: number) => {
+  /** Wheel zoom follows the gesture directly; the +/- buttons glide (tween). */
+  const zoomBy = (f: number, cx?: number, cy?: number, tween = false) => {
+    stopCam();
     const el = wrap.current!;
     const px = cx ?? el.clientWidth / 2;
     const py = cy ?? el.clientHeight / 2;
     const nk = Math.min(4, Math.max(0.25, k.get() * f));
     const r = nk / k.get();
-    tx.set(px - (px - tx.get()) * r);
-    ty.set(py - (py - ty.get()) * r);
+    const ntx = px - (px - tx.get()) * r;
+    const nty = py - (py - ty.get()) * r;
+    if (tween) return moveCam(nk, ntx, nty);
+    tx.set(ntx);
+    ty.set(nty);
     k.set(nk);
   };
 
@@ -115,7 +151,10 @@ export function GraphView(props: GraphViewProps) {
       return;
     }
     const pts = hit.conflict.path.map((p) => L.nodes.get(p)).filter(Boolean) as { x: number; y: number }[];
-    if (pts.length < 1) return;
+    if (pts.length < 1) {
+      onLanded?.(hit.id);
+      return;
+    }
     const d =
       pts.length === 1
         ? `M ${pts[0].x} ${pts[0].y} L ${pts[0].x} ${pts[0].y}`
@@ -135,6 +174,7 @@ export function GraphView(props: GraphViewProps) {
     }
     const done = () => {
       setImpact({ id: shot.id, ...shot.end });
+      onLanded?.(shot.id);
       const r = svg.current?.getBoundingClientRect();
       if (r) {
         const sx = r.left + tx.get() + shot.end.x * k.get();
@@ -149,7 +189,8 @@ export function GraphView(props: GraphViewProps) {
     }
     const c = animate(0, 1, {
       duration: Math.min(1.6, 0.45 * Math.max(1, hit?.conflict.hops ?? 1)),
-      ease: [0.45, 0, 0.2, 1],
+      // power3.in: the packet accelerates into the claim and is cut at peak velocity on impact.
+      ease: [0.32, 0, 0.67, 0],
       onUpdate: (v) => {
         const p = el.getPointAtLength(v * len);
         packetX.set(p.x);
@@ -206,22 +247,32 @@ export function GraphView(props: GraphViewProps) {
       ref={wrap}
       className="relative h-full w-full cursor-grab touch-none overflow-hidden active:cursor-grabbing"
       onPointerDown={(e) => {
-        if ((e.target as Element).closest("[data-node]")) return;
-        drag.current = { x: e.clientX, y: e.clientY, tx: tx.get(), ty: ty.get() };
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        if ((e.target as Element).closest("[data-node], button")) return;
+        stopCam();
+        drag.current = { x: e.clientX, y: e.clientY, tx: tx.get(), ty: ty.get(), live: false };
       }}
       onPointerMove={(e) => {
-        if (!drag.current) return;
-        tx.set(drag.current.tx + e.clientX - drag.current.x);
-        ty.set(drag.current.ty + e.clientY - drag.current.y);
+        const d = drag.current;
+        if (!d) return;
+        const dx = e.clientX - d.x;
+        const dy = e.clientY - d.y;
+        if (!d.live) {
+          // Capture only once a drag has started, so clicks still reach their targets.
+          if (Math.hypot(dx, dy) < 4) return;
+          d.live = true;
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        }
+        tx.set(d.tx + dx);
+        ty.set(d.ty + dy);
       }}
-      onPointerUp={(e) => {
+      onPointerUp={() => {
         const d = drag.current;
         drag.current = null;
-        if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) onSelect(null);
+        if (d && !d.live) onSelect(null);
       }}
+      onPointerCancel={() => (drag.current = null)}
     >
-      <svg ref={svg} className="absolute inset-0 h-full w-full" role="img" aria-label="Live code graph">
+      <svg ref={svg} className="absolute inset-0 h-full w-full" role="group" aria-label="Live code graph">
         <motion.g style={{ x: tx, y: ty, scale: k, originX: 0, originY: 0 }}>
           {L.folders.map((f, i) => (
             <motion.text
@@ -272,11 +323,15 @@ export function GraphView(props: GraphViewProps) {
                 strokeWidth={18}
                 data-node
                 className="cursor-help"
+                onPointerEnter={() => setOnRoute(true)}
                 onPointerMove={(e) => {
-                  const r = wrap.current?.getBoundingClientRect();
-                  if (r) setRouteHover({ x: e.clientX - r.left, y: e.clientY - r.top });
+                  const el = wrap.current;
+                  if (!el) return;
+                  const r = el.getBoundingClientRect();
+                  rx.set(Math.max(8, Math.min(el.clientWidth - 296, e.clientX - r.left + 16)));
+                  ry.set(Math.max(8, Math.min(el.clientHeight - (conflictCypher ? 200 : 80), e.clientY - r.top + 14)));
                 }}
-                onPointerLeave={() => setRouteHover(null)}
+                onPointerLeave={() => setOnRoute(false)}
               />
             </>
           )}
@@ -296,34 +351,48 @@ export function GraphView(props: GraphViewProps) {
               <g
                 key={n.id}
                 data-node
-                className="cursor-pointer"
+                tabIndex={0}
+                role="button"
+                aria-label={`${n.id}${claimers.length ? `, claimed by Agent ${claimers.join(", ")}` : ""}`}
+                aria-pressed={isSel}
+                // Focus reuses the hover visual (bigger node, label, card) as its indicator.
+                className="cursor-pointer focus-visible:outline-none"
                 onPointerEnter={() => setHover(n.id)}
                 onPointerLeave={() => setHover(null)}
+                onFocus={() => setHover(n.id)}
+                onBlur={() => setHover(null)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  onSelect(isSel ? null : n.id);
+                }}
                 onClick={() => onSelect(isSel ? null : n.id)}
                 style={{ opacity: dimmed ? 0.22 : 1, transition: "opacity .35s" }}
               >
                 <motion.g
                   initial={reduce ? false : { opacity: 0, scale: 0.3 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ type: "spring", stiffness: 320, damping: 22, delay: enter(n) }}
+                  transition={{ type: "spring", stiffness: 320, damping: 30, delay: enter(n) }}
                   style={{ originX: `${n.x}px`, originY: `${n.y}px` }}
                 >
-                <circle cx={n.x} cy={n.y} r={12} fill="transparent" />
+                <circle cx={n.x} cy={n.y} r={coarse ? 15 : 12} fill="transparent" />
+                <AnimatePresence>
                 {batch !== undefined && (
-                  <>
+                  <motion.g key="batch" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>
                     <circle cx={n.x} cy={n.y} r={10} fill="var(--fg)" fillOpacity={0.36 - (batch % 4) * 0.08} />
                     <rect x={n.x - 40} y={n.y - 7} width={24} height={14} rx={7} fill="var(--surface)" stroke="var(--fg)" strokeOpacity={0.35 - (batch % 4) * 0.06} />
                     <text x={n.x - 28} y={n.y + 3} textAnchor="middle" className="fill-[var(--fg)] font-mono text-[9px] font-semibold">
                       G{batch + 1}
                     </text>
-                  </>
+                  </motion.g>
                 )}
+                </AnimatePresence>
                 <motion.circle
                   cx={n.x}
                   cy={n.y}
                   initial={false}
                   animate={{ r: onShot ? 6 : isSel ? 5.5 : isHover ? 5 : n.hub ? 4.5 : 3.25 }}
-                  transition={{ type: "spring", stiffness: 420, damping: 24 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 35 }}
                   fill={onShot ? "var(--color-signal)" : "var(--fg)"}
                   fillOpacity={onShot || isSel || isHover ? 1 : hop ? 1 - hop * 0.2 : fh !== undefined ? 1 - fh * 0.2 : n.hub ? 0.6 : 0.45}
                 />
@@ -334,7 +403,7 @@ export function GraphView(props: GraphViewProps) {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.6 }}
                       style={{ originX: `${n.x}px`, originY: `${n.y}px` }}
-                      transition={{ type: "spring", stiffness: 380, damping: 16 }}
+                      transition={{ type: "spring", stiffness: 380, damping: 33 }}
                     >
                       <circle cx={n.x} cy={n.y} r={11} fill="none" stroke={onShot ? "var(--color-signal)" : "var(--fg)"} strokeWidth={1.5} />
                       <rect x={n.x - 22} y={n.y - 26} width={20} height={14} rx={7} fill="var(--fg)" />
@@ -352,7 +421,7 @@ export function GraphView(props: GraphViewProps) {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 1.4 }}
                       style={{ originX: `${n.x}px`, originY: `${n.y}px` }}
-                      transition={{ type: "spring", stiffness: 300, damping: 18, delay: reduce ? 0 : 0.2 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 29, delay: reduce ? 0 : 0.2 }}
                     >
                       <circle cx={n.x} cy={n.y} r={15} fill="none" stroke="var(--color-signal)" strokeWidth={1.5} strokeDasharray="3 3" />
                       <rect x={n.x - 24} y={n.y - 30} width={20} height={14} rx={7} fill="var(--bg)" stroke="var(--color-signal)" strokeWidth={1.2} />
@@ -385,11 +454,13 @@ export function GraphView(props: GraphViewProps) {
                 key={impact.id}
                 cx={impact.x}
                 cy={impact.y}
+                r={80}
                 fill="none"
                 stroke="var(--color-signal)"
                 strokeWidth={2}
-                initial={{ r: 8, opacity: 1 }}
-                animate={{ r: 80, opacity: 0 }}
+                vectorEffect="non-scaling-stroke"
+                initial={{ scale: 0.1, opacity: 1 }}
+                animate={{ scale: 1, opacity: 0 }}
                 transition={{ duration: 0.8, ease: [0.2, 0.7, 0.3, 1] }}
                 onAnimationComplete={() => setImpact(null)}
                 style={{ pointerEvents: "none" }}
@@ -403,13 +474,13 @@ export function GraphView(props: GraphViewProps) {
       <AnimatePresence>
         {hovered && (
           <motion.div
-            key={hovered.id}
+            key="node-card"
             initial={{ opacity: 0, y: 4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.1 } }}
             transition={{ duration: 0.18, ease: EXPO }}
             className="pointer-events-none absolute z-10 w-60 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/95 p-3 text-xs shadow-xl shadow-black/30 backdrop-blur"
-            style={cardAt(hovered.x, hovered.y, 240, 86)}
+            style={{ ...cardAt(hovered.x, hovered.y, 240, 86), transformOrigin: "left top" }}
           >
             <p className="truncate font-mono text-[12px] text-[var(--fg)]">{hovered.id}</p>
             <p className="mt-2 text-[var(--muted)]">
@@ -425,17 +496,14 @@ export function GraphView(props: GraphViewProps) {
 
       {/* Route card: the conflict query behind the orange path. */}
       <AnimatePresence>
-        {routeHover && shot && hit && !hovered && (
+        {onRoute && shot && hit && !hovered && (
           <motion.div
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: EXPO }}
             className="pointer-events-none absolute z-10 w-72 rounded-[var(--radius-panel)] border border-[var(--color-signal)]/40 bg-[var(--surface)]/95 p-3 text-xs shadow-xl shadow-black/30 backdrop-blur"
-            style={{
-              left: Math.max(8, Math.min((wrap.current?.clientWidth ?? 0) - 296, routeHover.x + 16)),
-              top: Math.max(8, Math.min((wrap.current?.clientHeight ?? 0) - (conflictCypher ? 200 : 80), routeHover.y + 14)),
-            }}
+            style={{ left: 0, top: 0, x: rx, y: ry }}
           >
             <p className="font-mono text-[12px] text-[var(--fg)]">
               {hit.conflict.file} → {hit.conflict.claimed}
@@ -455,11 +523,11 @@ export function GraphView(props: GraphViewProps) {
 
       <div className="absolute bottom-4 right-4 z-10 flex gap-1 rounded-full border border-[var(--border)] bg-[var(--surface)]/90 p-1 backdrop-blur">
         {[
-          { label: "Zoom in", icon: <Plus size={14} />, on: () => zoomBy(1.25) },
-          { label: "Zoom out", icon: <Minus size={14} />, on: () => zoomBy(0.8) },
+          { label: "Zoom in", icon: <Plus size={14} />, on: () => zoomBy(1.25, undefined, undefined, true) },
+          { label: "Zoom out", icon: <Minus size={14} />, on: () => zoomBy(0.8, undefined, undefined, true) },
           { label: "Fit graph", icon: <ArrowsOut size={14} />, on: fit },
         ].map((b) => (
-          <button key={b.label} type="button" aria-label={b.label} onClick={b.on} className="rounded-full p-2 text-[var(--muted)] transition hover:bg-[var(--fg)]/[0.06] hover:text-[var(--fg)] active:scale-95">
+          <button key={b.label} type="button" aria-label={b.label} onClick={b.on} className="touch-manipulation rounded-full p-2 text-[var(--muted)] transition-[color,background-color,transform] hover:bg-[var(--fg)]/[0.06] hover:text-[var(--fg)] active:scale-95 pointer-coarse:p-3">
             {b.icon}
           </button>
         ))}

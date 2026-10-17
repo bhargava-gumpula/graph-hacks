@@ -8,6 +8,8 @@ const g = useTestGraph("sb_test_agents");
 
 beforeEach(async () => {
   await g().query("MATCH (a:Agent) DETACH DELETE a");
+  // claim() only claims files that are in the code graph.
+  await g().query("UNWIND ['lib/crypto.ts', 'ui/AboutPage.tsx'] AS p MERGE (f:File {path: p}) ON CREATE SET f.hub = false, f.rank = 0.0");
 });
 
 test("register sets the agent active and records a register event", async () => {

@@ -1,12 +1,8 @@
 {
   "mcpServers": {
-    "sb-echo": {
-      "command": "node",
-      "args": ["${workspaceFolder}/scripts/mcp-echo.ts"]
-    },
     "switchboard": {
       "command": "npx",
-      "args": ["tsx", "packages/mcp/src/index.ts"]
+      "args": ["tsx", "${workspaceFolder}/packages/mcp/src/index.ts"]
     }
   }
 }

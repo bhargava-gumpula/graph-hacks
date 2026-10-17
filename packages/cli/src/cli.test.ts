@@ -8,6 +8,10 @@ const tsx = join(root, "node_modules/.bin/tsx");
 const GRAPH = `sb_test_cli_${process.pid}`;
 const PATH_3 =
   "CONFLICT UPSTREAM ui/LoginForm.tsx ← A via ui/LoginForm.tsx → api/login.ts → auth/session.ts → lib/crypto.ts";
+const OK_CHECK = /^OK no claim within 3 import hops \(\d+(\.\d+)? ms\)\n$/;
+/** The hook's deny reason when it took the CLI fallback. */
+// t-about (planned in an earlier test) is the open task that is free.
+const DENY_3 = `✗ Switchboard blocked this edit\n${PATH_3}\nSafe now: ui/AboutPage.tsx\nDon't work around this with Bash. Pick another file or call brief_me.`;
 
 function run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -48,22 +52,41 @@ test("check exits 2 with the 3-hop path, and 0 once the claim is released", asyn
 
   const claimed = await run(["claim", "lib/crypto.ts", "--agent", "A"]);
   expect(claimed.code, claimed.stderr).toBe(0);
-  expect(claimed.stdout).toMatch(/^OK until=/);
+  expect(claimed.stdout).toMatch(/^OK until=\S+ \(1 file checked within 3 import hops\)\n$/);
 
   const blocked = await run(["check", "ui/LoginForm.tsx", "--agent", "B"]);
   expect(blocked.code, blocked.stderr).toBe(2);
   expect(blocked.stdout.trim()).toBe(PATH_3);
 
+  const prefixed = await run(["check", "demo-repo/ui/LoginForm.tsx", "--agent", "B"]);
+  expect(prefixed.code, prefixed.stderr).toBe(2);
+  expect(prefixed.stdout.trim()).toBe(PATH_3);
+
   const clear = await run(["check", "ui/AboutPage.tsx", "--agent", "B"]);
   expect(clear.code, clear.stderr).toBe(0);
-  expect(clear.stdout).toBe("");
+  expect(clear.stdout).toMatch(OK_CHECK);
+
+  const unknown = await run(["check", "ui/Nope.tsx", "--agent", "B"]);
+  expect(unknown.code, unknown.stderr).toBe(0);
+  expect(unknown.stdout).toBe("WARNING not in the parsed graph, no dependency check: ui/Nope.tsx\n");
+  const unclaimed = await run(["claim", "ui/Nope.tsx", "ui/AboutPage.tsx", "--agent", "B"]);
+  expect(unclaimed.code, unclaimed.stderr).toBe(0);
+  expect(unclaimed.stdout).toMatch(
+    /^WARNING not in the parsed graph, no dependency check: ui\/Nope.tsx\nOK until=\S+ \(1 file checked within 3 import hops\)\n$/,
+  );
+
+  const briefed = await run(["brief", "--prefix", ""]);
+  expect(briefed.code, briefed.stderr).toBe(0);
+  expect(briefed.stdout).toMatch(/^Files: \S+/);
+  expect(briefed.stdout).toContain("Claim: A holds lib/crypto.ts");
 
   const released = await run(["release", "--agent", "A"]);
   expect(released.code, released.stderr).toBe(0);
 
   const after = await run(["check", "ui/LoginForm.tsx", "--agent", "B"]);
   expect(after.code, after.stderr).toBe(0);
-  expect(after.stdout).toBe("");
+  expect(after.stdout).toMatch(OK_CHECK);
+  await run(["release", "--agent", "B"]);
 }, 60_000);
 
 test("blast, plan, batches, decide, and why", async () => {
@@ -166,12 +189,28 @@ test("hook: denies a conflicting edit with the path, fails open, and can be swit
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: PATH_3,
+      permissionDecisionReason: DENY_3,
     },
   });
 
   const cursor = await hook(["cursor", "pre"], edit, { SB_AGENT: "B" });
-  expect(JSON.parse(cursor.stdout)).toMatchObject({ permission: "deny", agent_message: PATH_3 });
+  expect(JSON.parse(cursor.stdout)).toMatchObject({ permission: "deny", agent_message: DENY_3 });
+
+  // An allowed edit is claimed; `end` releases the session's claims.
+  const about = { tool_name: "Edit", tool_input: { file_path: join(root, "demo-repo/ui/AboutPage.tsx") }, cwd: root };
+  expect(JSON.parse((await hook(["claude", "pre"], about, { SB_AGENT: "B" })).stdout)).toEqual({});
+  expect((await run(["status"])).stdout).toMatch(/B ui\/AboutPage\.tsx until=/);
+  expect(JSON.parse((await hook(["claude", "end"], { cwd: root }, { SB_AGENT: "B" })).stdout)).toEqual({});
+  expect((await run(["status"])).stdout).toContain("B - active claims=-");
+
+  // A notebook is read from notebook_path; a file the parser never saw is allowed with a warning.
+  const notebook = { tool_name: "NotebookEdit", tool_input: { notebook_path: join(root, "demo-repo/ui/New.ipynb") }, cwd: root };
+  expect(JSON.parse((await hook(["claude", "pre"], notebook, { SB_AGENT: "B" })).stdout)).toEqual({
+    systemMessage: "Switchboard: ui/New.ipynb is not in the parsed graph, no dependency check",
+  });
+
+  const start = await hook(["claude", "start"], { cwd: root }, { SB_AGENT: "B" });
+  expect(JSON.parse(start.stdout).hookSpecificOutput.additionalContext).toContain("Claim: A holds lib/crypto.ts");
 
   expect(JSON.parse((await hook(["claude", "pre"], edit, { SB_AGENT: "A" })).stdout)).toEqual({});
   expect(JSON.parse((await hook(["claude", "pre"], edit, { SB_AGENT: "B", SWITCHBOARD_OFF: "1" })).stdout)).toEqual({});

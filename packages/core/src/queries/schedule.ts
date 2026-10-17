@@ -46,7 +46,8 @@ DELETE r
  * k import hops of, a file of the other. Same rule as the Q1 claim check, so two
  * tasks in different batches can never get a CONFLICT from each other:
  *  - same file: always, even a hub (hop 0);
- *  - otherwise a directed IMPORTS path either way, no hub anywhere on it.
+ *  - otherwise a directed IMPORTS path either way that does not pass through a hub
+ *    (a hub at either end counts).
  * Returns one row per interfering pair: the closest connecting file and its hops.
  * `k` is inlined because Cypher can't take a parameter as a variable-length bound.
  */
@@ -60,9 +61,9 @@ UNWIND a.paths AS p1
 UNWIND b.paths AS p2
 MATCH (f1:File {path: p1}), (f2:File {path: p2})
 OPTIONAL MATCH up = (f1)-[:IMPORTS*1..${k}]->(f2)
-WHERE none(n IN nodes(up) WHERE coalesce(n.hub, false))
+WHERE none(n IN nodes(up)[1..-1] WHERE coalesce(n.hub, false))
 OPTIONAL MATCH down = (f2)-[:IMPORTS*1..${k}]->(f1)
-WHERE none(n IN nodes(down) WHERE coalesce(n.hub, false))
+WHERE none(n IN nodes(down)[1..-1] WHERE coalesce(n.hub, false))
 WITH a, b, f1, f2, min(length(up)) AS u, min(length(down)) AS d
 WITH a, b, f1.path AS via,
      CASE WHEN f1 = f2 THEN 0 WHEN u IS NULL THEN d WHEN d IS NULL THEN u WHEN u < d THEN u ELSE d END AS hops
@@ -99,6 +100,8 @@ ORDER BY componentId
 export interface Batch {
   componentId: number;
   tasks: string[];
+  /** The batch's files: the union of its tasks' footprints (planned and claimed), sorted. */
+  paths: string[];
 }
 
 /** Open a task and attach the files it plans to touch, in one query. */
@@ -132,10 +135,12 @@ export async function parallelBatches(g: SbGraph, k = 3, now = Date.now()): Prom
   if (edges.length > 0) await g.query(WRITE_INTERFERES, { edges });
 
   const rows = await g.roQuery(WCC_BATCHES, { ids: tasks.map((t) => t.id) });
+  const footprint = new Map(tasks.map((t) => [t.id, t.paths]));
   return rows
-    .map((row) => ({
-      componentId: Number(row.componentId),
-      tasks: (row.tasks as unknown[]).map(String).sort(),
-    }))
+    .map((row) => {
+      const ids = (row.tasks as unknown[]).map(String).sort();
+      const paths = [...new Set(ids.flatMap((id) => footprint.get(id) ?? []))].sort();
+      return { componentId: Number(row.componentId), tasks: ids, paths };
+    })
     .sort((x, y) => x.tasks[0]!.localeCompare(y.tasks[0]!));
 }

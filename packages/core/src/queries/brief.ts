@@ -35,7 +35,7 @@ export interface Brief {
 export interface BriefInput {
   /** A task: its planned files, files claimed under it, and files edited under it. */
   taskId?: string;
-  /** Every file whose path starts with this (a directory). */
+  /** Every file whose path starts with this (a directory); '' is the whole repo. */
   prefix?: string;
   /** Explicit files. */
   paths?: string[];
@@ -57,14 +57,15 @@ ORDER BY path
 
 /**
  * The neighbourhood: every file within NEAR_HOPS import hops of the area, either
- * direction, with its distance (0 = in the area). As in Q1, multi-hop paths never
- * touch a hub, so lib/utils.ts does not pull the whole repo into every briefing.
+ * direction, with its distance (0 = in the area). As in Q1, paths never pass
+ * through a hub, so lib/utils.ts does not pull the whole repo into every briefing
+ * (a hub can still be a neighbour itself).
  */
 export const NEAR_FILES = `
 UNWIND $paths AS path
 MATCH (f:File {path: path})
 MATCH p = (f)-[:IMPORTS*0..${NEAR_HOPS}]-(g:File)
-WHERE length(p) = 0 OR none(n IN nodes(p) WHERE coalesce(n.hub, false))
+WHERE none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 RETURN g.path AS path, min(length(p)) AS hops
 `;
 
@@ -164,7 +165,7 @@ export async function brief(g: SbGraph, input: BriefInput): Promise<Brief> {
   const now = input.now ?? Date.now();
   const fileRows = await g.roQuery(AREA_FILES, {
     taskId: input.taskId || null,
-    prefix: input.prefix || null,
+    prefix: input.prefix ?? null,
     paths: input.paths ?? [],
   });
   const files = fileRows.map((row) => String(row.path));
@@ -251,11 +252,16 @@ export async function handoff(
   });
 }
 
+/** A whole-repo briefing lists this many files, then a count. */
+const FILES_SHOWN = 8;
+
 const hopLabel = (hops: number) => (hops === 0 ? "here" : `${hops} hop${hops === 1 ? "" : "s"} away`);
 
 /** Plain text for a session-start hook or an MCP reply. The graph rows stay the evidence. */
 export function formatBrief(b: Brief): string {
-  const lines = [`Files: ${b.files.join(", ") || "(none)"}`];
+  const shown = b.files.slice(0, FILES_SHOWN).join(", ");
+  const more = b.files.length > FILES_SHOWN ? ` (+${b.files.length - FILES_SHOWN} more)` : "";
+  const lines = [`Files: ${shown || "(none)"}${more}`];
   if (b.handoff) lines.push(`Handoff ${b.handoff.from} → ${b.handoff.to}: ${b.handoff.note}`);
   for (const c of b.claims) {
     lines.push(`Claim: ${c.agent} holds ${c.path} (${hopLabel(c.hops)}${c.taskId ? `, task ${c.taskId}` : ""})`);
@@ -263,7 +269,10 @@ export function formatBrief(b: Brief): string {
   for (const d of b.decisions) lines.push(`Decision: ${d.text} (${d.path}, ${hopLabel(d.hops)})`);
   for (const l of b.lessons) lines.push(`Lesson: ${l.text} (${l.path}, ${hopLabel(l.hops)})`);
   for (const t of b.tasks) lines.push(`Open task: ${t.id}${t.title && t.title !== t.id ? ` ${t.title}` : ""}`);
-  for (const e of b.events.filter((e) => e.kind === "edit").slice(0, 5)) {
+  // Events are newest first, so the first edit seen per path is its newest.
+  const edited = new Map<string, Brief["events"][number]>();
+  for (const e of b.events) if (e.kind === "edit" && !edited.has(e.path)) edited.set(e.path, e);
+  for (const e of [...edited.values()].slice(0, 5)) {
     lines.push(`Recent edit: ${e.path} by ${e.agentId ?? "unknown"} (#${e.seq})`);
   }
   return lines.join("\n");

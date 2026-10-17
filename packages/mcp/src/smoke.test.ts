@@ -11,6 +11,7 @@ const GRAPH = `sb_test_mcp_${process.pid}`;
 interface Rpc {
   id?: number;
   result?: {
+    instructions?: string;
     tools?: { name: string; description?: string; outputSchema?: object }[];
     content?: { text?: string }[];
     structuredContent?: Record<string, unknown>;
@@ -82,6 +83,7 @@ test("stdio server: tools list, register, status, claim conflict, bad input", as
       clientInfo: { name: "smoke", version: "0" },
     });
     expect(init.error, stderr).toBeUndefined();
+    expect(init.result?.instructions).toContain("Call claim before editing any file");
     child.stdin?.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
 
     const listed = await call(2, "tools/list", {});
@@ -134,8 +136,21 @@ test("stdio server: tools list, register, status, claim conflict, bad input", as
       conflicts: [{ agent: "A", hops: 3, claimed: "lib/crypto.ts" }],
     });
 
+    const prefixed = await call(9, "tools/call", { name: "claim", arguments: { paths: ["demo-repo/ui/LoginForm.tsx"] } });
+    expect(prefixed.result?.structuredContent).toMatchObject({ ok: false, conflicts: [{ file: "ui/LoginForm.tsx" }] });
+
     const free = await call(6, "tools/call", { name: "claim", arguments: { paths: ["ui/AboutPage.tsx"] } });
-    expect(free.result?.structuredContent).toMatchObject({ ok: true, conflicts: [] });
+    expect(free.result?.structuredContent).toMatchObject({ ok: true, conflicts: [], unknown: [] });
+
+    const fresh = await call(10, "tools/call", { name: "claim", arguments: { paths: ["ui/Brand.tsx"] } });
+    expect(fresh.result?.structuredContent).toMatchObject({ ok: true, unknown: ["ui/Brand.tsx"] });
+    expect(fresh.result?.content?.[0]?.text).toBe("WARNING not in the parsed graph, no dependency check: ui/Brand.tsx");
+
+    const briefed = await call(11, "tools/call", { name: "brief_me", arguments: {} });
+    expect(briefed.error ?? briefed.result?.isError, stderr).toBeFalsy();
+    const b = briefed.result?.structuredContent?.brief as { files: string[]; events: unknown[] };
+    expect(b.files.length).toBeGreaterThan(30);
+    expect(b.events.length).toBeLessThanOrEqual(5);
 
     const bad = await call(7, "tools/call", { name: "claim", arguments: { paths: [] } });
     expect(bad.error ?? bad.result?.isError).toBeTruthy();

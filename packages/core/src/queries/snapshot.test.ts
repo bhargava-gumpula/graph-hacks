@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { beforeAll, expect, test } from "vitest";
 import { parseRepo } from "../parser.js";
 import { useTestGraph } from "../test-helpers.js";
+import { registerAgent } from "./agents.js";
 import { claim } from "./claims.js";
 import { loadParse } from "./loader.js";
 import { graphSnapshot, listClaims } from "./snapshot.js";
@@ -66,4 +67,11 @@ test("expired claims are left out of the snapshot and listClaims", async () => {
   expect(snap.edges.filter((e) => e.kind === "CLAIMS")).toEqual([]);
   expect(snap.nodes.find((n) => n.id === "lib/crypto.ts")?.claimedBy).toEqual([]);
   expect(await listClaims(g(), later)).toEqual([]);
+});
+
+test("an agent node carries the kind registerAgent stored, as agentKind", async () => {
+  await registerAgent(g(), { id: "cur", kind: "cursor" });
+  const snap = await graphSnapshot(g());
+  expect(snap.nodes.find((n) => n.id === "agent:cur")).toMatchObject({ kind: "agent", agentKind: "cursor" });
+  expect(snap.nodes.find((n) => n.id === "agent:A")).not.toHaveProperty("agentKind");
 });

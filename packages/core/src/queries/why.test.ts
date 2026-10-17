@@ -88,8 +88,57 @@ test("an edit with no task still says who edited; no edits means an empty trace"
   expect(await whyTrace(g(), "ui/AboutPage.tsx")).toEqual([]);
 });
 
-test("newest edit first", async () => {
+test("newest edit first, then decisions no edit reached", async () => {
   await recordEdit(g(), { agentId: "A", path: "lib/ids.ts" });
   await recordEdit(g(), { agentId: "B", path: "lib/ids.ts" });
-  expect((await whyTrace(g(), "lib/ids.ts")).map((h) => h.agent)).toEqual(["B", "A"]);
+  // D-fixed (above) affects lib/ids.ts but caused no edit: it comes last.
+  expect((await whyTrace(g(), "lib/ids.ts")).map((h) => [h.agent, h.decisionId])).toEqual([
+    ["B", null],
+    ["A", null],
+    ["(no tracked edit)", "D-fixed"],
+  ]);
+});
+
+test("repeated identical edits and decisions give one row per chain, with an edit count and real nodes", async () => {
+  const input = { agent: "lead", text: "format dates as ISO", why: "sorting", paths: ["lib/format.ts"], taskId: "T-fmt", id: "D-fmt" };
+  await recordDecision(g(), input);
+  await recordDecision(g(), input);
+  const seqs = [];
+  for (let i = 0; i < 3; i++) seqs.push(await recordEdit(g(), { agentId: "A", path: "lib/format.ts", taskId: "T-fmt" }));
+
+  const hits = await whyTrace(g(), "demo-repo/lib/format.ts");
+  expect(hits).toHaveLength(1);
+  expect(hits[0]).toMatchObject({
+    seq: Math.max(...seqs),
+    edits: 3,
+    agent: "A",
+    task: "T-fmt",
+    decisionId: "D-fmt",
+    decidedBy: "lead",
+    path: ["lib/format.ts", "A", "T-fmt", "format dates as ISO"],
+    nodes: [
+      { label: "File", id: "lib/format.ts" },
+      { label: "Agent", id: "A" },
+      { label: "Task", id: "T-fmt" },
+      { label: "Decision", id: "D-fmt" },
+    ],
+  });
+});
+
+test("a file governed by an active decision but never edited still answers", async () => {
+  await recordDecision(g(), { agent: "lead", text: "validate at the edge", why: "one place", paths: ["lib/validate.ts"], id: "D-val" });
+  expect(await whyTrace(g(), "lib/validate.ts")).toEqual([
+    expect.objectContaining({
+      seq: 0,
+      edits: 0,
+      agent: "(no tracked edit)",
+      decisionId: "D-val",
+      decidedBy: "lead",
+      path: ["lib/validate.ts", "(no tracked edit)", "(no task)", "validate at the edge"],
+      nodes: [
+        { label: "File", id: "lib/validate.ts" },
+        { label: "Decision", id: "D-val" },
+      ],
+    }),
+  ]);
 });

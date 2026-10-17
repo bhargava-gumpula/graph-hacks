@@ -1,4 +1,5 @@
 import type { SbGraph } from "../graph.js";
+import { normPath } from "../paths.js";
 
 const MAX_K = 4;
 
@@ -27,8 +28,8 @@ RETURN count(f) AS n
 
 /**
  * Q2. Files that import `$path` within k hops (reverse IMPORTS), nearest hop per file.
- * Paths through a hub are skipped and hubs are not listed as dependents; the changed
- * file itself may be a hub (its direct importers are still its blast radius).
+ * Paths that pass through a hub are skipped (the Q1 rule: only interior hubs are
+ * skipped), so a hub's own importers are its blast radius.
  * `$now` is re-bound with WITH: FalkorDB drops a parameter used inside a pattern
  * comprehension that follows an aggregation (verified on falkordb:latest, Oct 2026).
  * `k` is inlined because Cypher can't take a parameter as a variable-length bound.
@@ -37,7 +38,7 @@ export function blastQuery(k: number): string {
   if (!Number.isInteger(k) || k < 1 || k > MAX_K) throw new Error(`k must be an integer 1..${MAX_K}, got ${k}`);
   return `
 MATCH p = (d:File)-[:IMPORTS*1..${k}]->(f:File {path: $path})
-WHERE d <> f AND none(n IN nodes(p) WHERE coalesce(n.hub, false) AND n <> f)
+WHERE d <> f AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))
 WITH d, min(length(p)) AS hops, $now AS now
 RETURN d.path AS path, hops, [(a:Agent)-[c:CLAIMS]->(d) WHERE c.until > now | a.id] AS agents
 ORDER BY hops, path
@@ -48,7 +49,8 @@ ORDER BY hops, path
  * Who would break if `path` changed. With `found: true`, an empty `dependents` is
  * the proof that nothing imports it within k hops: safe to change alone.
  */
-export async function blastRadius(g: SbGraph, path: string, k = 3, now = Date.now()): Promise<BlastRadius> {
+export async function blastRadius(g: SbGraph, file: string, k = 3, now = Date.now()): Promise<BlastRadius> {
+  const path = normPath(file);
   const query = blastQuery(k);
   const [exists] = await g.roQuery(FILE_EXISTS, { path });
   if (Number(exists?.n ?? 0) === 0) return { path, found: false, dependents: [], byHop: [] };

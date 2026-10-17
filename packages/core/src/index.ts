@@ -19,10 +19,10 @@ export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
 
 export { codeGraphCounts, loadParse, missingFiles, resetDemo } from "./queries/loader.js";
 
-export { findConflicts, conflictGuard, conflictQuery } from "./queries/conflict.js";
+export { findConflicts, conflictQuery, conflictGuard } from "./queries/conflict.js";
 export type { Conflict, ConflictInput, ConflictType } from "./queries/conflict.js";
 
-export { claim, claimQuery, release, DEFAULT_TTL_MS } from "./queries/claims.js";
+export { claim, claimQuery, release, unknownPaths, DEFAULT_TTL_MS } from "./queries/claims.js";
 export type { ClaimInput, ClaimResult } from "./queries/claims.js";
 
 export { graphSnapshot, listClaims } from "./queries/snapshot.js";
@@ -36,7 +36,7 @@ export type { AgentKind, AgentView, StatusClaim, StatusResult } from "./queries/
 export { markHubs, HUB_INDEGREE, MARK_HUBS } from "./queries/hubs.js";
 export type { HubScore } from "./queries/hubs.js";
 
-export { blastQuery, blastRadius } from "./queries/blast.js";
+export { blastRadius, blastQuery } from "./queries/blast.js";
 export type { BlastRadius, Dependent } from "./queries/blast.js";
 
 export { interfereQuery, parallelBatches, planTask, WCC_BATCHES } from "./queries/schedule.js";

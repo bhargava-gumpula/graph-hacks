@@ -1,4 +1,5 @@
 import type { SbGraph } from "../graph.js";
+import { normPath } from "../paths.js";
 import { findConflicts, type Conflict } from "./conflict.js";
 import { ALLOCATE_EVENT, readSeq, recordEvent } from "./events.js";
 
@@ -51,7 +52,8 @@ RETURN count(c) > 0 AS holds
  * within k import hops, hubs skipped), also record a `collision` event.
  * The collision payload has the same shape as a `conflict` payload.
  */
-export async function recordEditAndCheck(g: SbGraph, edit: EditInput): Promise<EditResult> {
+export async function recordEditAndCheck(g: SbGraph, input: EditInput): Promise<EditResult> {
+  const edit = { ...input, path: normPath(input.path) };
   const now = edit.now ?? Date.now();
   const rows = await g.query(RECORD_EDIT, {
     kind: "edit",

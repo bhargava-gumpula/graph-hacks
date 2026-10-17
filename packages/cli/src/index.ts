@@ -24,6 +24,7 @@ import {
   recordLesson,
   release,
   summarizeBrief,
+  unknownPaths,
   whyTrace,
   type AgentKind,
   type Conflict,
@@ -42,12 +43,15 @@ Agents and claims
   release [file...]                         release your claims (all if no files)
   check <file>                              exit 2 and print the import path if editing <file>
                                             would collide with another agent's claim; else exit 0
+                                            Paths are repo-relative; demo-repo/, ./ and absolute
+                                            paths are normalised. A file the parser never saw
+                                            prints a WARNING: nothing was checked.
   edited <file> [--task T]                  record that you edited <file>
 
 Memory
   decide <text> --why <why> --affects <file> [--affects <file>...] [--task T]
   lesson <text> --about <file> [--about <file>...]
-  brief (--task T | --prefix dir/)          briefing before you start or take over
+  brief (--task T | --prefix dir/)          briefing before you start or take over ('' = whole repo)
   why <file>                                edit -> agent -> task -> decision trace
   handoff <task> --to <agent> --note <text>
 
@@ -81,6 +85,13 @@ interface Flags {
 function conflictLine(c: Conflict): string {
   return `CONFLICT ${c.type} ${c.file} ← ${c.agent} via ${c.path.join(" → ")}`;
 }
+
+/** A path the parser never saw gets no dependency check; say so instead of a silent OK. */
+function warnUnknown(paths: string[] | undefined): void {
+  for (const p of paths ?? []) console.log(`WARNING not in the parsed graph, no dependency check: ${p}`);
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 function parseArgs(argv: string[]): Flags {
   const positional: string[] = [];
@@ -206,11 +217,16 @@ async function run(flags: Flags): Promise<number> {
     if (command === "claim") {
       if (files.length === 0) throw new Error("claim needs at least one file");
       const res = await claim(g, { agent, paths: files, taskId: flags.task, intent: flags.intent });
+      warnUnknown(res.unknown);
       if (res.ok) {
-        console.log(`OK until=${new Date(res.until).toISOString()}`);
+        const checked = files.length - (res.unknown?.length ?? 0);
+        if (checked > 0) {
+          console.log(`OK until=${new Date(res.until).toISOString()} (${plural(checked, "file")} checked within 3 import hops)`);
+        }
         return 0;
       }
       for (const c of res.conflicts) console.log(conflictLine(c));
+      if (res.safe?.length) console.log(`Safe now: ${res.safe.join(", ")}`);
       return 2;
     }
 
@@ -223,10 +239,17 @@ async function run(flags: Flags): Promise<number> {
     if (command === "check") {
       const file = files[0];
       if (!file || files.length !== 1) throw new Error("check needs one file");
+      const started = performance.now();
       const conflicts = await findConflicts(g, { agent, paths: [file] });
-      if (conflicts.length === 0) return 0;
-      for (const c of conflicts) console.log(conflictLine(c));
-      return 2;
+      const ms = (performance.now() - started).toFixed(1);
+      if (conflicts.length > 0) {
+        for (const c of conflicts) console.log(conflictLine(c));
+        return 2;
+      }
+      const unknown = await unknownPaths(g, [file]);
+      if (unknown.length > 0) warnUnknown(unknown);
+      else console.log(`OK no claim within 3 import hops (${ms} ms)`);
+      return 0;
     }
 
     if (command === "edited") {
@@ -262,7 +285,7 @@ async function run(flags: Flags): Promise<number> {
     }
 
     if (command === "brief") {
-      if (!flags.task && !flags.prefix) throw new Error("brief needs --task or --prefix");
+      if (!flags.task && flags.prefix === undefined) throw new Error("brief needs --task or --prefix");
       const text = formatBrief(await brief(g, { taskId: flags.task, prefix: flags.prefix }));
       const summary = await summarizeBrief(text);
       console.log(summary ? `${text}\n\nSummary: ${summary}` : text);
@@ -273,8 +296,8 @@ async function run(flags: Flags): Promise<number> {
       const file = files[0];
       if (!file || files.length !== 1) throw new Error("why needs one file");
       const hits = await whyTrace(g, file);
-      if (hits.length === 0) console.log(`no edits recorded for ${file}`);
-      else for (const hit of hits) console.log(hit.path.join(" → "));
+      if (hits.length === 0) console.log(`no edits or decisions recorded for ${file}`);
+      for (const hit of hits) console.log(`${hit.path.join(" → ")}${hit.edits > 1 ? ` (${hit.edits} edits)` : ""}`);
       return 0;
     }
 

@@ -31,6 +31,16 @@ import { z } from "zod";
 
 const KINDS = ["cursor", "claude", "human"] as const;
 
+/** Sent once at initialize; clients put it in the agent's context. */
+export const INSTRUCTIONS =
+  "Switchboard coordinates agents on this repo. Call claim before editing any file; paths are relative to the " +
+  "parsed repo (ui/LoginForm.tsx, not demo-repo/ui/LoginForm.tsx). ok=false means do not edit: report the import " +
+  "path, then pick another task or call brief_me. Call brief_me at the start, record_decision when you choose an " +
+  "approach, release when done.";
+
+/** brief_me returns at most this many events: the newest per (kind, path, agent). */
+const BRIEF_EVENTS = 5;
+
 const path = z.string().min(1).describe("Repo-relative file path, e.g. auth/session.ts");
 const paths = z.array(path).min(1);
 const agentArg = z
@@ -48,7 +58,13 @@ const conflictSchema = z.object({
   agent: z.string(),
   taskId: z.string().nullable(),
   intent: z.string().nullable(),
+  until: z.number().optional(),
+  hub: z.boolean().optional(),
 });
+
+function unknownText(paths: string[] | undefined): string[] {
+  return (paths ?? []).map((p) => `WARNING not in the parsed graph, no dependency check: ${p}`);
+}
 
 /** Text for humans and older clients, structured data for agents. */
 function reply<T extends Record<string, unknown>>(text: string, data: T) {
@@ -76,7 +92,7 @@ function graph(): Promise<SbGraph> {
 }
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "switchboard", version: SWITCHBOARD_VERSION });
+  const server = new McpServer({ name: "switchboard", version: SWITCHBOARD_VERSION }, { instructions: INSTRUCTIONS });
   const who = (agent?: string) => agent ?? agentId();
 
   server.registerTool(
@@ -105,7 +121,8 @@ export function createServer(): McpServer {
       description:
         "Call BEFORE editing files. Checks the import graph for other agents' claims on these files or on files they " +
         "import / are imported by (up to 3 hops). ok=true: the files are yours until `until`. ok=false: do NOT edit; " +
-        "each conflict names the other agent and the import path that links your file to theirs.",
+        "each conflict names the other agent and the import path that links your file to theirs. " +
+        "`unknown` lists paths the parser never saw: they were not checked or claimed.",
       inputSchema: z.object({
         paths: paths.describe("Files you are about to edit"),
         task: z.string().optional().describe("Task id this work belongs to"),
@@ -116,15 +133,23 @@ export function createServer(): McpServer {
         ok: z.boolean(),
         until: z.number().optional().describe("Epoch ms when the claim expires"),
         conflicts: z.array(conflictSchema),
+        unknown: z.array(z.string()).describe("Paths not in the parsed graph: not checked, not claimed"),
+        safe: z.array(z.string()).optional().describe("On a conflict: open-task files you could claim instead right now"),
       }),
     },
     async ({ paths: files, task, intent, agent }) => {
       const res = await claim(await graph(), { agent: who(agent), paths: files, taskId: task, intent });
+      const unknown = res.unknown ?? [];
+      const warnings = unknownText(unknown);
       if (res.ok) {
-        return reply(`OK until=${new Date(res.until).toISOString()}`, { ok: true, until: res.until, conflicts: [] });
+        const checked = files.length - unknown.length;
+        const ok = checked > 0 ? [`OK until=${new Date(res.until).toISOString()} (${checked} checked)`] : [];
+        return reply([...ok, ...warnings].join("\n"), { ok: true, until: res.until, conflicts: [], unknown });
       }
-      const text = ["CONFLICT", ...res.conflicts.map(conflictText)].join("\n");
-      return reply(text, { ok: false, conflicts: res.conflicts });
+      const safe = res.safe ?? [];
+      const hint = safe.length > 0 ? [`Safe now: ${safe.join(", ")}`] : [];
+      const text = ["CONFLICT", ...res.conflicts.map(conflictText), ...hint, ...warnings].join("\n");
+      return reply(text, { ok: false, conflicts: res.conflicts, unknown, safe });
     },
   );
 
@@ -236,21 +261,29 @@ export function createServer(): McpServer {
       title: "Brief me",
       description:
         "Call before starting a task or taking over someone else's. Returns nearby claims, active decisions, lessons, " +
-        "recent events and the latest handoff note for a task id or a directory prefix. Give `task` or `prefix`.",
-      inputSchema: z
-        .object({
-          task: z.string().min(1).optional().describe("Task id"),
-          prefix: z.string().optional().describe("Directory prefix, e.g. auth/ ('' for the whole repo)"),
-        })
-        .refine((v) => v.task !== undefined || v.prefix !== undefined, { message: "give task or prefix" }),
+        "recent events and the latest handoff note for a task id or a directory prefix. With neither, the whole repo.",
+      inputSchema: z.object({
+        task: z.string().min(1).optional().describe("Task id"),
+        prefix: z.string().optional().describe("Directory prefix, e.g. auth/ ('' or omitted: the whole repo)"),
+      }),
       outputSchema: z.object({ text: z.string(), summary: z.string().nullable(), brief: z.record(z.string(), z.unknown()) }),
       annotations: { readOnlyHint: true },
     },
     async ({ task, prefix }) => {
-      const b = await brief(await graph(), { taskId: task, prefix });
+      const b = await brief(await graph(), { taskId: task, prefix: task === undefined && prefix === undefined ? "" : prefix });
       const text = formatBrief(b);
       const summary = await summarizeBrief(text);
-      return reply(summary ? `${text}\n\nSummary: ${summary}` : text, { text, summary, brief: { ...b } });
+      // Events arrive newest first; keep the newest per (kind, path, agent).
+      const seen = new Set<string>();
+      const events = b.events
+        .filter((e) => {
+          const key = `${e.kind}\0${e.path}\0${e.agentId ?? ""}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, BRIEF_EVENTS);
+      return reply(summary ? `${text}\n\nSummary: ${summary}` : text, { text, summary, brief: { ...b, events } });
     },
   );
 
@@ -265,7 +298,10 @@ export function createServer(): McpServer {
     },
     async ({ path: file }) => {
       const hits = await whyTrace(await graph(), file);
-      const text = hits.length === 0 ? `no edits recorded for ${file}` : hits.map((h) => h.path.join(" → ")).join("\n");
+      const text =
+        hits.length === 0
+          ? `no edits or decisions recorded for ${file}`
+          : hits.map((h) => `${h.path.join(" → ")}${h.edits > 1 ? ` (${h.edits} edits)` : ""}`).join("\n");
       return reply(text, { path: file, hits: hits.map((h) => ({ ...h })) });
     },
   );
@@ -318,7 +354,9 @@ export function createServer(): McpServer {
         "Group open tasks so tasks in different groups touch unrelated code and can run at the same time. " +
         "Tasks in the same group should run one after another.",
       inputSchema: z.object({}),
-      outputSchema: z.object({ batches: z.array(z.object({ componentId: z.number(), tasks: z.array(z.string()) })) }),
+      outputSchema: z.object({
+        batches: z.array(z.object({ componentId: z.number(), tasks: z.array(z.string()), paths: z.array(z.string()) })),
+      }),
     },
     async () => {
       const batches = await parallelBatches(await graph());

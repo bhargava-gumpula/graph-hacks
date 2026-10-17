@@ -2,7 +2,7 @@
 // config (hooks + MCP server), merging into what is there. Pure planning here; index.ts parses the repo.
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /** This checkout (packages/cli/src → ../../..). */
 export const SWITCHBOARD_ROOT = resolve(import.meta.dirname, "../../..");
@@ -19,6 +19,7 @@ export interface FileChange {
 export interface InitPlan {
   repo: string;
   graph: string;
+  port: number;
   env: Record<string, string>;
   changes: FileChange[];
 }
@@ -35,13 +36,26 @@ export function graphName(repo: string): string {
 }
 
 /**
+ * The repo's own server port, 8800-8999, fixed by its graph name. The hooks post to it, so a quickstart demo
+ * server on 8787 (another graph) never receives this repo's claims.
+ * ponytail: two repos can hash to the same port; if both servers run at once their hooks cross. Upgrade path:
+ * hook.sh checks /api/health's graph against SB_GRAPH before taking the HTTP path.
+ */
+export function serverPort(graph: string): number {
+  let h = 0;
+  for (const ch of graph) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return 8800 + (h % 200);
+}
+
+/**
  * The hook env for a repo. Inside git, SB_PREFIX is the repo's path below the git top level, so a worktree
  * resolves paths against its own checkout. Outside git there is no top level, so SB_ROOT pins the repo.
  */
 export function hookEnv(repo: string, graph: string): Record<string, string> {
+  const base = { SB_GRAPH: graph, SB_URL: `http://localhost:${serverPort(graph)}` };
   const top = spawnSync("git", ["-C", repo, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
-  if (top.status !== 0) return { SB_GRAPH: graph, SB_PREFIX: "", SB_ROOT: repo };
-  return { SB_GRAPH: graph, SB_PREFIX: relative(top.stdout.trim(), repo).split("\\").join("/") };
+  if (top.status !== 0) return { ...base, SB_PREFIX: "", SB_ROOT: repo };
+  return { ...base, SB_PREFIX: relative(top.stdout.trim(), repo).split("\\").join("/") };
 }
 
 function hookCommand(root: string, env: Record<string, string>, editor: string, event: string): string {
@@ -120,6 +134,10 @@ export function planInit(repoDir: string, root = SWITCHBOARD_ROOT): InitPlan {
   if (!existsSync(repoDir)) throw new Error(`no such directory: ${resolve(repoDir)}`);
   // Real path: git reports one (/private/var on macOS), and SB_PREFIX is relative to it.
   const repo = realpathSync(repoDir);
+  const inside = relative(existsSync(root) ? realpathSync(root) : root, repo);
+  if (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) {
+    throw new Error(`${repo} is part of this Switchboard checkout. Pass the repo to wire, e.g. npm run switchboard -- init ~/code/my-app`);
+  }
   const graph = graphName(repo);
   const env = hookEnv(repo, graph);
   const build: [string, (current: Json) => Json][] = [
@@ -132,7 +150,7 @@ export function planInit(repoDir: string, root = SWITCHBOARD_ROOT): InitPlan {
     const { text, json } = readJson(path);
     return { path, before: text, after: `${JSON.stringify(merge(json), null, 2)}\n` };
   });
-  return { repo, graph, env, changes: changes.filter((c) => c.before !== c.after) };
+  return { repo, graph, port: serverPort(graph), env, changes: changes.filter((c) => c.before !== c.after) };
 }
 
 /** Write the plan. An existing file is copied to <file>.bak once, before its first change. */

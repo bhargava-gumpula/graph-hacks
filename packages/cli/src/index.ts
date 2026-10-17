@@ -176,14 +176,15 @@ const COMMANDS = new Set([
 /** `init`: write the merged configs, parse the repo into its graph, print what to do next. */
 async function init(flags: Flags): Promise<number> {
   if (flags.positional.length > 2) throw new Error("init takes one directory");
-  const plan = planInit(flags.positional[1] ?? ".");
+  // npm run moves cwd to this checkout; INIT_CWD is where the user typed the command.
+  const plan = planInit(resolve(process.env.INIT_CWD ?? process.cwd(), flags.positional[1] ?? "."));
   const shown = (path: string) => relative(plan.repo, path);
   if (flags.dryRun) {
     if (plan.changes.length === 0) console.log(`${plan.repo} is already wired to Switchboard. Nothing to change.`);
     for (const c of plan.changes) {
       console.log(`--- ${shown(c.path)}${c.before === null ? " (new file)" : ""}\n${lineDiff(c.before ?? "", c.after)}\n`);
     }
-    console.log(`Would parse ${plan.repo} into graph ${plan.graph}. Nothing was written (--dry-run).`);
+    console.log(`Would parse ${plan.repo} into graph ${plan.graph}, served on port ${plan.port}. Nothing was written (--dry-run).`);
     return 0;
   }
   applyInit(plan);
@@ -209,13 +210,13 @@ async function init(flags: Flags): Promise<number> {
   const steps = [
     `cd ${SWITCHBOARD_ROOT}`,
     ...(existsSync(join(SWITCHBOARD_ROOT, "apps/web/dist/index.html")) ? [] : ["npm run build -w @switchboard/web"]),
-    `SB_GRAPH=${plan.graph} npm run server`,
+    `SERVER_PORT=${plan.port} SB_GRAPH=${plan.graph} npm run server`,
   ];
   console.log(`
 Next steps:
-  1. Start the server on this repo's graph (one server serves one graph, so stop the demo server first):
+  1. Start this repo's server. Its hooks post to port ${plan.port} only, so a demo server on 8787 can keep running:
        ${steps.join(" && ")}
-  2. Open http://localhost:8787/app to watch claims and conflicts.
+  2. Open http://localhost:${plan.port}/app to watch claims and conflicts.
   3. Run claude or cursor in ${plan.repo}. Approve the switchboard MCP server when asked.
      Re-parse after big changes: ${parseCmd}`);
   if (spawnSync("jq", ["--version"]).status !== 0) {

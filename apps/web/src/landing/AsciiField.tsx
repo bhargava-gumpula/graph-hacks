@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { motion, useScroll, useTransform } from "motion/react";
 
 /**
  * Full-page ASCII background, drawn in code on one fixed canvas.
@@ -10,6 +11,10 @@ import { useEffect, useRef } from "react";
  * '+*%#@' come from pointer or pulse energy. Fast by design: alpha is quantised
  * into a few buckets and each (row, bucket) is one fillText of a space-padded
  * string, so a frame is a few hundred draw calls instead of one per cell.
+ *
+ * Quiet off-stage: it holds still while the page scrolls, and once the hero is behind
+ * you only the pointer and pulses redraw it (and the whole field fades to 40%), so it
+ * never competes with the scroll-linked sections or runs through their text.
  */
 const RAMP = " .·:-=+*%#@";
 const CODES = Array.from(RAMP, (ch) => ch.charCodeAt(0));
@@ -26,7 +31,10 @@ const REST_TOP = 4;
 const POINTER_R = 140;
 const POINTER_BOOST = 0.25;
 const PULSE_LIFE = 1.6;
-const PULSE_SPEED = 520;
+/** The shockwave decelerates out to this radius (cubic ease-out), like a blast, not a ripple. */
+const PULSE_R = 680;
+/** Hold the field still for this long after the last scroll movement. */
+const SCROLL_HOLD_MS = 150;
 const PULSE_BAND = 46;
 /**
  * Neutral alpha buckets (fg colour), indexed by glyph level plus pointer proximity, so
@@ -44,6 +52,9 @@ export function pulse(x: number, y: number) {
 
 export function AsciiField() {
   const ref = useRef<HTMLCanvasElement>(null);
+  // Full strength in the hero, 40% once it is scrolled past (both themes).
+  const { scrollY } = useScroll();
+  const fade = useTransform(scrollY, [0, typeof window === "undefined" ? 900 : window.innerHeight], [1, 0.4]);
 
   useEffect(() => {
     const canvas = ref.current!;
@@ -58,6 +69,8 @@ export function AsciiField() {
     let raf = 0;
     let last = 0;
     let lastMove = -Infinity;
+    let lastScroll = -Infinity;
+    let lastY = window.scrollY;
     let visible = true;
     const pointer = { x: -9999, y: -9999, in: false };
     const pulses: Pulse[] = [];
@@ -96,6 +109,8 @@ export function AsciiField() {
       line = Array.from({ length: BUCKETS }, () => new Uint16Array(cols));
       used = new Uint8Array(BUCKETS);
       text = new Array(BUCKETS * rows).fill(null);
+      // Setting canvas.width clears it; with reduced motion there is no loop to repaint it.
+      if (reduce) draw(0);
     };
 
     const draw = (now: number) => {
@@ -135,10 +150,10 @@ export function AsciiField() {
           let hot = 0;
           for (let k = 0; k < pulses.length; k++) {
             const p = pulses[k];
-            const age = t - p.t0;
-            const band = Math.abs(Math.hypot(c * cw - p.x, y - p.y) - age * PULSE_SPEED);
+            const a = Math.max(0, (t - p.t0) / PULSE_LIFE);
+            const band = Math.abs(Math.hypot(c * cw - p.x, y - p.y) - PULSE_R * (1 - (1 - a) ** 3));
             if (band < PULSE_BAND) {
-              const k = (1 - band / PULSE_BAND) * (1 - age / PULSE_LIFE);
+              const k = (1 - band / PULSE_BAND) * (1 - a) ** 2;
               if (k > hot) hot = k;
               e += k * 0.9;
             }
@@ -177,10 +192,25 @@ export function AsciiField() {
 
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      const busy = pulses.length > 0 || now - lastMove < IDLE_AFTER_MS;
-      const interval = 1000 / (busy ? FPS : IDLE_FPS);
+      if (!visible) return;
+      // Polled here rather than with a scroll listener: the loop already runs every frame.
+      const sy = window.scrollY;
+      if (sy !== lastY) {
+        lastY = sy;
+        lastScroll = now;
+      }
+      // A live shockwave draws on every frame so its front stays smooth.
+      if (pulses.length > 0) {
+        last = now;
+        draw(now);
+        return;
+      }
+      const pointerBusy = now - lastMove < IDLE_AFTER_MS;
+      // Hold still while the page scrolls; past the hero, only the pointer redraws the field.
+      if (now - lastScroll < SCROLL_HOLD_MS || (!pointerBusy && sy > window.innerHeight)) return;
+      const interval = 1000 / (pointerBusy ? FPS : IDLE_FPS);
       // A little slack, and a fixed cadence: a late frame doesn't push every later frame back.
-      if (!visible || now - last < interval - 3) return;
+      if (now - last < interval - 3) return;
       last = now - last > interval * 2 ? now : last + interval;
       draw(now);
     };
@@ -204,7 +234,7 @@ export function AsciiField() {
     resize();
     document.fonts?.ready.then(() => {
       resize();
-      draw(performance.now());
+      if (!reduce) draw(performance.now());
     });
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onMove, { passive: true });
@@ -224,10 +254,11 @@ export function AsciiField() {
   }, []);
 
   return (
-    <canvas
-      ref={ref}
-      aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0 h-full w-full opacity-60 lg:opacity-100 lg:[mask-image:linear-gradient(90deg,rgba(0,0,0,.3)_0%,rgba(0,0,0,.3)_42%,#000_72%)]"
-    />
+    <motion.div aria-hidden="true" style={{ opacity: fade }} className="pointer-events-none fixed inset-0 z-0">
+      <canvas
+        ref={ref}
+        className="block h-full w-full opacity-60 lg:opacity-100 lg:[mask-image:linear-gradient(90deg,rgba(0,0,0,.3)_0%,rgba(0,0,0,.3)_42%,#000_72%)]"
+      />
+    </motion.div>
   );
 }

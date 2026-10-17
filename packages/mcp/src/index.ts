@@ -97,9 +97,21 @@ function graph(): Promise<SbGraph> {
   return graphPromise;
 }
 
+/**
+ * The checkout the agent works in. Cursor does not document an MCP server's working directory, so the
+ * configs name it (SB_PROJECT_DIR=${workspaceFolder}, or SB_ROOT); a placeholder a client left unresolved is
+ * skipped. Undefined means the working directory.
+ */
+export function projectDir(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return [env.SB_PROJECT_DIR, env.CLAUDE_PROJECT_DIR, env.SB_ROOT].find((d) => d && !d.includes("${"));
+}
+
+/** The id the hook gives this editor in this checkout: SB_AGENT, else `<SB_EDITOR>@<branch>`. */
+export const defaultAgent = (): string => agentId(projectDir());
+
 export function createServer(): McpServer {
   const server = new McpServer({ name: "switchboard", version: SWITCHBOARD_VERSION }, { instructions: INSTRUCTIONS });
-  const who = (agent?: string) => agent ?? agentId();
+  const who = (agent?: string) => agent ?? defaultAgent();
 
   server.registerTool(
     "register_agent",

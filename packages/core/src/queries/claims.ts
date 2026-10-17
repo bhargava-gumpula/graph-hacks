@@ -4,6 +4,7 @@ import { releaseStaleAgents } from "./agents.js";
 import { type Conflict, conflictGuard, findConflicts } from "./conflict.js";
 import { ALLOCATE_EVENT, readSeq, recordEvent } from "./events.js";
 import { latestSeq } from "./feed.js";
+import { dropWaits, freeFiles, waitedOn } from "./waits.js";
 
 /** Default claim lifetime. An agent that dies stops blocking others after this. */
 export const DEFAULT_TTL_MS = 30 * 60 * 1000;
@@ -166,23 +167,63 @@ export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult>
         payload: { requested: paths, conflicts },
         now,
       });
+      await g.query(LINK_VIA, { seq, paths: [...new Set(conflicts.flatMap((c) => c.path))] });
       return { ok: false, conflicts, seq, unknown, safe: await safeNow(g, input.agent, paths, now, k) };
     }
   }
 }
 
-/** Release an agent's claims on `paths`, or all of its claims. */
+/** A conflict event links every file on the refused import path, so the history is queryable. */
+export const LINK_VIA = `
+MATCH (e:Event {seq: $seq})
+UNWIND $paths AS path
+MATCH (f:File {path: path})
+MERGE (e)-[:VIA]->(f)
+`;
+
+/**
+ * Release an agent's claims on `paths`, or all of its claims. A released file someone waits on gets a
+ * `free` event. Releasing everything (the session ended) also ends this agent's own waits.
+ */
 export async function release(
   g: SbGraph,
   input: { agent: string; paths?: string[]; now?: number },
 ): Promise<{ released: number; seq: number }> {
   const paths = input.paths ? input.paths.map(normPath) : null;
+  const now = input.now ?? Date.now();
+  const waited = await waitedOn(g, input.agent, paths);
   const rows = await g.query(RELEASE_CLAIMS, {
     kind: "release",
-    at: input.now ?? Date.now(),
+    at: now,
     payload: JSON.stringify({ paths }),
     agent: input.agent,
     paths,
   });
+  await freeFiles(g, waited, now);
+  if (paths === null) await dropWaits(g, input.agent);
   return { released: Number(rows[0]?.released ?? 0), seq: readSeq(rows, "release") };
+}
+
+/** Of `$paths`, the files another agent holds an active claim on, or edited at or after `$since`. */
+export const OTHERS_ON = `
+UNWIND $paths AS path
+MATCH (o:Agent)-[r:CLAIMS|EDITED]->(f:File {path: path})
+WHERE o.id <> $agent AND ((type(r) = 'CLAIMS' AND r.until > $now) OR (type(r) = 'EDITED' AND r.at >= $since))
+RETURN DISTINCT f.path AS path
+`;
+
+/**
+ * Which of these files are another agent's right now: it claims them, or edited them since `since`.
+ * A shell command's PostToolUse sees every change in the checkout while it ran, including another
+ * editor's; those are left out, so they are not recorded as this agent's edits (or collisions).
+ */
+export async function othersOn(
+  g: SbGraph,
+  input: { agent: string; paths: string[]; since: number; now?: number },
+): Promise<string[]> {
+  if (input.paths.length === 0) return [];
+  const norm = input.paths.map(normPath);
+  const rows = await g.roQuery(OTHERS_ON, { agent: input.agent, paths: norm, since: input.since, now: input.now ?? Date.now() });
+  const theirs = new Set(rows.map((r) => r.path as string));
+  return input.paths.filter((_, i) => theirs.has(norm[i]!));
 }

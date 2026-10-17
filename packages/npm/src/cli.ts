@@ -4,6 +4,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { gitignoreChange, LOCAL_SETTINGS } from "../../cli/src/init.js";
 import { configure, project } from "./env.js";
 
 const HERE = import.meta.dirname;
@@ -15,10 +16,11 @@ const EXTRA = `
 Installed package
   init [dir] [--cursor] [--claude] [--dry-run]
                                             wire a repo: Cursor (.cursor/hooks.json, .cursor/mcp.json) and/or
-                                            Claude Code (.claude/settings.json hooks, .mcp.json); both by default.
+                                            Claude Code (.claude/settings.local.json hooks, .mcp.json); both by default.
                                             Then parse it into its graph (sb_<repo name>).
   mcp                                       run the stdio MCP server (15 tools)
-  hook <claude|cursor> <start|pre|post|end> run the editor hook (JSON event on stdin)
+  hook <claude|cursor> <start|pre|post|notify|end>
+                                            run the editor hook (JSON event on stdin)
 
 Defaults outside a Switchboard checkout: the graph is sb_<repo name> (shared by every worktree), paths
 are relative to the git root, the agent id is <editor>@<branch>. FALKORDB_URL, SB_GRAPH and SB_AGENT override.`;
@@ -28,7 +30,7 @@ type Json = Record<string, unknown>;
 const quote = (s: string) => (/[\s"]/.test(s) ? JSON.stringify(s) : s);
 const hookCmd = (editor: string, event: string) =>
   `${quote(process.execPath)} ${quote(join(HERE, "hook.mjs"))} ${editor} ${event}`;
-const isOurs = (cmd: unknown) => typeof cmd === "string" && /hook\.mjs"? (claude|cursor) (start|pre|post|end)$/.test(cmd);
+const isOurs = (cmd: unknown) => typeof cmd === "string" && /hook\.mjs"? (claude|cursor) (start|pre|post|notify|end)$/.test(cmd);
 
 function readJson(file: string): Json {
   if (!existsSync(file)) return {};
@@ -37,10 +39,10 @@ function readJson(file: string): Json {
   return json as Json;
 }
 
-/** Claude Code settings: drop our old hook entries (and groups they emptied), then add ours. */
-function claudeSettings(cur: Json): Json {
+/** Claude Code settings: drop our old hook entries (and groups and events they emptied); `add` then adds ours. */
+function claudeSettings(cur: Json, add = true): Json {
   const hooks = { ...((cur.hooks as Json | undefined) ?? {}) };
-  const matcher = "Edit|MultiEdit|Write|NotebookEdit";
+  const matcher = "Edit|MultiEdit|Write|NotebookEdit|Bash";
   const wanted: Record<string, Json> = {
     SessionStart: { hooks: [{ type: "command", command: hookCmd("claude", "start"), timeout: 15 }] },
     PreToolUse: { matcher, hooks: [{ type: "command", command: hookCmd("claude", "pre"), timeout: 5 }] },
@@ -48,25 +50,36 @@ function claudeSettings(cur: Json): Json {
     SessionEnd: { hooks: [{ type: "command", command: hookCmd("claude", "end"), timeout: 10 }] },
   };
   for (const [event, group] of Object.entries(wanted)) {
+    if (!add && !Array.isArray(hooks[event])) continue;
     const groups = (Array.isArray(hooks[event]) ? (hooks[event] as Json[]) : [])
       .map((g) => (Array.isArray(g.hooks) ? { ...g, hooks: (g.hooks as Json[]).filter((h) => !isOurs(h.command)) } : g))
       .filter((g) => !Array.isArray(g.hooks) || g.hooks.length > 0);
-    hooks[event] = [...groups, group];
+    if (add) hooks[event] = [...groups, group];
+    else if (groups.length > 0) hooks[event] = groups;
+    else delete hooks[event];
   }
-  return { ...cur, hooks };
+  if (Object.keys(hooks).length > 0) return { ...cur, hooks };
+  const rest = { ...cur };
+  delete rest.hooks;
+  return rest;
 }
 
 function cursorHooks(cur: Json): Json {
   const hooks = { ...((cur.hooks as Json | undefined) ?? {}) };
-  const wanted: Record<string, Json> = {
-    sessionStart: { command: hookCmd("cursor", "start") },
-    preToolUse: { command: hookCmd("cursor", "pre"), matcher: "Write" },
-    afterFileEdit: { command: hookCmd("cursor", "post") },
-    sessionEnd: { command: hookCmd("cursor", "end") },
+  // The same events as packages/cli/src/init.ts: claims on preToolUse and beforeShellExecution, records after,
+  // notices (who waits, what is free) on postToolUse.
+  const wanted: Record<string, Json[]> = {
+    sessionStart: [{ command: hookCmd("cursor", "start") }],
+    preToolUse: [{ command: hookCmd("cursor", "pre"), matcher: "Write" }, { command: hookCmd("cursor", "pre"), matcher: "Delete" }],
+    beforeShellExecution: [{ command: hookCmd("cursor", "pre") }],
+    afterFileEdit: [{ command: hookCmd("cursor", "post") }],
+    afterShellExecution: [{ command: hookCmd("cursor", "post") }],
+    postToolUse: [{ command: hookCmd("cursor", "notify"), matcher: "Write" }, { command: hookCmd("cursor", "notify"), matcher: "Shell" }],
+    sessionEnd: [{ command: hookCmd("cursor", "end") }],
   };
-  for (const [event, entry] of Object.entries(wanted)) {
+  for (const [event, entries] of Object.entries(wanted)) {
     const kept = (Array.isArray(hooks[event]) ? (hooks[event] as Json[]) : []).filter((e) => !isOurs(e.command));
-    hooks[event] = [...kept, entry];
+    hooks[event] = [...kept, ...entries];
   }
   return { version: 1, ...cur, hooks };
 }
@@ -92,21 +105,38 @@ async function init(argv: string[]): Promise<number> {
   if (both || argv.includes("--cursor")) {
     files.push([".cursor/hooks.json", cursorHooks], [".cursor/mcp.json", (c) => mcpServers(c, "cursor")]);
   }
-  if (both || argv.includes("--claude")) {
-    files.push([".claude/settings.json", claudeSettings], [".mcp.json", (c) => mcpServers(c, "claude-code")]);
+  const claude = both || argv.includes("--claude");
+  if (claude) {
+    // The hook commands name this machine's node and install, so they go in Claude Code's git-ignored
+    // per-machine file; hooks an older init left in the committed settings.json are taken out.
+    files.push(
+      [LOCAL_SETTINGS, claudeSettings],
+      [".claude/settings.json", (c) => claudeSettings(c, false)],
+      [".mcp.json", (c) => mcpServers(c, "claude")],
+    );
   }
-  for (const [rel, merge] of files) {
+  const write = (rel: string, text: string) => {
     const path = join(p.root, rel);
-    const text = `${JSON.stringify(merge(readJson(path)), null, 2)}\n`;
     if (argv.includes("--dry-run")) console.log(`--- ${rel}\n${text}`);
     else {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, text);
       console.log(`wrote ${rel}`);
     }
+  };
+  for (const [rel, merge] of files) {
+    const path = join(p.root, rel);
+    const exists = existsSync(path);
+    // The strip pass never creates a file, and a file that already holds what we want is left as it is.
+    if (!exists && rel === ".claude/settings.json") continue;
+    const cur = readJson(path);
+    const next = merge(cur);
+    if (!exists || JSON.stringify(next) !== JSON.stringify(cur)) write(rel, `${JSON.stringify(next, null, 2)}\n`);
   }
+  const ignore = claude ? gitignoreChange(p.root) : null;
+  if (ignore) write(".gitignore", ignore.after);
   if (argv.includes("--dry-run")) {
-    console.log(`Would parse ${p.root} into graph ${p.graph}. Nothing was written (--dry-run).`);
+    console.log(`Would parse ${p.root} into graph ${process.env.SB_GRAPH ?? p.graph}. Nothing was written (--dry-run).`);
     return 0;
   }
   if (HERE.includes("/_npx/")) {
@@ -120,7 +150,7 @@ async function init(argv: string[]): Promise<number> {
     console.log("\nThe configs are written, but the parse failed. Start FalkorDB (docker run -d -p 6379:6379 falkordb/falkordb), then: switchboard parse");
     return 1;
   }
-  console.log(`\nParsed ${p.root} into graph ${p.graph}. Restart Cursor or Claude Code in this repo; edits are now claimed automatically.`);
+  console.log(`\nParsed ${p.root} into graph ${process.env.SB_GRAPH ?? p.graph}. Restart Cursor or Claude Code in this repo; edits are now claimed automatically.`);
   return 0;
 }
 

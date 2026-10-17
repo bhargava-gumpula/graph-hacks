@@ -9,9 +9,15 @@ const GRAPH = `sb_test_cli_${process.pid}`;
 const PATH_3 =
   "CONFLICT UPSTREAM ui/LoginForm.tsx ← A via ui/LoginForm.tsx → api/login.ts → auth/session.ts → lib/crypto.ts";
 const OK_CHECK = /^OK no claim within 3 import hops \(\d+(\.\d+)? ms\)\n$/;
-/** The hook's deny reason when it took the CLI fallback. */
-// t-about (planned in an earlier test) is the open task that is free.
-const DENY_3 = `✗ Switchboard blocked this edit\n${PATH_3}\nSafe now: ui/AboutPage.tsx\nDon't work around this with Bash. Pick another file or call brief_me.`;
+/** The hook's deny reason. t-about (planned in an earlier test) is the open task that is free. */
+const DENY_3 = [
+  "✗ Switchboard blocked this edit",
+  "ui/LoginForm.tsx ─imports→ api/login.ts ─imports→ auth/session.ts ─imports→ lib/crypto.ts",
+  "held by A · free in 30 min",
+  "Safe now: ui/AboutPage.tsx",
+  "Don't work around this with Bash. Pick another file or call brief_me.",
+  "You are now waiting on lib/crypto.ts; Switchboard tells you here when it is free.",
+].join("\n");
 
 function run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -162,7 +168,7 @@ function hook(
   return new Promise((resolve, reject) => {
     const child = spawn("bash", [join(root, "packages/hooks/hook.sh"), ...args], {
       cwd: root,
-      // Port 9 is closed, so the hook takes the CLI fallback against the test graph.
+      // Port 9 is closed: no dashboard, so the hook writes to the test graph directly.
       env: { ...process.env, SB_GRAPH: GRAPH, SB_URL: "http://127.0.0.1:9", SB_HOOK_LOG: "/dev/null", ...env },
     });
     let stdout = "";

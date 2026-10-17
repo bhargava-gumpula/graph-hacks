@@ -8,7 +8,10 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 export const SWITCHBOARD_ROOT = resolve(import.meta.dirname, "../../..");
 
 const HOOK_MARK = "/packages/hooks/hook.sh";
-const CLAUDE_MATCHER = "Edit|MultiEdit|Write|NotebookEdit";
+const NPX_MARK = "switchboard-agents hook ";
+const CLAUDE_MATCHER = "Edit|MultiEdit|Write|NotebookEdit|Bash";
+/** Claude Code's per-machine settings file, git-ignored: where a local clone's absolute hook paths go. */
+export const LOCAL_SETTINGS = ".claude/settings.local.json";
 
 export interface FileChange {
   path: string;
@@ -16,8 +19,14 @@ export interface FileChange {
   after: string;
 }
 
+export interface InitOptions {
+  /** Point every config at the published npm package (`npx -y switchboard-agents ...`): no machine paths. */
+  npx?: boolean;
+}
+
 export interface InitPlan {
   repo: string;
+  npx: boolean;
   graph: string;
   port: number;
   env: Record<string, string>;
@@ -58,63 +67,77 @@ export function hookEnv(repo: string, graph: string): Record<string, string> {
   return { ...base, SB_PREFIX: relative(top.stdout.trim(), repo).split("\\").join("/") };
 }
 
-function hookCommand(root: string, env: Record<string, string>, editor: string, event: string): string {
+/** The hook command. `npx` mode runs the published package and names no path on this machine. */
+function hookCommand(root: string, env: Record<string, string>, editor: string, event: string, npx: boolean): string {
   const hook = join(root, "packages/hooks/hook.sh");
-  const quoted = /\s/.test(hook) ? `"${hook}"` : hook;
+  const target = npx ? `npx -y switchboard-agents hook` : /\s/.test(hook) ? `"${hook}"` : hook;
   const vars = Object.entries(env).map(([k, v]) => `${k}=${/\s/.test(v) ? `"${v}"` : v}`);
-  return `env ${vars.join(" ")} ${quoted} ${editor} ${event}`;
+  return `env ${vars.join(" ")} ${target} ${editor} ${event}`;
 }
 
-const isOurs = (command: unknown) => typeof command === "string" && command.includes(HOOK_MARK);
+const isOurs = (command: unknown) => typeof command === "string" && (command.includes(HOOK_MARK) || command.includes(NPX_MARK));
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Keep `wanted` if it is already there; else drop our old entries (and emptied groups) and append it. */
-function mergeList(list: unknown, wanted: Json, strip: (item: Json) => Json | null): Json[] {
+/** Keep `wanted` if it is all there already; else drop our old entries (and emptied groups) and append it. */
+function mergeList(list: unknown, wanted: Json[], strip: (item: Json) => Json | null): Json[] {
   const items = Array.isArray(list) ? (list as Json[]) : [];
-  if (items.some((item) => same(item, wanted))) return items;
-  return [...items.map(strip).filter((item): item is Json => item !== null), wanted];
+  if (wanted.length > 0 && wanted.every((w) => items.some((item) => same(item, w)))) return items;
+  return [...items.map(strip).filter((item): item is Json => item !== null), ...wanted];
 }
 
-function claudeSettings(current: Json, root: string, env: Record<string, string>): Json {
-  const cmd = (event: string, timeout: number) => ({ type: "command", command: hookCommand(root, env, "claude", event), timeout });
-  const wanted: Record<string, Json> = {
-    SessionStart: { hooks: [cmd("start", 15)] },
-    PreToolUse: { matcher: CLAUDE_MATCHER, hooks: [cmd("pre", 5)] },
-    PostToolUse: { matcher: CLAUDE_MATCHER, hooks: [cmd("post", 5)] },
-    SessionEnd: { hooks: [cmd("end", 10)] },
-  };
+/** Claude Code hooks; `cmd` null only strips ours (the other settings file of the pair). */
+function claudeSettings(current: Json, cmd: ((event: string) => string) | null): Json {
+  const entry = (event: string, timeout: number) => ({ type: "command", command: cmd!(event), timeout });
+  const wanted: Record<string, Json[]> = cmd
+    ? {
+        SessionStart: [{ hooks: [entry("start", 15)] }],
+        PreToolUse: [{ matcher: CLAUDE_MATCHER, hooks: [entry("pre", 5)] }],
+        PostToolUse: [{ matcher: CLAUDE_MATCHER, hooks: [entry("post", 5)] }],
+        SessionEnd: [{ hooks: [entry("end", 10)] }],
+      }
+    : { SessionStart: [], PreToolUse: [], PostToolUse: [], SessionEnd: [] };
   const strip = (group: Json): Json | null => {
     if (!Array.isArray(group.hooks)) return group;
     const hooks = (group.hooks as Json[]).filter((h) => !isOurs(h.command));
     return hooks.length === 0 ? null : { ...group, hooks };
   };
   const hooks = { ...((current.hooks as Json | undefined) ?? {}) };
-  for (const [event, group] of Object.entries(wanted)) hooks[event] = mergeList(hooks[event], group, strip);
+  for (const [event, groups] of Object.entries(wanted)) {
+    if (!cmd && !(event in hooks)) continue;
+    const merged = mergeList(hooks[event], groups, strip);
+    if (merged.length > 0) hooks[event] = merged;
+    else delete hooks[event];
+  }
+  if (!cmd && Object.keys(hooks).length === 0) {
+    const rest = { ...current };
+    delete rest.hooks;
+    return rest;
+  }
   return { ...current, hooks };
 }
 
-function cursorHooks(current: Json, root: string, env: Record<string, string>): Json {
-  const cmd = (event: string) => hookCommand(root, env, "cursor", event);
-  const wanted: Record<string, Json> = {
-    sessionStart: { command: cmd("start") },
-    preToolUse: { command: cmd("pre"), matcher: "Write" },
-    afterFileEdit: { command: cmd("post") },
-    sessionEnd: { command: cmd("end") },
+/**
+ * Cursor hooks (cursor.com/docs/agent/hooks): edits and deletes are claimed on preToolUse, shell commands on
+ * beforeShellExecution; afterFileEdit and afterShellExecution record; postToolUse carries the notices.
+ */
+function cursorHooks(current: Json, cmd: (event: string) => string): Json {
+  const wanted: Record<string, Json[]> = {
+    sessionStart: [{ command: cmd("start") }],
+    preToolUse: [{ command: cmd("pre"), matcher: "Write" }, { command: cmd("pre"), matcher: "Delete" }],
+    beforeShellExecution: [{ command: cmd("pre") }],
+    afterFileEdit: [{ command: cmd("post") }],
+    afterShellExecution: [{ command: cmd("post") }],
+    postToolUse: [{ command: cmd("notify"), matcher: "Write" }, { command: cmd("notify"), matcher: "Shell" }],
+    sessionEnd: [{ command: cmd("end") }],
   };
   const strip = (entry: Json): Json | null => (isOurs(entry.command) ? null : entry);
   const hooks = { ...((current.hooks as Json | undefined) ?? {}) };
-  for (const [event, entry] of Object.entries(wanted)) hooks[event] = mergeList(hooks[event], entry, strip);
+  for (const [event, entries] of Object.entries(wanted)) hooks[event] = mergeList(hooks[event], entries, strip);
   return { version: 1, ...current, hooks };
 }
 
-function mcpConfig(current: Json, root: string, repo: string, graph: string): Json {
-  const servers = { ...((current.mcpServers as Json | undefined) ?? {}) };
-  servers.switchboard = {
-    command: join(root, "node_modules/.bin/tsx"),
-    args: [join(root, "packages/mcp/src/index.ts")],
-    env: { SB_GRAPH: graph, SB_PREFIX: "", SB_ROOT: repo },
-  };
-  return { ...current, mcpServers: servers };
+function mcpConfig(current: Json, server: Json): Json {
+  return { ...current, mcpServers: { ...((current.mcpServers as Json | undefined) ?? {}), switchboard: server } };
 }
 
 function readJson(file: string): { text: string | null; json: Json } {
@@ -129,8 +152,13 @@ function readJson(file: string): { text: string | null; json: Json } {
   throw new Error(`${file} is not a JSON object. Fix it or move it aside, then run init again.`);
 }
 
-/** What init would write. Reads the repo's configs; writes nothing. */
-export function planInit(repoDir: string, root = SWITCHBOARD_ROOT): InitPlan {
+/**
+ * What init would write. Reads the repo's configs; writes nothing.
+ * Default (a local clone of Switchboard): the hooks point at this checkout, so Claude Code's go in the
+ * git-ignored .claude/settings.local.json; Cursor has no local hooks file, so .cursor/hooks.json carries the
+ * path. With `npx`, every file names the npm package instead and can be committed.
+ */
+export function planInit(repoDir: string, root = SWITCHBOARD_ROOT, opts: InitOptions = {}): InitPlan {
   if (!existsSync(repoDir)) throw new Error(`no such directory: ${resolve(repoDir)}`);
   // Real path: git reports one (/private/var on macOS), and SB_PREFIX is relative to it.
   const repo = realpathSync(repoDir);
@@ -138,26 +166,64 @@ export function planInit(repoDir: string, root = SWITCHBOARD_ROOT): InitPlan {
   if (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) {
     throw new Error(`${repo} is part of this Switchboard checkout. Pass the repo to wire, e.g. npm run switchboard -- init ~/code/my-app`);
   }
+  const npx = opts.npx === true;
   const graph = graphName(repo);
   const env = hookEnv(repo, graph);
+  const cmd = (editor: string) => (event: string) => hookCommand(root, env, editor, event, npx);
+  const mcp = (editor: string): Json =>
+    npx
+      ? {
+          command: "npx",
+          args: ["-y", "switchboard-agents", "mcp"],
+          env: { SB_EDITOR: editor, SB_GRAPH: graph, ...(editor === "cursor" ? { SB_PROJECT_DIR: "${workspaceFolder}" } : {}) },
+        }
+      : {
+          command: join(root, "node_modules/.bin/tsx"),
+          args: [join(root, "packages/mcp/src/index.ts")],
+          env: { SB_GRAPH: graph, SB_PREFIX: "", SB_ROOT: repo, SB_EDITOR: editor },
+        };
+  const [hooksIn, stripIn] = npx ? [".claude/settings.json", LOCAL_SETTINGS] : [LOCAL_SETTINGS, ".claude/settings.json"];
   const build: [string, (current: Json) => Json][] = [
-    [".claude/settings.json", (c) => claudeSettings(c, root, env)],
-    [".cursor/hooks.json", (c) => cursorHooks(c, root, env)],
-    [".mcp.json", (c) => mcpConfig(c, root, repo, graph)],
+    [hooksIn, (c) => claudeSettings(c, cmd("claude"))],
+    [stripIn, (c) => claudeSettings(c, null)],
+    [".cursor/hooks.json", (c) => cursorHooks(c, cmd("cursor"))],
+    [".mcp.json", (c) => mcpConfig(c, mcp("claude"))],
+    [".cursor/mcp.json", (c) => mcpConfig(c, mcp("cursor"))],
   ];
-  const changes = build.map(([rel, merge]) => {
+  const changes: FileChange[] = [];
+  for (const [rel, merge] of build) {
     const path = join(repo, rel);
     const { text, json } = readJson(path);
-    return { path, before: text, after: `${JSON.stringify(merge(json), null, 2)}\n` };
-  });
-  return { repo, graph, port: serverPort(graph), env, changes: changes.filter((c) => c.before !== c.after) };
+    // The strip pass never creates a file.
+    if (text === null && rel === stripIn) continue;
+    changes.push({ path, before: text, after: `${JSON.stringify(merge(json), null, 2)}\n` });
+  }
+  if (!npx) {
+    const ignore = gitignoreChange(repo);
+    if (ignore) changes.push(ignore);
+  }
+  return { repo, npx, graph, port: serverPort(graph), env, changes: changes.filter((c) => c.before !== c.after) };
 }
+
+/** In a git repo, make sure .claude/settings.local.json is ignored, so a machine path is never committed. */
+export function gitignoreChange(repo: string): FileChange | null {
+  const inGit = spawnSync("git", ["-C", repo, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).status === 0;
+  if (!inGit) return null;
+  if (spawnSync("git", ["-C", repo, "check-ignore", "-q", LOCAL_SETTINGS]).status === 0) return null;
+  const path = join(repo, ".gitignore");
+  const before = existsSync(path) ? readFileSync(path, "utf8") : null;
+  const base = before ?? "";
+  return { path, before, after: `${base}${base && !base.endsWith("\n") ? "\n" : ""}${LOCAL_SETTINGS}\n` };
+}
+
+/** Does applying this change keep the original in <file>.bak? .gitignore only gains a line, so it needs none. */
+export const keepsBackup = (c: FileChange): boolean => c.before !== null && !c.path.endsWith(".gitignore");
 
 /** Write the plan. An existing file is copied to <file>.bak once, before its first change. */
 export function applyInit(plan: InitPlan): void {
   for (const c of plan.changes) {
     mkdirSync(dirname(c.path), { recursive: true });
-    if (c.before !== null && !existsSync(`${c.path}.bak`)) copyFileSync(c.path, `${c.path}.bak`);
+    if (keepsBackup(c) && !existsSync(`${c.path}.bak`)) copyFileSync(c.path, `${c.path}.bak`);
     writeFileSync(c.path, c.after);
   }
 }

@@ -178,3 +178,8 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Credibility:** the hackathon's task briefs, status and council notes moved to the `archive/process` branch; new `docs/DESIGN.md` (decisions and why); honest benchmark framing (what a CI check would also catch, and what Switchboard saves: B is stopped before writing); blog draft updated.
 - **npm:** `switchboard-agents` is publish-ready (dry run passes); the real publish was refused with E403 until the owner turns on two-factor authentication on npmjs.com.
 - **Gates:** 39 files, 328 tests pass; typecheck, lint and build clean.
+
+## 2026-10-18 11:12 PT: submitted
+- **Video:** a live take with real Claude Code and the Cursor agent CLI on the FalkorDB Cloud demo graph (Cursor refused through the MCP claim tool, since the CLI doesn't run hooks; Claude told someone was waiting and released through MCP), replayed from transcripts with the headless dashboard recording; ElevenLabs voice, music and sound effects. https://youtu.be/JeX7zCreNYI
+- **Overnight design contest:** 17 landing-page designs scored by a blind council; top 5 spider web, savanna, beehive, deep ocean, koi. Not merged; the live landing page is unchanged.
+- **Submitted** by the owner at about 11:12 AM PT.

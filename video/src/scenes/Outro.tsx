@@ -29,6 +29,9 @@ const OutroInner: React.FC<SceneProps> = ({guides, vo}) => {
 				<div style={{marginTop: 60, fontFamily: MONO, fontSize: 30, letterSpacing: '0.14em', color: C.accent, ...arrive(f, LAND + 14, 5, 30)}}>
 					GRAPH HACKS 2026
 				</div>
+				<div style={{marginTop: 34, fontFamily: MONO, fontSize: 32, color: C.text, ...arrive(f, LAND + 20, 5, 30)}}>
+					switchboard-agents.xyz <span style={{color: C.faint}}>&nbsp;·&nbsp;</span> github.com/bhargava-gumpula/graph-hacks
+				</div>
 			</div>
 			<VoCue show={guides} text={vo} />
 		</>

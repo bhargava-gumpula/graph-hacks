@@ -12,6 +12,17 @@ import live from './live.json';
 // piecewise, never reordered. live.json comes from the take folder via scripts/live-prep.py <dir> src/live.json.
 
 const FPS = 30;
+// ElevenLabs sound effects, cued to the story beats (ElevenLabs Music replaces the pad in public/live/pad.mp3).
+const SFX: {beat: Key; f: string; off: number; v: number}[] = [
+	{beat: 'title', f: 'whoosh', off: 0, v: 0.5},
+	{beat: 'claim', f: 'claim', off: 6, v: 0.6},
+	{beat: 'claim', f: 'typing', off: 24, v: 0.22},
+	{beat: 'refuse', f: 'refused', off: 66, v: 0.7},
+	{beat: 'free', f: 'free', off: 6, v: 0.6},
+	{beat: 'how', f: 'whoosh', off: 0, v: 0.45},
+	{beat: 'bench', f: 'whoosh', off: 0, v: 0.45},
+	{beat: 'outro', f: 'whoosh', off: 0, v: 0.45},
+];
 const LEAD = 6;
 const BREATH = 0.4;
 
@@ -252,6 +263,11 @@ export const Live: React.FC = () => (
 			<Install />
 		</Sequence>
 		<Audio src={staticFile('live/pad.mp3')} volume={(f) => (voOn(f) ? 0.5 : 1)} />
+		{SFX.map((x) => (
+			<Sequence key={`${x.beat}-${x.f}-${x.off}`} name={`SFX ${x.f}`} from={at(x.beat).from + x.off} durationInFrames={120}>
+				<Audio src={staticFile(`sfx/${x.f}.mp3`)} volume={x.v} />
+			</Sequence>
+		))}
 		{PLAN.map((p) => (
 			<Sequence key={p.key} name={`VO ${p.key}`} from={p.from} durationInFrames={p.dur}>
 				<Sequence from={LEAD}>

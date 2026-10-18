@@ -152,7 +152,7 @@ export function Landing() {
           id="top"
           className="ch-hero"
           cam="1430 850 2.05 0.64 0.6"
-          camSm="1438 848 0.8 0.5 0.6"
+          camSm="1425 848 0.8 0.5 0.75"
           plate="Plate 1. The confluence, numbered along the import path"
         >
           <div data-obstacle className="hero-copy">
@@ -175,6 +175,11 @@ export function Landing() {
                 <GithubLogo size={16} /> Source on GitHub
               </a>
             </div>
+            <p className="dl-cap dl-hint">
+              <span className="hint-fine">Point at</span>
+              <span className="hint-touch">Tap</span> any file on the map to
+              see whether Agent B may edit it.
+            </p>
           </div>
         </Chapter>
 
@@ -234,7 +239,7 @@ export function Landing() {
           id="story"
           className="ch-story"
           cam="1440 850 1.7 0.66 0.5"
-          camSm="1235 880 1.45 0.5 0.3"
+          camSm="1235 1060 1.45 0.5 0.3"
           plate="Plate 4. Agent B held at the gate on login.ts"
         >
           {[
@@ -283,68 +288,94 @@ export function Landing() {
           plate={`Plate 5. Downstream, ${n} runs each way`}
         >
           <div data-obstacle className="proof-sheet dl-panel">
+            <p className="dl-cap">The benchmark, read from bench/results.json</p>
             <h2 className="dl-h2">Same edit, {n} runs each way.</h2>
-            <div className="proof-row">
-              <div>
+            <div className="proof-duel">
+              <div className="duel">
+                <p className="duel-h">Without Switchboard</p>
                 <p className="dl-num">
                   {bench.without.brokenBuilds}
                   <span>/{n}</span>
                 </p>
-                <p className="dl-num-l">builds broke without Switchboard</p>
+                <p className="dl-num-l">
+                  builds broke. Both edits typechecked alone; merged, tsc
+                  failed.
+                </p>
                 <ul
                   className="dl-runs"
-                  aria-label={`Without Switchboard: ${bench.runs.without.join(", ")}`}
+                  aria-label={`Without Switchboard, each run: ${bench.runs.without.join(", ")}`}
                 >
-                  {bench.runs.without.map((_, i) => (
-                    <li key={i} className="run-fail" />
+                  {bench.runs.without.map((r, i) => (
+                    <li key={i} className="run-fail" title={`Run ${i + 1}: ${r}`} />
                   ))}
                 </ul>
               </div>
-              <div>
+              <div className="duel duel-with">
+                <p className="duel-h">With Switchboard</p>
                 <p className="dl-num dl-num-signal">
                   {bench.with.brokenBuilds}
                   <span>/{n}</span>
                 </p>
                 <p className="dl-num-l">
-                  with Switchboard. Refused {bench.with.blocked} of {n} times,
-                  before a line was written.
+                  builds broke. Agent B was refused {bench.with.blocked} of {n}{" "}
+                  times, before it wrote a line.
                 </p>
                 <ul
                   className="dl-runs"
-                  aria-label={`With Switchboard: ${bench.runs.with.join(", ")}`}
+                  aria-label={`With Switchboard, each run: ${bench.runs.with.join(", ")}`}
                 >
-                  {bench.runs.with.map((_, i) => (
-                    <li key={i} className="run-refused" />
+                  {bench.runs.with.map((r, i) => (
+                    <li key={i} className="run-refused" title={`Run ${i + 1}: ${r}`} />
                   ))}
                 </ul>
               </div>
-              <div>
+            </div>
+            <div className="proof-foot">
+              <div className="proof-ms">
                 <p className="dl-num dl-num-ms">
                   {bench.checkMsMedian}
                   <span> ms</span>
                 </p>
                 <p className="dl-num-l">
-                  median check, range {bench.checkMsMin} to {bench.checkMsMax}{" "}
-                  ms
+                  median path check, range {bench.checkMsMin} to{" "}
+                  {bench.checkMsMax} ms
+                </p>
+                <ul
+                  className="dl-bars"
+                  aria-label={`Check time per run in ms: ${bench.checkMsSamples.join(", ")}`}
+                >
+                  {bench.checkMsSamples.map((ms, i) => (
+                    <li
+                      key={i}
+                      title={`${ms} ms`}
+                      style={{
+                        height: `${(ms / bench.checkMsMax) * 100}%`,
+                      }}
+                    />
+                  ))}
+                </ul>
+              </div>
+              <div className="dl-caveat">
+                <p className="caveat-h">The honest caveat</p>
+                <p>
+                  Scripted agents, real {bench.tsc.replace("Version ", "tsc ")},
+                  real FalkorDB. Any check before merge, CI included, would also
+                  keep the build green. What changes is when the second agent
+                  finds out: before it writes, not after both have finished. The
+                  run is deterministic, so {n} runs show repeatability, not a
+                  statistic.
                 </p>
               </div>
             </div>
-            <p className="dl-caveat">
-              Scripted agents, real {bench.tsc.replace("Version ", "tsc ")},
-              real FalkorDB. Each edit typechecks on its own; we merge both and
-              compile. Any check before merge, CI included, would also keep the
-              build green. What changes is when the second agent finds out. The
-              run is deterministic, so {n} runs show repeatability, not a
-              statistic.
-            </p>
             <div className="proof-src">
-              <Cmd>npm run bench</Cmd>
               <a
-                className="dl-small"
+                className="dl-btn dl-btn-ghost"
                 href={`${REPO_URL}/blob/main/bench/results.json`}
               >
-                Raw numbers in bench/results.json
+                Raw numbers: bench/results.json{" "}
+                <ArrowUpRight size={16} weight="bold" />
               </a>
+              <Cmd>npm run bench</Cmd>
             </div>
           </div>
         </Chapter>
@@ -393,11 +424,15 @@ export function Landing() {
         <Chapter
           id="end"
           className="ch-end"
-          cam="1500 760 1.15 0.6 0.62"
-          camSm="1440 850 1.0 0.5 0.62"
-          plate="Plate 7. One map for every agent"
+          cam="1260 720 1.0 0.5 0.56"
+          camSm="1420 860 0.8 0.5 0.66"
+          show="all"
+          plate={`Plate 7. The whole delta: ${bench.graph.files} files, ${bench.graph.imports} imports, one map`}
         >
           <div data-obstacle className="end-copy">
+            <p className="dl-cap">
+              Every line on this photograph is a real import in the demo repo.
+            </p>
             <h2 className="dl-h2">Give your agents one map.</h2>
             <div className="dl-btns">
               <a href="/app?play=1" className="dl-btn dl-btn-primary">

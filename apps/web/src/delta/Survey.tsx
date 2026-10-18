@@ -44,19 +44,10 @@ const lensEdges = edges.map((e, i) => {
     head: along(pts, 0.84),
   };
 });
-const HULL =
-  "M24,0 C17,-9 -10,-10 -20,-8 L-20,8 C-10,10 17,9 24,0Z M2,-4 L-12,-4 L-12,4 L2,4Z";
+// A small claim marker, pointed along its heading.
+const HULL = "M9,0 C5,-4.5 -3,-5 -7,-4 L-7,4 C-3,5 5,4.5 9,0Z";
 const legMid = along(legA.pts, 0.5);
 const deg = (r: number) => (r * 180) / Math.PI;
-// One import, as a scale bar: the median edge length in photo pixels.
-const HOP = [
-  ...edges.map((e) =>
-    Math.hypot(
-      e.pts.at(-1)![0] - e.pts[0]![0],
-      e.pts.at(-1)![1] - e.pts[0]![1],
-    ),
-  ),
-].sort((a, b) => a - b)[edges.length >> 1]!;
 
 const readCam = (el: Element, small: boolean): Cam => {
   const [x, y, z, ax, ay] = (
@@ -114,10 +105,12 @@ const probeD = (path: string[]) => {
 };
 
 const TAG_SPOTS: [number, number, "start" | "end"][] = [
-  [-22, 40, "end"],
-  [22, 40, "start"],
-  [22, -26, "start"],
-  [-22, -26, "end"],
+  [-14, 26, "end"],
+  [14, 26, "start"],
+  [14, -26, "start"],
+  [-14, -26, "end"],
+  [-18, 0, "end"],
+  [18, 0, "start"],
 ];
 const CANDS: [number, number, "start" | "end" | "middle"][] = [
   [10, 5, "start"],
@@ -153,7 +146,9 @@ export function Survey() {
     const boatA = q<SVGGElement>(".sv-boat-a");
     const boatB = q<SVGGElement>(".sv-boat-b");
     const gate = q<SVGGElement>(".sv-gate");
-    const bTag = q<SVGTextElement>(".sv-b-tag");
+    const bTag = q<SVGGElement>(".sv-b-tag");
+    const bTagT = bTag.querySelector("text")!;
+    const bTagR = bTag.querySelector("rect")!;
     const gateChip = q<SVGGElement>(".sv-gate-chip");
     const labels = [...sv.querySelectorAll<SVGTextElement>(".sv-lab")];
     const chips = [...sv.querySelectorAll<SVGGElement>(".sv-chip")];
@@ -187,15 +182,26 @@ export function Survey() {
         h: 12,
       }));
       const vw = innerWidth;
+      const vh = innerHeight;
+      // Every label stays 24px inside the frame and clear of the nav pills.
       boxes.push(
         { x: -tx - 1e4 + 24, y: -1e5, w: 1e4, h: 2e5 },
         { x: vw - tx - 24, y: -1e5, w: 1e4, h: 2e5 },
+        { x: -1e5, y: -ty - 1e4 + 80, w: 2e5, h: 1e4 },
+        { x: -1e5, y: vh - ty - 24, w: 2e5, h: 1e4 },
       );
       for (const el of document.querySelectorAll(
-        "[data-obstacle], .dl-nav nav, .sv-plate",
+        "[data-obstacle], .dl-nav nav > *, .sv-plate, .sv-scale",
       )) {
         const r = el.getBoundingClientRect();
-        if (r.bottom > 0 && r.top < innerHeight)
+        if (r.bottom <= 0 || r.top >= vh) continue;
+        // On desktop a copy panel sits on a scrim that runs the full height of its side, so labels keep out of that whole column.
+        if (vw > 760 && el.classList.contains("dl-panel")) {
+          const left = r.left + r.width / 2 < vw / 2;
+          const x0 = left ? 0 : r.left - 140;
+          const x1 = left ? r.right + 140 : vw;
+          boxes.push({ x: x0 - tx, y: -ty, w: x1 - x0, h: vh });
+        } else
           boxes.push({
             x: r.x - tx - 8,
             y: r.y - ty - 8,
@@ -299,10 +305,10 @@ export function Survey() {
         : smooth(
             0,
             1,
-            1 - clamp((tops[i + 1] ?? 1e9) - line, 0, vh * 0.42) / (vh * 0.42),
+            1 - clamp((tops[i + 1] ?? 1e9) - line, 0, vh * 0.3) / (vh * 0.3),
           );
       const target: Cam = reduce
-        ? readCam(chs[0]!, small)
+        ? a
         : {
             x: a.x + (b.x - a.x) * k,
             y: a.y + (b.y - a.y) * k,
@@ -331,20 +337,23 @@ export function Survey() {
       if (Math.abs(s - lastS) > 1e-5)
         sv.style.setProperty("--inv", String(1 / s));
       lastS = s;
+      // Re-place often enough that labels never trail the camera under the nav or past the frame.
       if (
         lastPlaced < 0 ||
-        Math.abs(s / lastPlaced - 1) > 0.06 ||
-        ++tick % 15 === 0
+        Math.abs(s / lastPlaced - 1) > 0.02 ||
+        ++tick % 4 === 0
       )
         place();
       st.dataset.show = chs[i]!.getAttribute("data-show") ?? "";
       const pl = chs[i]!.getAttribute("data-plate") ?? "";
       if (plate.current!.textContent !== pl) plate.current!.textContent = pl;
-      // A round fraction of one import that fits the corner, as on a printed chart.
-      const frac =
-        [1, 0.5, 0.25, 0.125].find((f) => HOP * s * f <= 180) ?? 0.125;
-      scale.current!.style.width = `${(HOP * s * frac).toFixed(0)}px`;
-      const sl = `${frac === 1 ? "1" : `1/${1 / frac}`} import`;
+      // The survey walked so far: one tick per plate, filling as the camera travels to the next.
+      scale.current!.style.setProperty(
+        "--walked",
+        String((i + 1 + (reduce ? 0 : k)) / chs.length),
+      );
+      scale.current!.style.setProperty("--plates", String(chs.length));
+      const sl = `${Math.min(i + 1 + (k > 0.5 ? 1 : 0), chs.length)} of ${chs.length}`;
       if (scaleL.current!.textContent !== sl) scaleL.current!.textContent = sl;
 
       // Lens: follows the pointer over the open photograph, fades when the pointer is over copy or leaves.
@@ -381,16 +390,34 @@ export function Survey() {
                 : `<b>${near.id}</b><span>Free. No import path to session.ts within 3 hops.</span>`;
           const tw = tipEl.offsetWidth || 290;
           const th = tipEl.offsetHeight || 90;
-          const lx = clamp(
-            ptr.x > vw / 2 ? ptr.x - 36 - tw : ptr.x + 36,
-            24,
-            vw - tw - 24,
-          );
-          const ly = clamp(
-            ptr.y > vh / 2 ? ptr.y - 36 - th : ptr.y + 36,
-            24,
-            vh - th - 24,
-          );
+          // The card takes the first corner around the pointer that keeps the route chips readable.
+          const xs = [ptr.x - 36 - tw, ptr.x + 36];
+          const ys = [ptr.y - 36 - th, ptr.y + 36];
+          if (ptr.x < vw / 2) xs.reverse();
+          if (ptr.y < vh / 2) ys.reverse();
+          const spots = [
+            [xs[0]!, ys[0]!],
+            [xs[0]!, ys[1]!],
+            [xs[1]!, ys[0]!],
+            [xs[1]!, ys[1]!],
+          ].map(([x, y]) => [
+            clamp(x!, 24, vw - tw - 24),
+            clamp(y!, 80, vh - th - 24),
+          ]);
+          const busy = chips
+            .map((c) => c.getBoundingClientRect())
+            .filter((r) => r.width > 0);
+          const [lx, ly] =
+            spots.find(
+              ([x, y]) =>
+                !busy.some(
+                  (r) =>
+                    x! < r.right + 8 &&
+                    r.left - 8 < x! + tw &&
+                    y! < r.bottom + 8 &&
+                    r.top - 8 < y! + th,
+                ),
+            ) ?? spots[0]!;
           tipEl.style.transform = `translate3d(${lx}px,${ly}px,0)`;
           tipEl.style.opacity = "1";
         } else {
@@ -407,7 +434,7 @@ export function Survey() {
         return r.top <= line && r.bottom > line;
       });
       let ls: number;
-      if (reduce) ls = 9;
+      if (reduce) ls = stepEl ? [0.2, 4, 9, 14][Number(stepEl.dataset.step)]! : 9;
       else if (stepEl) {
         const [w0, w1] = STEP_WINDOWS[Number(stepEl.dataset.step)]!;
         ls = w1 > w0 ? w0 + (time % (w1 - w0)) : w0;
@@ -415,7 +442,7 @@ export function Survey() {
       const { a: pa, b: pb, aOn, phase } = story(ls);
 
       // How chapter: leader lines from the map key to the live objects they name.
-      const leadOn = st.dataset.show === "all" && k < 0.05;
+      const leadOn = chs[i]!.id === "how" && k < 0.05;
       leads.current!.style.opacity = leadOn ? "1" : "0";
       if (leadOn) {
         const tgt: Record<string, [number, number]> = {
@@ -467,37 +494,40 @@ export function Survey() {
           );
         },
       );
-      bTag.style.opacity =
-        !underCopy && bx > 120 && bx < vw - 40 && by > 60 && by < vh - 60
-          ? String(1 - lensA)
-          : "0";
-      // The tag takes the first corner around the boat that clears the route chips.
-      const tw = bTag.textContent!.length * 8;
-      const taken = [...chips, gateChip].map((c) => c.getBoundingClientRect());
-      const spot =
-        TAG_SPOTS.find(([dx, dy, an]) => {
-          const x0 = bx + dx - (an === "end" ? tw : 0);
-          const y0 = by + dy - 11;
-          return !taken.some(
-            (r) =>
-              x0 < r.right + 4 &&
-              r.left - 4 < x0 + tw &&
-              y0 < r.bottom + 4 &&
-              r.top - 4 < y0 + 14,
-          );
-        }) ?? TAG_SPOTS[0]!;
-      bTag.setAttribute("x", String(spot[0]));
-      bTag.setAttribute("y", String(spot[1]));
-      bTag.setAttribute("text-anchor", spot[2]);
       st.dataset.phase = phase;
       gate.style.opacity = phase === "held" ? "1" : "0";
-      const tag =
-        phase === "held"
-          ? "Agent B, refused"
-          : phase === "free"
-            ? "Agent B, free"
-            : "Agent B";
-      if (bTag.textContent !== tag) bTag.textContent = tag;
+      const tag = phase === "free" ? "Agent B, free" : "Agent B";
+      if (bTagT.textContent !== tag) bTagT.textContent = tag;
+      // The tag takes the first spot around the boat that clears the route chips, the frame and the nav.
+      const tw = tag.length * 7.8 + 20;
+      const taken = [...chips, gateChip]
+        .map((c) => c.getBoundingClientRect())
+        .filter((r) => r.width > 0);
+      const spot = TAG_SPOTS.find(([dx, dy, an]) => {
+        const x0 = bx + dx - (an === "end" ? tw : 0);
+        const y0 = by + dy - 13;
+        return (
+          x0 >= 16 &&
+          x0 + tw <= vw - 16 &&
+          y0 >= 80 &&
+          y0 + 26 <= vh - 16 &&
+          !taken.some(
+            (r) =>
+              x0 < r.right + 6 &&
+              r.left - 6 < x0 + tw &&
+              y0 < r.bottom + 6 &&
+              r.top - 6 < y0 + 26,
+          )
+        );
+      });
+      bTag.style.opacity = !underCopy && spot ? String(1 - lensA) : "0";
+      if (spot) {
+        bTag.setAttribute(
+          "transform",
+          `translate(${spot[0] - (spot[2] === "end" ? tw : 0)} ${spot[1] - 13})`,
+        );
+        bTagR.setAttribute("width", tw.toFixed(0));
+      }
     };
     raf = requestAnimationFrame(frame);
     return () => {
@@ -627,7 +657,16 @@ export function Survey() {
               <g key={n.id} transform={`translate(${n.x} ${n.y})`}>
                 <g className="sv-ui">
                   <circle className="sv-dl" r={n.hub ? 5 : 3.8} />
-                  {!ROUTE.includes(n.id) && (
+                </g>
+              </g>
+            ))}
+          </g>
+          <g className="sv-labs">
+            {nodes
+              .filter((n) => !ROUTE.includes(n.id))
+              .map((n) => (
+                <g key={n.id} transform={`translate(${n.x} ${n.y})`}>
+                  <g className="sv-ui">
                     <text
                       className="sv-lab"
                       data-id={n.id}
@@ -635,10 +674,9 @@ export function Survey() {
                     >
                       {n.label}
                     </text>
-                  )}
+                  </g>
                 </g>
-              </g>
-            ))}
+              ))}
           </g>
 
           <g className="sv-gate" transform={`translate(${hold[0]} ${hold[1]})`}>
@@ -660,19 +698,22 @@ export function Survey() {
           </g>
           <g className="sv-boat sv-boat-a">
             <g className="sv-ui">
-              <circle className="sv-claim" r="38" />
+              <circle className="sv-claim" r="17" />
               <path className="sv-ais" d={HULL} />
             </g>
           </g>
           <g className="sv-boat sv-boat-b">
             <g className="sv-ui">
-              <path className="sv-wake" d="M-18,0 L-96,-16 L-90,0 L-96,16Z" />
+              <path className="sv-wake" d="M-9,0 L-46,-6 L-43,0 L-46,6Z" />
               <path className="sv-ais sv-ais-b" d={HULL} />
             </g>
             <g className="sv-ui">
-              <text className="sv-b-tag" x="-14" y="30" textAnchor="end">
-                Agent B
-              </text>
+              <g className="sv-b-tag">
+                <rect height="26" rx="13" width="76" />
+                <text x="10" y="17.5">
+                  Agent B
+                </text>
+              </g>
             </g>
           </g>
 

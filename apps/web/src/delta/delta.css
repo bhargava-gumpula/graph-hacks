@@ -46,6 +46,8 @@ html { background: #0a0f0e; }
 
 .dl-page { position: relative; color: var(--dl-ink); overflow-x: clip; }
 .dl-skip { position: absolute; left: -9999px; }
+.dl-page :focus-visible { outline: 2.5px solid var(--color-signal); outline-offset: 3px; box-shadow: 0 0 0 7px var(--dl-panel-solid); }
+.dl-btn:focus-visible, .dl-links a:focus-visible, .dl-brand:focus-visible { border-radius: 999px; }
 .dl-skip:focus { left: 16px; top: 16px; z-index: 40; background: var(--dl-panel-solid); padding: 8px 16px; border-radius: 999px; }
 
 /* Stage: the photograph and its chart, fixed behind every chapter. */
@@ -75,7 +77,7 @@ html { background: #0a0f0e; }
 .sv-probe { fill: none; stroke: var(--color-signal); stroke-width: 4px; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
 .sv-dl { fill: var(--dl-label); stroke: var(--dl-label-halo); stroke-width: 2px; }
 .sv-lab { transition: opacity 160ms ease; }
-.sv-lab, .sv-chip text, .sv-b-tag, .sv-gate-chip text {
+.sv-lab, .sv-chip text, .sv-gate-chip text {
   font: 500 12.5px/1 var(--font-mono); fill: var(--dl-label);
   paint-order: stroke; stroke: var(--dl-label-halo); stroke-width: 6px; stroke-linejoin: round;
 }
@@ -91,16 +93,19 @@ html { background: #0a0f0e; }
 .sv-gate-chip text { fill: #160904; }
 .sv-chip-claim { fill: var(--color-signal) !important; }
 .sv-chip:has(.sv-chip-claim) text { fill: #160904; }
-.sv-b-tag { font-size: 13px; font-weight: 600; stroke-width: 5px; }
+.sv-labs { opacity: var(--lens); }
+.sv-b-tag { transition: opacity 200ms ease; }
+.sv-b-tag rect { fill: var(--dl-chip); stroke: var(--dl-under); stroke-width: 1px; }
+.sv-b-tag text { font: 600 13px/1 var(--font-mono); fill: var(--dl-label); }
 
 .sv-boat { transition: opacity 300ms ease; }
 .sv-ais, .sv-wake { transform: rotate(var(--h)); }
 .sv-ais { fill: var(--dl-label); stroke: var(--dl-label-halo); stroke-width: 2px; fill-rule: evenodd; }
 .sv-boat-a .sv-ais { fill: var(--color-signal); }
-.sv-ais-b { fill: #fbfcfb; stroke: #0b1110; stroke-width: 2.5px; filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.45)); }
-.sv-claim { fill: rgb(255 106 61 / 0.12); stroke: var(--color-signal); stroke-width: 2.5px; stroke-dasharray: 3 4; animation: sv-spin 9s linear infinite; }
+.sv-ais-b { fill: #fbfcfb; stroke: #0b1110; stroke-width: 2px; }
+.sv-claim { fill: rgb(255 106 61 / 0.14); stroke: var(--color-signal); stroke-width: 1.5px; stroke-dasharray: 2 3; animation: sv-spin 9s linear infinite; }
 @keyframes sv-spin { to { transform: rotate(360deg); } }
-.sv-wake { fill: var(--dl-label); opacity: 0.3; }
+.sv-wake { fill: var(--dl-label); opacity: 0.22; }
 .sv-stage[data-phase="held"] .sv-wake { opacity: 0; }
 .sv-gate { transition: opacity 280ms cubic-bezier(0.23, 1, 0.32, 1); }
 .sv-gate line { stroke: var(--color-signal); stroke-width: 7px; stroke-linecap: round; }
@@ -128,10 +133,16 @@ html { background: #0a0f0e; }
     repeating-linear-gradient(180deg, var(--tk) 0 1px, transparent 1px 60px) right / 8px 100% no-repeat;
 }
 .sv-plate, .sv-scale { position: absolute; bottom: 20px; font: 500 12px/1.3 var(--font-mono); letter-spacing: 0.03em; padding: 6px 10px; border-radius: 8px; background: var(--dl-panel-solid); color: var(--dl-ink-2); }
-.sv-plate { right: 20px; bottom: 58px; max-width: min(420px, 60vw); text-align: right; }
+.sv-plate { right: 20px; bottom: 58px; max-width: min(520px, 60vw); text-align: right; }
 .sv-plate:empty { display: none; }
 .sv-scale { right: 20px; display: inline-flex; align-items: center; gap: 10px; }
-.sv-scale-bar { display: block; height: 7px; border: 2px solid currentColor; border-top: 0; }
+/* The survey walked so far: one tick per plate, the orange run fills as the camera moves on. */
+.sv-scale-bar {
+  position: relative; display: block; width: 168px; height: 9px; --walked: 0; --plates: 7;
+  border-bottom: 1.5px solid currentColor;
+  background: repeating-linear-gradient(90deg, currentColor 0 1.5px, transparent 1.5px calc(100% / var(--plates))) left bottom / calc(100% + 1.5px) 7px no-repeat;
+}
+.sv-scale-bar::after { content: ""; position: absolute; left: 0; bottom: -2px; height: 3.5px; width: calc(var(--walked) * 100%); max-width: 100%; border-radius: 2px; background: var(--color-signal); transition: width 200ms linear; }
 @media (max-width: 760px) { .sv-plate { display: none; } .sv-scale { display: none; } }
 
 .sv-leads { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: visible; opacity: 0; transition: opacity 400ms ease; }
@@ -153,11 +164,18 @@ html { background: #0a0f0e; }
 
 /* Chapters */
 main { position: relative; z-index: 10; }
-.ch { position: relative; min-height: 100dvh; display: grid; padding: 96px clamp(16px, 4vw, 56px) 64px; }
+.ch { position: relative; min-height: 90dvh; display: grid; padding: 96px clamp(16px, 4vw, 56px) 64px; }
 /* Desktop: copy sits on a scrim at the frame edge, not on a card. Phone keeps a solid card. */
-.ch-problem::before, .ch-how::before, .ch-story::before, .ch-proof::before, .ch-install::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, var(--dl-scrim) 0%, var(--dl-scrim) 26%, transparent 52%); }
-.ch-problem::before { background: linear-gradient(270deg, var(--dl-scrim) 0%, var(--dl-scrim) 24%, transparent 50%); }
-.ch-proof::before, .ch-install::before { background: linear-gradient(90deg, var(--dl-scrim) 0%, var(--dl-scrim) 58%, transparent 86%); }
+/* One scrim rule for every plate: solid under the copy column wherever the camera stops, then a long fade into the photo. */
+.ch-problem::before, .ch-how::before, .ch-story::before, .ch-proof::before, .ch-install::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; --cw: 560px; --dir: 90deg;
+  background: linear-gradient(var(--dir), var(--dl-scrim) 0, var(--dl-scrim) calc(var(--cw) + 48px), transparent calc(var(--cw) + 240px));
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 110px, #000 calc(100% - 110px), transparent); mask-image: linear-gradient(180deg, transparent, #000 110px, #000 calc(100% - 110px), transparent);
+}
+.ch-problem::before { --cw: 520px; --dir: 270deg; }
+.ch-story::before { --cw: 480px; }
+.ch-proof::before { --cw: 960px; }
+.ch-install::before { --cw: 1140px; }
 .dl-panel { position: relative; border-left: 3px solid var(--color-signal); padding: 4px 0 4px clamp(18px, 2vw, 28px); }
 @media (max-width: 760px) {
   .ch-problem::before, .ch-how::before, .ch-story::before, .ch-proof::before, .ch-install::before { display: none; }
@@ -184,12 +202,19 @@ main { position: relative; z-index: 10; }
 
 /* 1. Hero: title block over the open photograph, the route lit to its right. */
 .ch-hero { align-content: start; padding-top: clamp(104px, 15vh, 150px); }
-.ch-hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(160deg, var(--dl-scrim) 0%, var(--dl-scrim) 22%, transparent 48%); pointer-events: none; }
+.ch-hero::before {
+  content: ""; position: absolute; inset: 0 auto auto 0; width: min(100%, 1080px); height: min(100%, 720px); pointer-events: none;
+  background: linear-gradient(90deg, var(--dl-scrim) 0, var(--dl-scrim) 620px, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent); mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+.dl-hint { margin-top: 4px; }
+.dl-hint .hint-touch { display: none; }
+@media (hover: none) { .dl-hint .hint-fine { display: none; } .dl-hint .hint-touch { display: inline; } }
 .hero-copy { position: relative; max-width: 560px; display: grid; gap: 20px; }
 .hero-copy .dl-body { color: var(--dl-ink); opacity: 0.86; font-size: 18px; max-width: 44ch; }
 @media (max-width: 760px) {
   .ch-hero { align-content: start; padding-top: 84px; }
-  .ch-hero::before { background: linear-gradient(180deg, var(--dl-scrim) 0%, var(--dl-scrim) 36%, transparent 58%); }
+  .ch-hero::before { width: 100%; height: 100%; -webkit-mask-image: none; mask-image: none; background: linear-gradient(180deg, var(--dl-scrim) 0%, var(--dl-scrim) 58%, transparent 70%); }
   .hero-copy { gap: 16px; }
   .hero-copy .dl-body { font-size: 16.5px; }
 }
@@ -224,8 +249,8 @@ main { position: relative; z-index: 10; }
 
 /* 4. Story: captions scroll past the held agent while the photo stays. */
 .ch-story { display: block; padding-top: 0; padding-bottom: 0; }
-.story-step { min-height: 92dvh; display: grid; align-content: center; justify-items: start; }
-.story-step:first-child { min-height: 100dvh; }
+.story-step { min-height: 78dvh; display: grid; align-content: center; justify-items: start; }
+.story-step:first-child { min-height: 90dvh; }
 .story-card { max-width: 410px; display: grid; gap: 12px; }
 .story-n { font: 600 13px/1 var(--font-mono); color: var(--dl-signal-text); }
 .story-card p { font-size: 17px; line-height: 1.55; }
@@ -236,26 +261,29 @@ main { position: relative; z-index: 10; }
 
 /* 5. Proof: a scoreboard set into the quiet shade of the meadow. */
 .ch-proof { align-content: center; justify-items: start; }
-.proof-sheet { max-width: 920px; width: 100%; display: grid; gap: 28px; }
-.proof-row { display: grid; grid-template-columns: 1.15fr 1.15fr 0.9fr; grid-template-rows: auto auto auto; column-gap: 28px; }
-.proof-row > div { display: grid; grid-row: span 3; grid-template-rows: subgrid; align-content: start; }
-.proof-row .dl-num { align-self: last baseline; }
-.dl-num { font-family: var(--dl-display); font-stretch: 125%; font-weight: 700; font-size: clamp(60px, 8vw, 118px); line-height: 0.9; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
-.dl-num span { font-size: 0.38em; letter-spacing: -0.01em; color: var(--dl-ink-2); }
-.dl-num-signal { color: var(--dl-signal-text); }
-.dl-num { white-space: nowrap; }
-.dl-num-ms { font-size: clamp(48px, 5.4vw, 84px); }
-.dl-num-l { margin-top: 10px; color: var(--dl-ink-2); font-size: 15px; line-height: 1.45; max-width: 30ch; }
-.dl-runs { display: flex; gap: 6px; margin-top: 14px; }
-.dl-runs { flex-wrap: wrap; }
-.dl-runs li { width: 20px; height: 20px; border-radius: 6px; }
-.run-fail { background: var(--dl-ink); opacity: 0.85; }
-.run-refused { background: var(--color-signal); }
-.dl-caveat { color: var(--dl-ink-2); font-size: 14.5px; line-height: 1.6; max-width: 92ch; }
-.dl-caveat code { font: 500 0.92em var(--font-mono); color: var(--dl-ink); }
-@media (max-width: 860px) { .proof-row { grid-template-columns: 1fr; grid-template-rows: none; row-gap: 26px; } .proof-row > div { grid-row: auto; grid-template-rows: none; } }
-.proof-src { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.proof-sheet { max-width: 920px; width: 100%; display: grid; gap: 24px; }
+.proof-sheet > .dl-cap { margin-bottom: -12px; }
+.proof-duel { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 56px; margin-top: 6px; }
+.duel { display: grid; align-content: start; gap: 8px; }
+.duel-h { font: 600 12px/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--dl-ink-2); }
+.dl-num { font-family: var(--dl-display); font-stretch: 125%; font-weight: 700; font-size: clamp(76px, 10.5vw, 156px); line-height: 0.86; letter-spacing: -0.045em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dl-num span { font-size: 0.36em; letter-spacing: -0.01em; color: var(--dl-ink-2); }
+.dl-num-signal { color: var(--dl-signal-text); text-shadow: 0 0 60px rgb(255 106 61 / 0.35); }
+.dl-num-ms { font-size: clamp(44px, 4.6vw, 68px); }
+.dl-num-l { margin-top: 6px; color: var(--dl-ink-2); font-size: 15px; line-height: 1.45; max-width: 32ch; }
+.dl-runs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.dl-runs li { width: 14px; height: 14px; border-radius: 50%; }
+.run-fail { background: var(--dl-ink); }
+.run-refused { background: var(--color-signal); box-shadow: 0 0 12px rgb(255 106 61 / 0.5); }
+.proof-foot { display: grid; grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr); gap: 24px 56px; align-items: start; margin-top: 8px; }
+.dl-bars { display: flex; align-items: flex-end; gap: 4px; height: 30px; max-width: 190px; margin-top: 12px; }
+.dl-bars li { flex: 1; min-height: 3px; border-radius: 2px; background: var(--dl-ink-2); opacity: 0.8; }
+.dl-caveat { color: var(--dl-ink-2); font-size: 15px; line-height: 1.6; max-width: 62ch; }
+.caveat-h { color: var(--dl-ink); font-weight: 650; font-size: 15.5px; margin-bottom: 6px; }
+.proof-src { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 .proof-src .dl-cmd { margin: 0; }
+@media (max-width: 860px) { .proof-foot { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .proof-duel { grid-template-columns: 1fr; } .dl-num { font-size: 84px; } .dl-num-ms { font-size: 48px; } }
 
 /* 6. Install: two columns of commands on the still meadow above the road. */
 .ch-install { align-content: center; justify-items: start; }
@@ -276,14 +304,14 @@ main { position: relative; z-index: 10; }
 
 /* 7. End: the full survey again. */
 .ch-end { align-content: start; justify-items: start; padding-top: clamp(96px, 16vh, 168px); }
-.ch-end::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, var(--dl-scrim) 0%, transparent 46%); pointer-events: none; }
+.ch-end::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 0, var(--dl-scrim) 110px, var(--dl-scrim) 30%, transparent 56%); pointer-events: none; }
 .end-copy { position: relative; display: grid; gap: 26px; justify-items: start; }
 .end-copy .dl-h2 { font-size: clamp(36px, 5.2vw, 76px); }
 
-.dl-foot { position: relative; z-index: 10; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; padding: 22px clamp(16px, 4vw, 56px) 28px; font-size: 13px; color: var(--dl-ink-2); background: var(--dl-panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.dl-foot { position: relative; z-index: 25; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; padding: 22px clamp(16px, 4vw, 56px) 28px; font-size: 13px; color: var(--dl-ink-2); background: var(--dl-panel-solid); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
 
 @media (prefers-reduced-motion: reduce) {
   .sv-r-on, .sv-claim, .sv-gate-ring { animation: none; }
   .sv-gate-ring { opacity: 0.6; }
 }
-.proof-src a { color: var(--dl-ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgb(127 127 127 / 0.5); }
+

@@ -2,9 +2,11 @@
 
 Switchboard stops AI coding agents from breaking each other's code. It checks every edit against the repository's real import graph in FalkorDB. If the edit would collide with another agent's change, the edit is refused and the reply is the import path. A file lock only sees the filename.
 
+**[Try the live demo](https://switchboard-agents.xyz/app?play=1)** (no install, nothing to sign in to) · **[Install](#install)** (two commands in Claude Code) · **[Design decisions and why](docs/DESIGN.md)**
+
 ![Agent B is refused ui/LoginForm.tsx because it imports auth/session.ts, which agent A holds](docs/blog-assets/conflict.gif)
 
-**[Live demo](https://switchboard-agents.xyz/app?play=1)** · [API health](https://switchboard-agents.xyz/api/health) · 2-min video (TBD) · Blog (TBD) · Tracks: **Agent Memory & Coordination** (main), **Agents That Act on Connected Data**
+[API health](https://switchboard-agents.xyz/api/health) · 2-min video (TBD) · Blog (TBD) · Tracks: **Agent Memory & Coordination** (main), **Agents That Act on Connected Data**
 
 [![uptime](https://github.com/bhargava-gumpula/graph-hacks/actions/workflows/uptime.yml/badge.svg)](https://github.com/bhargava-gumpula/graph-hacks/actions/workflows/uptime.yml)
 
@@ -27,17 +29,18 @@ After that the agents never have to be told to use it. Hooks claim every edit, r
 /plugin install switchboard@switchboard
 ```
 
-**Cursor.** The button adds the MCP server. The hooks that claim each edit come from `init`, run in your repo (a global install keeps the hook path stable):
-
-[![Add switchboard MCP server to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=switchboard&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInN3aXRjaGJvYXJkLWFnZW50cyIsIm1jcCJdLCJlbnYiOnsiU0JfRURJVE9SIjoiY3Vyc29yIiwiU0JfUFJPSkVDVF9ESVIiOiIke3dvcmtzcGFjZUZvbGRlcn0ifX0=)
+**Cursor, or Claude Code without the plugin.** From a clone of this repo, point `init` at your repo:
 
 ```bash
-npm i -g switchboard-agents && switchboard init --cursor
+git clone https://github.com/bhargava-gumpula/graph-hacks.git && cd graph-hacks && npm ci
+npm run switchboard -- init ~/code/my-app
 ```
 
-**npm (any MCP client).** After `npm i -g switchboard-agents`, `switchboard init` in a repo wires both Cursor and Claude Code. For another client, run `switchboard-mcp` (or `npx -y switchboard-agents mcp`) as a stdio MCP server from the repo.
+`init` writes the hooks and the MCP server for both editors into that repo (more under Quick start). In Cursor, enable `switchboard` in Settings → Tools & MCP.
 
-**From source.** The quick start below runs the demo and the live dashboard. [docs/INSTALL.md](docs/INSTALL.md) has every option, the settings and the limits.
+**npm.** The package `switchboard-agents` (the CLI, the hooks and the MCP server) is built in `packages/npm` but is not on the npm registry yet. Until it is published, `npm i -g switchboard-agents` and `npx switchboard-agents` fail. To use the package now, pack it from a clone: `npm run build:plugin && (cd packages/npm && npm pack && npm i -g ./switchboard-agents-0.1.0.tgz)`, then run `switchboard init` in your repo.
+
+[docs/INSTALL.md](docs/INSTALL.md) has every option, the settings and the limits.
 
 <!-- install:end -->
 
@@ -45,7 +48,7 @@ npm i -g switchboard-agents && switchboard init --cursor
 
 ## Quick start
 
-You need Node 22 or newer and Docker (Docker Desktop or OrbStack). The editor hooks also need `jq`.
+You need Node 22 or newer and Docker (Docker Desktop or OrbStack).
 
 ```bash
 git clone https://github.com/bhargava-gumpula/graph-hacks.git && cd graph-hacks
@@ -60,7 +63,7 @@ That is all. It reuses a FalkorDB that already answers on port 6379, or starts o
 npm run switchboard -- init ~/code/my-app
 ```
 
-`init` merges the Switchboard hooks into the repo's git-ignored `.claude/settings.local.json` (so this machine's paths are never committed) and `.cursor/hooks.json`, and adds the MCP server to `.mcp.json` and `.cursor/mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. With the npm package, `npx switchboard-agents init` writes `npx` commands instead, which can be committed and shared. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.
+`init` merges the Switchboard hooks into the repo's git-ignored `.claude/settings.local.json` (so this machine's paths are never committed) and `.cursor/hooks.json`, and adds the MCP server to `.mcp.json` and `.cursor/mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. `--npx` writes `npx -y switchboard-agents` commands instead, which can be committed and shared once the npm package is published. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.
 
 <!-- quickstart:end -->
 
@@ -129,7 +132,7 @@ Only `npm run quickstart` reads `.env`, and a variable already set in your shell
 | `SERVER_PORT` | server port, default `8787` |
 | `SB_PREFIX` | directory stripped from editor paths before a check. Default `demo-repo` |
 | `SB_URL` | where the editor hooks reach the server. Default `http://localhost:8787` |
-| `SB_AGENT` | agent id. Default is the git branch of the checkout |
+| `SB_AGENT` | agent id. Default `<editor>@<git branch>`, for example `claude@main` |
 | `SWITCHBOARD_OFF` | `1` lets every edit through |
 | `ANTHROPIC_API_KEY` | optional. If set, `brief_me` adds a short Haiku summary on top of the graph text. If unset, the graph text is the whole answer |
 
@@ -137,7 +140,7 @@ Only `npm run quickstart` reads `.env`, and a variable already set in your shell
 
 ## Plug in your agent (3 min)
 
-You need Node 22+, Docker, `jq` (the hook script uses it; without `jq` the hooks do nothing) and Claude Code or Cursor.
+You need Node 22+, Docker, and Claude Code or Cursor. The hooks need nothing else (no `jq`).
 
 ```bash
 npm install && npm run db:up && npm run parse -- demo-repo
@@ -155,7 +158,7 @@ npm run switchboard -- claim auth/session.ts --agent A --task T1 --intent "sessi
 
 Now ask the agent to edit `demo-repo/ui/LoginForm.tsx`. It is refused, and the reason is the path. Ask it to edit `ui/AboutPage.tsx`. That one is allowed. Then ask it to call `brief_me` and `why`.
 
-- **Two real agents.** Run `SB_AGENT=alice claude` and `SB_AGENT=bob claude`, or give each agent its own git worktree. The agent id is the git branch, so two sessions on the same branch share one id and never conflict with each other.
+- **Two real agents.** Run `SB_AGENT=alice claude` and `SB_AGENT=bob claude`, or give each agent its own git worktree. The agent id is `<editor>@<branch>`: Claude Code and Cursor on one branch are two agents (`claude@main`, `cursor@main`), but two Claude Code sessions on the same branch share one id and never conflict with each other.
 - **Cursor.** Enable `switchboard` in Settings → Tools & MCP. `.cursor/hooks.json` loads automatically. Cursor drops the output of its session-start hook, so ask the agent to call `brief_me` first.
 - **Off switch.** `SWITCHBOARD_OFF=1`. The hook log is `$TMPDIR/switchboard-hook.log`.
 
@@ -186,6 +189,7 @@ One FalkorDB graph per project (`SB_GRAPH`). Nothing is shared across graphs. Th
 ```mermaid
 graph LR
   Agent -->|CLAIMS| File
+  Agent -->|WAITS_FOR| File
   File -->|IMPORTS| File
   Agent -->|EDITED| File
   Agent -->|WORKS_ON| Task
@@ -208,6 +212,7 @@ Node labels: `File`, `Agent`, `Task`, `Decision`, `Lesson`, `Event`, and `Meta` 
 |---|---|---|
 | `IMPORTS` | File → File | Parsed from the code. |
 | `CLAIMS` | Agent → File | The agent is editing that file until `until`. |
+| `WAITS_FOR` | Agent → File | A refused agent waits for the file that blocked it. The holder is told; the waiter is told when it is free. |
 | `EDITED` | Agent → File | The agent wrote the file. |
 | `WORKS_ON` | Agent → Task | The agent is on this task. |
 | `TOUCHES` | Task → File | A task's planned files. |
@@ -528,15 +533,17 @@ npm run bench
 
 Agent A holds `auth/session.ts` and changes what `sessionLabel` returns. Agent B edits `ui/LoginForm.tsx` and uses that value. Each edit passes the TypeScript compiler on its own. Merged, they do not. Every trial copies `demo-repo`, applies the edits, and runs the real `tsc`.
 
-- **Without Switchboard** a plain file lock lets B in, because B asks for a different file. Both edits land and the build breaks.
-- **With Switchboard** B's claim is refused while A holds `session.ts`. A's edit lands and A releases. B then claims, applies its edit on top of A's, and its own `tsc` run catches the clash, so B's edit does not land.
+- **Without Switchboard** models two agents with a plain file lock and no check before merge. The lock lets B in, because B asks for a different file. Both agents finish, both edits land, and the merged build breaks. A CI run of `tsc` on the merge would catch this too, but only after both agents are done, and then B's change has to be reworked on top of A's.
+- **With Switchboard** B's claim is refused while A holds `session.ts`, before B writes a line, and the refusal names the import path to A's file. A's edit lands and A releases. B then claims, applies its edit on top of A's, and its own `tsc` run catches the clash, so B's edit does not land.
+
+So the 0 / 10 is not something only Switchboard could do: any check before merge also keeps the broken build out. What Switchboard changes is when the clash is found. B learns about it before it starts, with the path, instead of from a red build after both agents have finished.
 
 <!-- bench:start -->
 
-| | Broken builds | What happened |
-|---|---|---|
-| Without Switchboard | 10 / 10 | B's edit landed in 10 / 10 runs. |
-| With Switchboard | 0 / 10 | B's claim was refused 10 / 10 times. B's own `tsc` caught the clash 10 / 10 times. B's edit landed in 0 / 10 runs. |
+| | Broken builds | When the clash shows up | What happened |
+|---|---|---|---|
+| Without Switchboard (a file lock, no check before merge) | 10 / 10 | After both edits land, in a build of the merge | B's edit landed in 10 / 10 runs. |
+| With Switchboard | 0 / 10 | Before B writes: its claim is refused with the import path | B's claim was refused 10 / 10 times. After A released, B's own `tsc` on top of A's edit caught the clash 10 / 10 times. B's edit landed in 0 / 10 runs. |
 
 - Agent A holds `auth/session.ts`. Agent B edits `ui/LoginForm.tsx`. The refusal: UPSTREAM, 2 hops, ui/LoginForm.tsx → api/login.ts → auth/session.ts.
 - The untouched repo, A's edit alone and B's edit alone all pass `tsc`. Merged, `tsc` fails: `ui/LoginForm.tsx(9,67): error TS2339: Property 'toUpperCase' does not exist on type '{ user: string; at: string; }'.`
@@ -548,7 +555,7 @@ Pair census, one query over the parsed import graph (`npm run pairs`). A pair is
 | Repo | Files | Pairs | Caught by a file lock | 1 hop | Within 3 hops | 2 to 3 hops (missed by a one-hop check) |
 |---|---|---|---|---|---|---|
 | `demo-repo/` | 35 | 595 | 0 | 48 | 72 | 24 |
-| `apps/web/` | 104 | 5356 | 0 | 173 | 279 | 106 |
+| `apps/web/` | 32 | 496 | 0 | 43 | 79 | 36 |
 
 <!-- bench:end -->
 
@@ -558,7 +565,7 @@ What this does not show:
 - It is one scenario on a 35-file synthetic repo. It shows the check catches that collision. It does not show how often real agents collide.
 - The run is deterministic. N = 10 shows that it repeats, not a statistic.
 - The build counts are the same every run by construction. The timing is the one noisy number: it comes from one local FalkorDB, and it moves with machine load.
-- It does not model what a missed collision costs, or the rework B does after its `tsc` fails.
+- It does not model what a missed collision costs, or how long rework takes. It does not compare against a CI check, which would also keep the broken build out of `main`, only later.
 
 The full description is in [`bench/REPORT.md`](bench/REPORT.md).
 
@@ -577,11 +584,11 @@ Four things we hit, each with a fix in the code.
 - File-level. Two agents editing different functions in the same file still conflict. Two files that share only a database table or a config value do not.
 - 3 import hops by default. A collision four or more imports apart is not caught. `SB_HOPS` sets 1 to 5: fewer hops means fewer refusals and more missed collisions.
 - `import type` edges do not count in the conflict check or the rounds, because a type-only import is erased at runtime and usually names a stable interface. A changed type can still break a type-only importer's build; `SB_TYPE_IMPORTS=1` counts them. The blast radius always counts them.
-- Paths do not pass through hubs. Editing a hub such as `lib/utils.ts` conflicts with its importers, but two files that merely share a hub do not conflict.
+- Paths do not pass through hubs, so a chain through a hub that imports other code (`A` imports a barrel file that imports `B`) is not checked. Editing a hub such as `lib/utils.ts` still conflicts with its importers.
 - The hub rule is PageRank plus an in-degree floor, tuned on the 35-file demo repo. On this repo's `apps/web` (104 files, at commit `fc51788`) it flags 3 files and drops 13 of the 292 file pairs within 3 value-import hops (4.5%), or 99 of 400 (24.8%) when type-only imports count. We tried `algo.betweenness` with the same shape of rule: it flags 2 files and drops the same pairs there, but on the demo repo it also flags `api/notes.ts` and `api/users.ts` and drops 10 of 72 pairs, so we kept PageRank. A widely imported file that imports nothing, like `lib/utils.ts`, never sits inside a path, so only hubs that import other code change results. Precision and recall against real collisions are not measured.
 - Rounds come from greedy colouring, which is not always the fewest rounds. On `apps/web`, 20 tasks of 2 random files each (3 seeds) put 17 to 20 tasks in one batch under the old one-component-per-batch rule; colouring needs 4 or 5 rounds. With 6 files per task, 146 to 170 of the 190 task pairs interfere, and it still needs 10 to 14 rounds instead of 20 in turn. The interference is recomputed on every read, with one path query over every pair of open tasks' files.
 - Memory search matches words of 3 or more letters, with English stemming. It finds words, not meaning.
-- The import graph is live per edit: each edit an agent makes re-parses that one file. Saves people make are picked up by `switchboard watch` (or `SB_WATCH=1` with `SB_REPO` on the server). A change made any other way waits for the next parse. To share one graph across machines, see [docs/CLOUD.md](docs/CLOUD.md).
+- The import graph is live per edit: after each edit an agent makes, that file's imports are updated in the graph. Saves people make are picked up by `switchboard watch` (or `SB_WATCH=1` with `SB_REPO` on the server). A change made any other way waits for the next parse. To share one graph across machines, see [docs/CLOUD.md](docs/CLOUD.md).
 - A claim is advice unless the editor runs the hook. Claude Code and Cursor both hard-block a denied edit. An agent with no hook only follows the contract of calling `claim`.
 
 ## Competitors
@@ -590,9 +597,9 @@ We read the READMEs and docs of the tools we found on Oct 14 (the list is in [`d
 
 ## AI disclosure
 
-AI coding agents wrote most of this repository: Cursor (Claude Opus 5.5 and Grok 4.7) and Claude Code. Commits carry a `Co-Authored-By` line that names the tool. Task briefs, reviews and merges are recorded in [`docs/DEVLOG.md`](docs/DEVLOG.md).
+**What AI wrote.** AI coding agents wrote almost all of the code, the Cypher, the tests and the docs, this README included: Cursor (Claude Opus 5.5 and Grok 4.7) and Claude Code (Claude Opus 5.5). A main Opus 5.5 chat wrote the task briefs, reviewed the branches and merged them. Commits carry a `Co-Authored-By` line that names the tool: 267 of the 286 commits on `main` on the evening of Oct 17 have one. The README's Cypher section is generated from the query files by `npm run readme`. The ideas were screened, and the build was reviewed, by panels of AI advisors; those notes and the per-task briefs are on the git branch `archive/process`, not in this tree.
 
-The owner's decisions are in the table in [`docs/PLAN.md` §0.6](docs/PLAN.md#06-decisions-already-made-owner-oct-1314): the idea, the two tracks, the name, the coding workflow, the models, the video, the AI briefing summary and the benchmark. The owner also required that FalkorDB be the only store and that a claim be checked against a parsed dependency graph, and ran the day-0 tests of the Cursor and Claude Code hooks.
+**What the owner decided.** The owner picked the idea, the two tracks and the name. Checking a claim against the dependency graph parsed from the code is the core of that idea (PLAN §0.3). He chose the coding setup and the models, the optional AI briefing summary, the with/without benchmark, the owner's-voice video, the domain, and the full UI rebuild on Oct 17. He ran the day-0 editor tests that needed a person (the Cursor chat steps), approved making the repo public, and bought the domain. These are recorded in [`docs/PLAN.md` §0.6](docs/PLAN.md#06-decisions-already-made-owner-oct-1314) and [`docs/DEVLOG.md`](docs/DEVLOG.md). FalkorDB as the only store is a project rule in the plan's instructions for the coding agents (PLAN §17.6), not a separate owner decision. [`docs/DESIGN.md`](docs/DESIGN.md) lists the design decisions, the reason for each, and which came from the owner and which from a review.
 
 The first code commit (`aae6dc4`, Oct 14, 11:09 PM PT) came after the Oct 14 11:31 AM PT start. Every commit before it is Markdown notes, plus one Cursor rules file.
 

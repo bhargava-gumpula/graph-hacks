@@ -194,13 +194,13 @@ function benchBlock(): string {
   const b = r.edit?.agent ?? "B";
 
   const landed = r.without.editsApplied !== undefined ? ` ${b}'s edit landed in ${r.without.editsApplied} / ${r.n} runs.` : "";
-  const caught = r.with.caught !== undefined ? ` ${b}'s own \`tsc\` caught the clash ${r.with.caught} / ${r.n} times.` : "";
+  const caught = r.with.caught !== undefined ? ` After A released, ${b}'s own \`tsc\` on top of A's edit caught the clash ${r.with.caught} / ${r.n} times.` : "";
   const withLanded = r.with.editsApplied !== undefined ? ` ${b}'s edit landed in ${r.with.editsApplied} / ${r.n} runs.` : "";
   lines.push(
-    "| | Broken builds | What happened |",
-    "|---|---|---|",
-    `| Without Switchboard | ${r.without.brokenBuilds} / ${r.n} |${landed || " not asked"} |`,
-    `| With Switchboard | ${r.with.brokenBuilds} / ${r.n} | ${b}'s claim was refused ${r.with.blocked} / ${r.n} times.${caught}${withLanded} |`,
+    "| | Broken builds | When the clash shows up | What happened |",
+    "|---|---|---|---|",
+    `| Without Switchboard (a file lock, no check before merge) | ${r.without.brokenBuilds} / ${r.n} | After both edits land, in a build of the merge |${landed || " not asked"} |`,
+    `| With Switchboard | ${r.with.brokenBuilds} / ${r.n} | Before ${b} writes: its claim is refused with the import path | ${b}'s claim was refused ${r.with.blocked} / ${r.n} times.${caught}${withLanded} |`,
     "",
   );
   if (r.claim && r.edit) {
@@ -245,7 +245,7 @@ function quickstartBlock(): string {
   return [
     "## Quick start",
     "",
-    "You need Node 22 or newer and Docker (Docker Desktop or OrbStack). The editor hooks also need `jq`.",
+    "You need Node 22 or newer and Docker (Docker Desktop or OrbStack).",
     "",
     "```bash",
     "git clone https://github.com/bhargava-gumpula/graph-hacks.git && cd graph-hacks",
@@ -260,23 +260,13 @@ function quickstartBlock(): string {
     "npm run switchboard -- init ~/code/my-app",
     "```",
     "",
-    "`init` merges the Switchboard hooks into the repo's git-ignored `.claude/settings.local.json` (so this machine's paths are never committed) and `.cursor/hooks.json`, and adds the MCP server to `.mcp.json` and `.cursor/mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. With the npm package, `npx switchboard-agents init` writes `npx` commands instead, which can be committed and shared. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.",
+    "`init` merges the Switchboard hooks into the repo's git-ignored `.claude/settings.local.json` (so this machine's paths are never committed) and `.cursor/hooks.json`, and adds the MCP server to `.mcp.json` and `.cursor/mcp.json`. Other settings stay, and the first change keeps the original as `.bak`. `--npx` writes `npx -y switchboard-agents` commands instead, which can be committed and shared once the npm package is published. It parses the repo into its own graph (`sb_my_app`) with its own server port (8870 here, fixed by the name), and the hooks post only to that port. So the quickstart demo can keep running on 8787 and never sees this repo's claims. Then start that repo's server with `SERVER_PORT=8870 SB_GRAPH=sb_my_app npm run server` and open http://localhost:8870/app; `init` prints both lines. Until that server runs, the hooks fall back to the CLI on the same graph. Running it twice changes nothing. `--dry-run` prints the diff.",
   ].join("\n");
 }
 
 // ---- install -----------------------------------------------------------------------------------
 
-/** Cursor's MCP install link: the server config as base64 JSON (https://cursor.com/docs/context/mcp/install-links). */
-export const CURSOR_MCP_CONFIG = {
-  command: "npx",
-  args: ["-y", "switchboard-agents", "mcp"],
-  env: { SB_EDITOR: "cursor", SB_PROJECT_DIR: "${workspaceFolder}" },
-};
-export const CURSOR_INSTALL_URL = `https://cursor.com/install-mcp?name=switchboard&config=${Buffer.from(
-  JSON.stringify(CURSOR_MCP_CONFIG),
-).toString("base64")}`;
-
-/** How to install Switchboard without cloning this repo. Details and doc links: docs/INSTALL.md. */
+/** How to install Switchboard. Details and doc links: docs/INSTALL.md. */
 function installBlock(): string {
   return [
     "## Install",
@@ -296,17 +286,18 @@ function installBlock(): string {
     "/plugin install switchboard@switchboard",
     "```",
     "",
-    "**Cursor.** The button adds the MCP server. The hooks that claim each edit come from `init`, run in your repo (a global install keeps the hook path stable):",
-    "",
-    `[![Add switchboard MCP server to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](${CURSOR_INSTALL_URL})`,
+    "**Cursor, or Claude Code without the plugin.** From a clone of this repo, point `init` at your repo:",
     "",
     "```bash",
-    "npm i -g switchboard-agents && switchboard init --cursor",
+    "git clone https://github.com/bhargava-gumpula/graph-hacks.git && cd graph-hacks && npm ci",
+    "npm run switchboard -- init ~/code/my-app",
     "```",
     "",
-    "**npm (any MCP client).** After `npm i -g switchboard-agents`, `switchboard init` in a repo wires both Cursor and Claude Code. For another client, run `switchboard-mcp` (or `npx -y switchboard-agents mcp`) as a stdio MCP server from the repo.",
+    "`init` writes the hooks and the MCP server for both editors into that repo (more under Quick start). In Cursor, enable `switchboard` in Settings → Tools & MCP.",
     "",
-    "**From source.** The quick start below runs the demo and the live dashboard. [docs/INSTALL.md](docs/INSTALL.md) has every option, the settings and the limits.",
+    "**npm.** The package `switchboard-agents` (the CLI, the hooks and the MCP server) is built in `packages/npm` but is not on the npm registry yet. Until it is published, `npm i -g switchboard-agents` and `npx switchboard-agents` fail. To use the package now, pack it from a clone: `npm run build:plugin && (cd packages/npm && npm pack && npm i -g ./switchboard-agents-0.1.0.tgz)`, then run `switchboard init` in your repo.",
+    "",
+    "[docs/INSTALL.md](docs/INSTALL.md) has every option, the settings and the limits.",
   ].join("\n");
 }
 

@@ -4,6 +4,8 @@ import { REPO_URL } from "./Nav";
 /** Fill these in when they exist; each link renders only when its URL is set. */
 const VIDEO_URL = "";
 const WRITEUP_URL = "";
+const CODE =
+  "mt-2 overflow-x-auto rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)] p-4 font-mono text-xs leading-relaxed";
 
 export function Closing() {
   const ghost =
@@ -11,7 +13,7 @@ export function Closing() {
   return (
     <>
       <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-24 md:px-8 md:py-32 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-14">
-        <div>
+        <div className="min-w-0">
           <h2 className="max-w-3xl text-balance text-4xl font-semibold leading-[1.05] tracking-tighter md:text-6xl lg:text-5xl">
             Watch two agents collide, then watch the graph stop them.
           </h2>
@@ -36,6 +38,19 @@ export function Closing() {
                 Read the write-up
               </a>
             )}
+          </div>
+          <div id="install" className="mt-10 max-w-xl scroll-mt-24">
+            <p className="text-sm text-[var(--muted)]">Install it. Start a FalkorDB (Switchboard also needs Node 22):</p>
+            <pre className={CODE}>{"docker run -d -p 6379:6379 falkordb/falkordb"}</pre>
+            <p className="mt-4 text-sm text-[var(--muted)]">Then, in Claude Code:</p>
+            <pre className={CODE}>{"/plugin marketplace add bhargava-gumpula/graph-hacks\n/plugin install switchboard@switchboard"}</pre>
+            <p className="mt-3 text-sm text-[var(--muted)]">
+              Cursor and other setups:{" "}
+              <a href={`${REPO_URL}#install`} className="underline underline-offset-4 hover:text-[var(--fg)]">
+                Install, in the README
+              </a>
+              .
+            </p>
           </div>
         </div>
         <figure className="min-w-0">

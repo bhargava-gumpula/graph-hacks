@@ -11,7 +11,7 @@ The owner's voice. Captions are burned in. About 2.5 words a second, so each lin
 | 0:58 | `/app`, switch on Rounds. | "The open tasks fall into rounds. Tasks in a round can run at the same time. The graph finds the rounds from the imports, and nobody typed them." | Rounds: tasks in a round run in parallel. |
 | 1:12 | End agent A's session. Start a new Claude Code session. The SessionStart briefing arrives before the first prompt. Fallback: the Brief tab in `/app`. | "Agent A is gone. I start a fresh session. Before I type anything, it is handed a briefing from the graph: nearby claims, decisions, lessons and recent edits." | Memory outlives the session. |
 | 1:32 | `/app`, Inspect, why on `lib/crypto.ts`. | "Why does crypto.ts hash with argon2? The graph has the edit, the agent, the task, and the decision behind it." | why: edit, agent, task, decision. |
-| 1:42 | The benchmark on the landing page. | "Ten runs. Each edit passes the compiler alone. Merged, the build breaks every time without the check, and never with it. The agents are scripted, not live." | 10 / 10 broken without. 0 / 10 with. |
+| 1:42 | The benchmark on the landing page. | "Ten runs. Each edit passes the compiler alone. Merged with no check, the build breaks every time. With Switchboard, B is stopped before it writes. Scripted agents." | 10 / 10 broken without. 0 / 10 with. |
 | 1:54 | End card. | "Switchboard. FalkorDB is the only store." | Live demo, repo, blog: see the card. |
 
 The end card shows: the project name, the live demo URL, the repository URL, "FalkorDB is the only store", and the two tracks (Agent Memory & Coordination, Agents That Act on Connected Data). The live demo URL is a placeholder until the domain is final.

@@ -415,7 +415,7 @@ function describe(e: FeedItem): string {
       return `${who} claimed ${(p.paths as string[] | undefined)?.join(", ") ?? on ?? "a file"}`;
     case "conflict": {
       const c = conflictOf(e);
-      return c ? `${who} refused: ${c.file} reaches ${c.claimed} (${agentName(c.agent)}) in ${hops(c.hops)}` : `${who} refused`;
+      return c ? `${who} was refused: ${c.file} reaches ${c.claimed} (${agentName(c.agent)}) in ${hops(c.hops)}` : `${who} was refused`;
     }
     case "collision":
       return `${who} edited a file inside another agent's claim`;

@@ -44,7 +44,7 @@ https://switchboard-agents.xyz/app?play=1 (local setup is in the README too).
 - **One graph per visitor.** The public demo gives each visitor a private copy with `GRAPH.COPY`, and FalkorDB Cloud hosts a shared graph so agents on different machines coordinate through one live graph.
 
 ## Blog link (optional)
-The published post (dev.to or Hashnode). Draft: `docs/blog.md`. Best blog wins AirPods 5.
+Leave empty (skipped).
 
 ## What did you like about FalkorDB? (required)
 (Owner's words.) Ideas: variable-length paths made the core check one readable query; `algo.pageRank` and the full-text index (`db.idx.fulltext.queryNodes`) run in the database, so there was no export to another tool; it starts in one Docker container and many isolated graphs live in one instance (tests each get their own).

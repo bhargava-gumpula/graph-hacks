@@ -189,6 +189,7 @@ One FalkorDB graph per project (`SB_GRAPH`). Nothing is shared across graphs. Th
 ```mermaid
 graph LR
   Agent -->|CLAIMS| File
+  Agent -->|WAITS_FOR| File
   File -->|IMPORTS| File
   Agent -->|EDITED| File
   Agent -->|WORKS_ON| Task
@@ -211,6 +212,7 @@ Node labels: `File`, `Agent`, `Task`, `Decision`, `Lesson`, `Event`, and `Meta` 
 |---|---|---|
 | `IMPORTS` | File → File | Parsed from the code. |
 | `CLAIMS` | Agent → File | The agent is editing that file until `until`. |
+| `WAITS_FOR` | Agent → File | A refused agent waits for the file that blocked it. The holder is told; the waiter is told when it is free. |
 | `EDITED` | Agent → File | The agent wrote the file. |
 | `WORKS_ON` | Agent → Task | The agent is on this task. |
 | `TOUCHES` | Task → File | A task's planned files. |

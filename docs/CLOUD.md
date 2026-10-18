@@ -104,8 +104,8 @@ the refusal and every import change as they happen.
 - Each machine re-parses its own working tree. If the two laptops are on different branches, each save
   rewrites that file's imports to match the saving machine. Work on one branch, or give each branch its own
   `SB_GRAPH`.
-- Every query now crosses the network. Expect tens of milliseconds per check instead of one; the hook's
-  budget is one second, so edits are not slowed down in practice.
+- Every query now crosses the network. Expect tens of milliseconds per check instead of one; the hook
+  allows a few seconds before it fails open, so edits are not slowed down in practice.
 - A file created after the file that imports it is linked on the importer's next save, or by running
   `parse` again.
 - To go back to the local graph, remove `FALKORDB_URL` (or set it to `redis://localhost:6379`).

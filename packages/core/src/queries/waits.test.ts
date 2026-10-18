@@ -72,7 +72,8 @@ describe("waits", () => {
     expect(held.waiting).toEqual([{ waiter: CURSOR, held: SESSION, wanted: LOGIN, via: [LOGIN, "api/login.ts", SESSION] }]);
     expect(formatNotices(held, CLAUDE)).toBe(
       `cursor@main is waiting on ${SESSION}: it wants ${LOGIN}, 2 imports from your claim. ` +
-        `Release it when you're done: switchboard release ${SESSION} --agent claude@main`,
+        `When you're done with it, release it: call the switchboard MCP tool \`release\` with paths ["${SESSION}"] ` +
+        `(no MCP: \`switchboard release ${SESSION} --agent claude@main\`). Ending your session releases it too.`,
     );
     expect((await waitNotices(g(), CLAUDE)).waiting).toEqual([]);
     expect(await waitNotices(g(), CURSOR)).toEqual({ waiting: [], freed: [] });

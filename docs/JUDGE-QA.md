@@ -20,7 +20,7 @@ A file is a hub when 10 or more files import it, or when at least 3 files import
 
 ## 5. What does the benchmark show, and what does it not?
 
-Ten times it copies the demo repo and applies two edits that each pass `tsc` alone (agent A in `session.ts`, agent B in `LoginForm.tsx`): without Switchboard both land and the real compiler fails 10 of 10 times, and with it B's claim is refused, B waits for A, and B's own `tsc` stops its edit, so 0 of 10 builds break (`bench/results.json`). It does not show how often real agents collide, because the agents are scripted, it is one scenario, and it is deterministic, so N = 10 shows only that it repeats.
+Ten times it copies the demo repo and applies two edits that each pass `tsc` alone (agent A in `session.ts`, agent B in `LoginForm.tsx`): with a file lock and no check before merge both land and the real compiler fails 10 of 10 times, and with Switchboard B's claim is refused before it writes a line, B waits for A, and B's own `tsc` on top of A's edit stops its edit, so 0 of 10 builds break (`bench/results.json`). A CI check on the merge would also keep the build green, only after both agents had finished, so what it shows is when B finds out, not that nothing else could catch it; and it does not show how often real agents collide, because the agents are scripted, it is one scenario, and it is deterministic.
 
 ## 6. Did you use Switchboard to build Switchboard?
 
@@ -28,7 +28,7 @@ No, not beyond parsing our own repo once (60 files and 81 imports on Oct 15). Th
 
 ## 7. Who wrote what?
 
-AI coding agents wrote almost all of the code: Cursor with Claude Opus 5.5 and Grok 4.7, and Claude Code with Claude Opus 5.5. The owner made the product decisions in `docs/PLAN.md` §0.6 (the idea, the two tracks, the AI briefing summary, the benchmark), ran the editor tests that needed a person, and directed the UI rebuild, while the main Opus 5.5 chat wrote the task briefs and reviewed and merged the branches.
+AI coding agents wrote almost all of the code: Cursor with Claude Opus 5.5 and Grok 4.7, and Claude Code with Claude Opus 5.5. The owner made the product decisions in `docs/PLAN.md` §0.6 (the idea, the two tracks, FalkorDB as the only store, checking claims against the parsed import graph, the AI briefing summary, the benchmark), ran the editor tests that needed a person, and directed the UI rebuild, while the main Opus 5.5 chat wrote the task briefs and reviewed and merged the branches; `docs/DESIGN.md` gives the reason for each design choice.
 
 ## 8. What breaks without FalkorDB?
 
@@ -44,11 +44,11 @@ Episodic memory is `Event` nodes (`BY`, `ON`, `UNDER`) numbered by a gap-free `s
 
 ## 11. What are the limits?
 
-It reads TypeScript only (static imports, re-exports and `import("literal")`), works at file level, looks at most 3 import hops by default, and ignores a path that runs through a hub. Each agent edit re-parses that one file, and `switchboard watch` catches saves people make, so the graph stays live without a full parse. A claim blocks an edit only where the editor runs the hook.
+It reads TypeScript only (static imports, re-exports and `import("literal")`), works at file level, looks at most 3 import hops by default, and ignores a path that runs through a hub. After each agent edit that file's imports are updated in the graph, and `switchboard watch` catches saves people make, so the graph stays live without a full parse. A claim blocks an edit only where the editor runs the hook.
 
 ## 12. How is it deployed?
 
-The server and FalkorDB run on the owner's Mac behind a named Cloudflare Tunnel at https://switchboard-agents.xyz. One server process serves both the built web app and the API, in public mode (`SB_PUBLIC=1`: agents A to D only, paths must already be in the code graph, short leases). If the API can't be reached, the dashboard switches to a recorded FalkorDB run and labels it Replay. The steps are in `deploy/RUNBOOK.md`, and a GitHub Actions job pings the site and the API every 15 minutes.
+The server and FalkorDB run on the owner's Mac behind a named Cloudflare Tunnel at https://switchboard-agents.xyz. One server process serves both the built web app and the API, in public mode (`SB_PUBLIC=1`: agents A to D only, paths must already be in the code graph, short leases), and each visitor plays on their own copy of the demo graph. If the API can't be reached, the dashboard switches to a recorded FalkorDB run and labels it Replay. The steps are in `deploy/RUNBOOK.md`, and a GitHub Actions job pings the site and the API every 15 minutes.
 
 ## Numbers you can quote
 
@@ -57,5 +57,5 @@ The server and FalkorDB run on the owner's Mac behind a named Cloudflare Tunnel 
 | Demo repo | 35 files, 51 import edges | `npm run parse -- demo-repo` |
 | Importers of `lib/utils.ts` | 20 | the `MARK_HUBS` result |
 | Conflict query, inside FalkorDB | about 0.2 ms (median 0.17 ms over 25 runs) | `GRAPH.PROFILE`, see the README |
-| MCP tools | 13 | `packages/mcp/src/index.ts` |
+| MCP tools | 15 | `packages/mcp/src/index.ts` |
 | First code commit | Oct 14, 11:09 PM PT, after the 11:31 AM PT start | `git log --reverse` |

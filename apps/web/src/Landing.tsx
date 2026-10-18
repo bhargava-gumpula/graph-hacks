@@ -240,7 +240,7 @@ export function Landing() {
           className="ch-story"
           cam="1440 850 1.7 0.66 0.5"
           camSm="1330 980 1.2 0.5 0.2"
-          plate="Plate 4. Agent B held at the gate on login.ts"
+          plate="Plate 4. Agent B held at the gate short of session.ts"
         >
           {[
             <>
@@ -261,7 +261,7 @@ export function Landing() {
               </p>
               <div className="dl-refusal" role="note">
                 <p>
-                  Refused, {bench.conflict.type.toLowerCase()},{" "}
+                  Refused: {bench.conflict.type.toLowerCase()} import,{" "}
                   {bench.conflict.hops} hops
                 </p>
                 <p>{bench.conflict.path.join(" → ")}</p>
@@ -388,7 +388,7 @@ export function Landing() {
           plate="Plate 6. The road in"
         >
           <div data-obstacle className="install-sheet dl-panel">
-            <h2 className="dl-h2">Install in two commands.</h2>
+            <h2 className="dl-h2">Start FalkorDB, then pick your agent.</h2>
             <p className="dl-body">
               Needs Node 22 or newer and a FalkorDB it can reach:
             </p>

@@ -10,7 +10,7 @@
 // The password stays in the git-ignored .env: every config names that file (SB_ENV_FILE) and SB_CLOUD=1, and
 // core reads FALKORDB_CLOUD_* from it at run time. Run with tsx (the npm scripts do).
 import { spawn, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { applyInit, planInit } from "../packages/cli/src/init.ts";
@@ -117,15 +117,37 @@ function running() {
   }
 }
 
+/**
+ * The dashboard is apps/web/dist. Build it when missing; refuse a dist older than apps/web/src (after a merge it
+ * would show the old UI). No silent rebuild: the public server on 8788 serves graph-hacks/apps/web/dist too.
+ */
+function checkDist() {
+  const index = join(ROOT, "apps/web/dist/index.html");
+  if (!existsSync(index)) {
+    const r = spawnSync("npm", ["run", "build", "-w", "@switchboard/web"], { cwd: ROOT, stdio: "inherit" });
+    if (r.status !== 0) throw new Error("npm run build -w @switchboard/web failed.");
+    return;
+  }
+  const built = statSync(index).mtimeMs;
+  const src = join(ROOT, "apps/web/src");
+  const newer = readdirSync(src, { recursive: true }).find((f) => statSync(join(src, f)).mtimeMs > built);
+  if (newer) {
+    throw new Error(
+      `The built dashboard (apps/web/dist) is older than apps/web/src/${newer}: it would show the old UI.\n` +
+        `Rebuild it, then run demo:start again:\n  npm run build -w @switchboard/web\n` +
+        `Note: the public server on 127.0.0.1:8788 (switchboard-agents.xyz) serves graph-hacks/apps/web/dist. If this ` +
+        `checkout (${ROOT}) is graph-hacks, rebuilding also updates the public site; that is your call.`,
+    );
+  }
+}
+
 async function start(open) {
   useCloud();
   if (!existsSync(join(REPO, ".git"))) throw new Error(`No demo repo at ${REPO}. Run npm run demo:setup first.`);
   const h = await health();
   if (h && h.graph !== GRAPH) throw new Error(`Port ${PORT} is taken by something else. Stop it first.`);
+  checkDist();
   if (!h) {
-    if (!existsSync(join(ROOT, "apps/web/dist/index.html"))) {
-      spawnSync("npm", ["run", "build", "-w", "@switchboard/web"], { cwd: ROOT, stdio: "inherit" });
-    }
     const env = { ...process.env, SERVER_PORT: String(PORT), SB_REPO: REPO, SB_WATCH: "1", SB_URL: `http://localhost:${PORT}` };
     delete env.SB_PUBLIC;
     const log = openSync(LOG_FILE, "a");

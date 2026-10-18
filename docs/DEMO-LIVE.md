@@ -21,6 +21,17 @@ parses it into graph `sb_demo_live` on FalkorDB Cloud. Running it again starts o
 folder it made). The hook commands hold this checkout's absolute path: if you merge this branch and delete the
 worktree, run `npm run demo:setup` again from the checkout you will demo from.
 
+**After merging, rebuild the dashboard** in the checkout you will demo from, next to re-running setup:
+
+```bash
+npm run build -w @switchboard/web   # the live-graph dashboard UI; demo:start refuses a dist older than apps/web/src
+npm run demo:setup
+```
+
+The public server on 127.0.0.1:8788 (switchboard-agents.xyz) serves the same `graph-hacks/apps/web/dist`, so
+rebuilding in graph-hacks also updates the public site at once. That is an integration/owner decision: make it
+before you rebuild there.
+
 Optional: `npm run demo:setup -- --allow-mcp` also adds `"permissions": {"allow": ["mcp__switchboard"]}` to the
 demo repo's git-ignored `.claude/settings.local.json`, so Claude Code calls the Switchboard MCP tools (`claim`,
 `release`, `brief_me`) without asking. Default is off: then Claude Code asks once per tool, and you approve on camera.

@@ -143,10 +143,10 @@ export function CypherDisclosure({ query, params, label = "Cypher" }: { query?: 
             transition={{ duration: 0.3, ease: EXPO }}
             className="overflow-hidden"
           >
-            <pre className="mt-2 max-h-56 overflow-auto rounded-md border border-[var(--border)] bg-[var(--bg)]/90 p-3 font-mono text-[10.5px] leading-[1.6] text-[var(--muted)]">
+            <pre className="mt-2 max-h-56 overflow-auto rounded-md border border-[var(--border)] bg-[var(--bg)]/90 p-3 font-mono text-[11px] leading-[1.6] text-[var(--muted)]">
               {query.trim()}
             </pre>
-            {params && <p className="mt-1.5 font-mono text-[10.5px] leading-relaxed text-[var(--muted)]">{params}</p>}
+            {params && <p className="mt-1.5 font-mono text-[11px] leading-relaxed text-[var(--muted)]">{params}</p>}
           </motion.div>
         )}
       </AnimatePresence>
@@ -189,8 +189,8 @@ function Section({ title, kind, children }: { title: string; kind: string; child
   return (
     <section>
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">{title}</h3>
-        <span className="font-mono text-[10.5px] text-[var(--muted)]">{kind}</span>
+        <h3 className="font-display text-sm font-semibold">{title}</h3>
+        <span className="font-mono text-[11px] text-[var(--muted)]">{kind}</span>
       </div>
       <div className="mt-2.5">{children}</div>
     </section>
@@ -299,7 +299,7 @@ export function AgentsPanel({
                   <p className="flex items-center gap-1.5 text-sm font-medium">
                     <span className="truncate">{agentName(id)}</span>
                     {scripted && (
-                      <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 font-mono text-[10px] font-normal leading-4 text-[var(--muted)]">scripted</span>
+                      <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 font-mono text-[11px] font-normal leading-4 text-[var(--muted)]">scripted</span>
                     )}
                   </p>
                   {tool && <p className="truncate text-xs text-[var(--muted)]">{tool}</p>}
@@ -415,7 +415,7 @@ function describe(e: FeedItem): string {
       return `${who} claimed ${(p.paths as string[] | undefined)?.join(", ") ?? on ?? "a file"}`;
     case "conflict": {
       const c = conflictOf(e);
-      return c ? `${who} refused: ${c.file} reaches ${c.claimed} (${agentName(c.agent)}) in ${hops(c.hops)}` : `${who} refused`;
+      return c ? `${who} was refused: ${c.file} reaches ${c.claimed} (${agentName(c.agent)}) in ${hops(c.hops)}` : `${who} was refused`;
     }
     case "collision":
       return `${who} edited a file inside another agent's claim`;
@@ -482,7 +482,7 @@ function FeedRow({ e, cypher, onPath }: { e: FeedItem; cypher: Record<string, st
     <>
       <span className={`mt-0.5 shrink-0 ${bad ? "text-[var(--color-signal)]" : "text-[var(--muted)]"}`}>{ICON[e.kind] ?? <Graph size={15} />}</span>
       <span className="min-w-0 flex-1">{describe(e)}</span>
-      <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--muted)]">#{e.seq}</span>
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-[var(--muted)]">#{e.seq}</span>
     </>
   );
   return (
@@ -621,7 +621,7 @@ function WhyTrace({ row }: { row: Record<string, unknown> }) {
           >
             <span className="relative z-10 size-2.5 shrink-0 rounded-full border border-[var(--fg)]/50 bg-[var(--bg)]" />
             <div className="min-w-0">
-              <span className="block font-mono text-[10px] text-[var(--muted)]">
+              <span className="block font-mono text-[11px] text-[var(--muted)]">
                 {s.label}
                 {i > 0 && <span className="opacity-70"> · {shown[i - 1].edge}</span>}
               </span>
@@ -788,7 +788,7 @@ export function Memory({ decisions, events, tasks }: { decisions: Decision[]; ev
                   aria-hidden
                 />
                 <span className={e.kind === "conflict" ? "text-[var(--fg)]" : "text-[var(--fg)]/80"}>{describe(e)}</span>
-                <span className="ml-2 font-mono text-[10px] text-[var(--muted)]">{ago(e.at)} ago</span>
+                <span className="ml-2 font-mono text-[11px] text-[var(--muted)]">{ago(e.at)} ago</span>
               </li>
             ))}
           </ol>
@@ -868,7 +868,7 @@ export function Brief({ tasks, claims }: { tasks: string[]; claims: Claim[] }) {
               transition={{ delay: i * 0.05, duration: 0.3, ease: EXPO }}
               className="grid grid-cols-[84px_minmax(0,1fr)] gap-3 rounded-md border border-[var(--border)] px-3 py-2"
             >
-              <span className="font-mono text-[10.5px] leading-5 text-[var(--muted)]">{l.k}</span>
+              <span className="font-mono text-[11px] leading-5 text-[var(--muted)]">{l.k}</span>
               <span className="text-[13px] leading-5">{l.v}</span>
             </motion.li>
           ))}

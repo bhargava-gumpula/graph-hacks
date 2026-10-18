@@ -1,0 +1,31 @@
+@import "@fontsource-variable/archivo/wdth.css";
+
+/* Loaded only on /app. Matches the landing's delta palette and display face; html:root outranks theme.css's :root. */
+html:root {
+  --font-display: "Archivo Variable", "Geist Variable", system-ui, sans-serif;
+  --color-ink: #0a0f0e;
+  --color-panel: #0c1312;
+  --color-line: #232b28;
+  --color-paper: #eef2ee;
+  --color-fog: #93a09a;
+  --tour-dim: color-mix(in oklab, var(--bg) 70%, transparent);
+}
+@media (prefers-color-scheme: light) {
+  html:root[data-theme="auto"] {
+    --bg: #e9eeea;
+    --fg: #121a17;
+    --muted: #3f4b46;
+    --surface: #f4f6f4;
+    --border: #cdd5d0;
+    /* A light wash hides the header; dim with ink so the spotlight still reads. */
+    --tour-dim: color-mix(in oklab, var(--fg) 42%, transparent);
+  }
+}
+
+.font-display { font-family: var(--font-display); font-stretch: 112%; }
+
+/* The landing's aerial photo, faint, so /app reads as the same survey. */
+.dash-photo { opacity: 0.1; filter: saturate(0.88) contrast(0.9) brightness(0.74); }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .dash-photo { opacity: 0.18; filter: saturate(0.88) contrast(0.9) brightness(1.04); }
+}

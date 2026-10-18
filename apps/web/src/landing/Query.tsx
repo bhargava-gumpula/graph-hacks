@@ -28,7 +28,7 @@ const BOTH_HUB = "coalesce(f.hub, false) OR coalesce(g.hub, false)";
 /**
  * The real conflictQuery(3) from packages/core/src/queries/conflict.ts, hubs skipped
  * only as interior nodes, re-wrapped at existing spaces to fit the column. Only
- * whitespace may differ from the core query (checked in docs/tasks/night-n6.md).
+ * whitespace may differ from the core query.
  */
 const PARTS: Part[] = [
   WANT,

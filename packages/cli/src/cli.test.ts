@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, test } from "vitest";
 import { connect } from "@switchboard/core";
@@ -208,10 +210,10 @@ test("hook: denies a conflicting edit with the path, fails open, and can be swit
   expect(JSON.parse((await hook(["claude", "end"], { cwd: root }, { SB_AGENT: "B" })).stdout)).toEqual({});
   expect((await run(["status"])).stdout).toContain("B - active claims=-");
 
-  // A notebook is read from notebook_path; a file the parser never saw is allowed with a warning.
+  // A notebook is read from notebook_path; a file the parser never saw is claimed (same file only), with a note.
   const notebook = { tool_name: "NotebookEdit", tool_input: { notebook_path: join(root, "demo-repo/ui/New.ipynb") }, cwd: root };
   expect(JSON.parse((await hook(["claude", "pre"], notebook, { SB_AGENT: "B" })).stdout)).toEqual({
-    systemMessage: "Switchboard: ui/New.ipynb is not in the parsed graph, no dependency check",
+    systemMessage: "Switchboard: ui/New.ipynb is not in the parsed graph: claimed, but only an edit of the same file conflicts (no import check)",
   });
 
   const start = await hook(["claude", "start"], { cwd: root }, { SB_AGENT: "B" });
@@ -226,3 +228,21 @@ test("hook: denies a conflicting edit with the path, fails open, and can be swit
 
   await run(["release", "--agent", "A"]);
 }, 60_000);
+
+test("hook: a read-only shell command is skipped before git or the graph", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sb-ro-"));
+  const log = join(dir, "hook.log");
+  // FalkorDB is unreachable here: a connection attempt would log "error, allowed".
+  const env = { SB_AGENT: "B", FALKORDB_URL: "redis://127.0.0.1:9", SB_HOOK_LOG: log };
+  const bash = (command: string) => ({ tool_name: "Bash", tool_input: { command }, cwd: root });
+  try {
+    expect(JSON.parse((await hook(["claude", "pre"], bash("ls -la"), env)).stdout)).toEqual({});
+    expect(JSON.parse((await hook(["claude", "post"], bash("git diff | head"), env)).stdout)).toEqual({});
+    expect(JSON.parse((await hook(["cursor", "pre"], { command: "grep -rn x src", cwd: root }, env)).stdout)).toEqual({ permission: "allow" });
+    expect(existsSync(log)).toBe(false);
+    await hook(["claude", "pre"], bash("npm test"), env);
+    expect(readFileSync(log, "utf8")).toContain("error, allowed: Cannot connect");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 30_000);

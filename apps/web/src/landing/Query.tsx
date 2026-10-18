@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 const NOTES = {
   up: "UPSTREAM: follow imports out of my file, up to three hops, to a file another agent claims. A lock table can't do this. A graph does it in one step.",
   hub: "PageRank flags files that many others import as hubs (lib/utils.ts here). A path may not pass through a hub, so a shared helper that imports other code cannot chain all its callers into one conflict. Editing a hub itself still conflicts with everything that imports it.",
+  type: "Skip `import type` edges: a type-only import is erased at runtime, so counting it mostly adds false refusals. SB_TYPE_IMPORTS=1 counts them again.",
   active: "Ignore your own claims and claims that have expired.",
   same: "SAME: another agent already claims this exact file.",
   down: "DOWNSTREAM: a file another agent claims imports mine, within three hops. My change can break their code.",
@@ -18,6 +19,7 @@ type Part = { k: Key; code: string };
 const WANT: Part = { k: "unwind", code: "UNWIND $paths AS want" };
 const ACTIVE: Part = { k: "active", code: "WHERE o.id <> $agent AND c.until > $now" };
 const NO_HUB: Part = { k: "hub", code: "  AND none(n IN nodes(p)[1..-1] WHERE coalesce(n.hub, false))" };
+const NO_TYPE: Part = { k: "type", code: "  AND none(r IN relationships(p) WHERE coalesce(r.typeOnly, false))" };
 const UNION: Part = { k: "union", code: "UNION ALL" };
 const ret = (type: string, claimed: string, path: string, hops: string, hub: string): Part => ({
   k: "ret",
@@ -26,9 +28,9 @@ const ret = (type: string, claimed: string, path: string, hops: string, hub: str
 const BOTH_HUB = "coalesce(f.hub, false) OR coalesce(g.hub, false)";
 
 /**
- * The real conflictQuery(3) from packages/core/src/queries/conflict.ts, hubs skipped
- * only as interior nodes, re-wrapped at existing spaces to fit the column. Only
- * whitespace may differ from the core query (checked in docs/tasks/night-n6.md).
+ * The real conflictQuery(3) from packages/core/src/queries/conflict.ts (default settings:
+ * hubs skipped only as interior nodes, type-only imports skipped), re-wrapped at existing
+ * spaces to fit the column. Only whitespace may differ from the core query.
  */
 const PARTS: Part[] = [
   WANT,
@@ -40,12 +42,14 @@ const PARTS: Part[] = [
   { k: "up", code: "MATCH p = (f:File {path: want})-[:IMPORTS*1..3]->(g:File),\n      (g)<-[c:CLAIMS]-(o:Agent)" },
   ACTIVE,
   NO_HUB,
+  NO_TYPE,
   ret("UPSTREAM", "g.path", "[n IN nodes(p) | n.path]", "length(p)", BOTH_HUB),
   UNION,
   WANT,
   { k: "down", code: "MATCH p = (g:File)-[:IMPORTS*1..3]->(f:File {path: want}),\n      (g)<-[c:CLAIMS]-(o:Agent)" },
   ACTIVE,
   NO_HUB,
+  NO_TYPE,
   ret("DOWNSTREAM", "g.path", "[n IN nodes(p) | n.path]", "length(p)", BOTH_HUB),
 ];
 

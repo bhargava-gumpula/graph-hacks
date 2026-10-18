@@ -29,7 +29,13 @@
     "readme": "tsx scripts/readme-gen.ts",
     "self": "SB_GRAPH=sb_self tsx packages/cli/src/index.ts",
     "build:plugin": "node scripts/build-plugin.mjs",
-    "check:plugin": "node scripts/build-plugin.mjs --check"
+    "check:plugin": "node scripts/build-plugin.mjs --check",
+    "demo:setup": "tsx scripts/demo-live.mjs setup",
+    "demo:start": "tsx scripts/demo-live.mjs start",
+    "demo:reset": "tsx scripts/demo-live.mjs reset",
+    "demo:cursor": "tsx scripts/demo-live.mjs cursor",
+    "demo:log": "tsx scripts/demo-live.mjs log",
+    "demo:stop": "tsx scripts/demo-live.mjs stop"
   },
   "bin": {
     "switchboard": "packages/cli/src/index.ts"

@@ -207,3 +207,20 @@ test("the CLI resolves init's directory from where the user ran npm, not the che
   expect(self.status).toBe(1);
   expect(self.stderr).toContain("is part of this Switchboard checkout. Pass the repo to wire, e.g. npm run switchboard -- init ~/code/my-app");
 }, 30_000);
+
+test("--graph, --port and --cloud reach every hook command and MCP config, with no secret in any file", () => {
+  const repo = tempRepo("demo-app", true);
+  const env = { SB_ENV_FILE: "/secrets/.env", SB_CLOUD: "1" };
+  const plan = planInit(repo, ROOT, { graph: "sb_demo_live", port: 8790, env });
+  expect(plan).toMatchObject({ graph: "sb_demo_live", port: 8790 });
+  applyInit(plan);
+  const pre = json(repo, ".claude/settings.local.json").hooks.PreToolUse[0].hooks[0].command as string;
+  expect(pre).toContain("SB_GRAPH=sb_demo_live");
+  expect(pre).toContain("SB_URL=http://localhost:8790");
+  expect(pre).toContain("SB_ENV_FILE=/secrets/.env SB_CLOUD=1");
+  expect(json(repo, ".cursor/hooks.json").hooks.preToolUse[0].command).toContain("SB_CLOUD=1");
+  for (const rel of [".mcp.json", ".cursor/mcp.json"]) expect(json(repo, rel).mcpServers.switchboard.env).toMatchObject({ SB_GRAPH: "sb_demo_live", ...env });
+  for (const rel of [".claude/settings.local.json", ".cursor/hooks.json", ".mcp.json", ".cursor/mcp.json"]) {
+    expect(readFileSync(join(repo, rel), "utf8")).not.toMatch(/PASSWORD|redis:\/\//);
+  }
+});

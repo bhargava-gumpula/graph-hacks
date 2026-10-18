@@ -33,6 +33,11 @@ SB_GRAPH=sb_team
 ```
 
 Every machine uses the same `FALKORDB_URL` and the same `SB_GRAPH`. That pair is what makes it one graph.
+
+Or keep the four parts in `.env` (`FALKORDB_CLOUD_HOST`, `FALKORDB_CLOUD_PORT`, `FALKORDB_CLOUD_USERNAME`,
+`FALKORDB_CLOUD_PASSWORD`) and set `SB_CLOUD=1` plus `SB_ENV_FILE=/path/to/.env` wherever Switchboard runs:
+the URL is built in memory and only those four keys are read from the file. `switchboard init --cloud /path/to/.env`
+writes those two variables into a repo's hook and MCP configs, so no config file holds the password.
 Pick any name that starts with `sb_`.
 
 Do not run `npm run quickstart` with the cloud URL in `.env`: it parses demo-repo into `SB_GRAPH`,
@@ -99,8 +104,8 @@ the refusal and every import change as they happen.
 - Each machine re-parses its own working tree. If the two laptops are on different branches, each save
   rewrites that file's imports to match the saving machine. Work on one branch, or give each branch its own
   `SB_GRAPH`.
-- Every query now crosses the network. Expect tens of milliseconds per check instead of one; the hook's
-  budget is one second, so edits are not slowed down in practice.
+- Every query now crosses the network. Expect tens of milliseconds per check instead of one; the hook
+  allows a few seconds before it fails open, so edits are not slowed down in practice.
 - A file created after the file that imports it is linked on the importer's next save, or by running
   `parse` again.
 - To go back to the local graph, remove `FALKORDB_URL` (or set it to `redis://localhost:6379`).

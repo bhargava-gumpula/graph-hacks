@@ -22,6 +22,12 @@ export interface FileChange {
 export interface InitOptions {
   /** Point every config at the published npm package (`npx -y switchboard-agents ...`): no machine paths. */
   npx?: boolean;
+  /** The graph, instead of sb_<repo name>. */
+  graph?: string;
+  /** The dashboard port the hooks post to, instead of the one derived from the graph name. */
+  port?: number;
+  /** More env for the hooks and the MCP servers, e.g. SB_ENV_FILE and SB_CLOUD (a path, never a secret). */
+  env?: Record<string, string>;
 }
 
 export interface InitPlan {
@@ -167,20 +173,21 @@ export function planInit(repoDir: string, root = SWITCHBOARD_ROOT, opts: InitOpt
     throw new Error(`${repo} is part of this Switchboard checkout. Pass the repo to wire, e.g. npm run switchboard -- init ~/code/my-app`);
   }
   const npx = opts.npx === true;
-  const graph = graphName(repo);
-  const env = hookEnv(repo, graph);
+  const graph = opts.graph ?? graphName(repo);
+  const port = opts.port ?? serverPort(graph);
+  const env = { ...hookEnv(repo, graph), SB_URL: `http://localhost:${port}`, ...opts.env };
   const cmd = (editor: string) => (event: string) => hookCommand(root, env, editor, event, npx);
   const mcp = (editor: string): Json =>
     npx
       ? {
           command: "npx",
           args: ["-y", "switchboard-agents", "mcp"],
-          env: { SB_EDITOR: editor, SB_GRAPH: graph, ...(editor === "cursor" ? { SB_PROJECT_DIR: "${workspaceFolder}" } : {}) },
+          env: { SB_EDITOR: editor, SB_GRAPH: graph, ...(editor === "cursor" ? { SB_PROJECT_DIR: "${workspaceFolder}" } : {}), ...opts.env },
         }
       : {
           command: join(root, "node_modules/.bin/tsx"),
           args: [join(root, "packages/mcp/src/index.ts")],
-          env: { SB_GRAPH: graph, SB_PREFIX: "", SB_ROOT: repo, SB_EDITOR: editor },
+          env: { SB_GRAPH: graph, SB_PREFIX: "", SB_ROOT: repo, SB_EDITOR: editor, ...opts.env },
         };
   const [hooksIn, stripIn] = npx ? [".claude/settings.json", LOCAL_SETTINGS] : [LOCAL_SETTINGS, ".claude/settings.json"];
   const build: [string, (current: Json) => Json][] = [
@@ -202,7 +209,7 @@ export function planInit(repoDir: string, root = SWITCHBOARD_ROOT, opts: InitOpt
     const ignore = gitignoreChange(repo);
     if (ignore) changes.push(ignore);
   }
-  return { repo, npx, graph, port: serverPort(graph), env, changes: changes.filter((c) => c.before !== c.after) };
+  return { repo, npx, graph, port, env, changes: changes.filter((c) => c.before !== c.after) };
 }
 
 /** In a git repo, make sure .claude/settings.local.json is ignored, so a machine path is never committed. */

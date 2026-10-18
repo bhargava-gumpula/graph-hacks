@@ -117,7 +117,7 @@ export function Proof() {
             <Flow value={bench.without.brokenBuilds} />
             <span className="text-[var(--muted)]">/{n}</span>
           </p>
-          <p className="mt-3 text-[var(--muted)]">builds broke. A file lock let both edits in.</p>
+          <p className="mt-3 text-[var(--muted)]">builds broke. A file lock let both edits in and nothing checked the merge. CI would have caught it, after both agents had finished.</p>
           <Strip runs={bench.runs.without} label={`Without Switchboard, ${n} runs`} />
         </div>
         <div className={`${TILE} shadow-[inset_0_0_90px_-20px_color-mix(in_oklab,var(--color-signal)_30%,transparent)]`}>
@@ -127,7 +127,8 @@ export function Proof() {
             <span className="text-[var(--muted)]">/{n}</span>
           </p>
           <p className="mt-3 text-[var(--muted)]">
-            builds broke. All {bench.with.blocked} colliding edits were refused before they landed.
+            builds broke. Agent {bench.edit.agent} was refused {bench.with.blocked} of {n} times before it wrote a line, with the import path to {bench.claim.agent}&apos;s
+            file, and started only once {bench.claim.agent}&apos;s edit had landed.
           </p>
           <Strip runs={bench.runs.with} label={`With Switchboard, ${n} runs`} />
         </div>
@@ -172,7 +173,8 @@ export function Proof() {
       </div>
 
       <p className="mt-12 max-w-[72ch] font-mono text-xs leading-relaxed text-[var(--muted)]">
-        Scripted agents, real {bench.tsc.replace("Version ", "tsc ")}, real FalkorDB. The run is deterministic: {n} runs show repeatability, not a statistic.
+        Scripted agents, real {bench.tsc.replace("Version ", "tsc ")}, real FalkorDB. Any check before merge would also keep the build green; what changes is
+        when the second agent finds out. The run is deterministic: {n} runs show repeatability, not a statistic.
         Pairs are unordered, and paths through a hub file are skipped. Reproduce it: npm run bench, npx tsx scripts/pairs.ts
       </p>
     </section>

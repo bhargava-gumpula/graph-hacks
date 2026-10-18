@@ -9,7 +9,7 @@ const STEPS = [
   },
   {
     title: "Two imports apart.",
-    body: "LoginForm.tsx imports login.ts, which imports session.ts. Neither agent can see that chain from its own worktree.",
+    body: "LoginForm.tsx imports login.ts, which imports session.ts. B can read those imports, but nothing tells it that A is changing session.ts right now.",
   },
   {
     title: "Without a check, git merges both.",

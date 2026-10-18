@@ -33,12 +33,15 @@ export interface Project {
  * hook and packages/mcp), and Claude Code and Cursor on the same branch are two agents.
  */
 export function project(dir: string, editor?: string): Project {
-  const top = git(dir, "rev-parse", "--show-toplevel");
+  // One git start for all three answers: every hook call runs this, and each git start costs ~20 ms.
+  // A repo with no commits has no HEAD, so that call fails and the answers come one by one.
+  const [top0, common0, head] = git(dir, "rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir", "--abbrev-ref", "HEAD")?.split("\n") ?? [];
+  const top = top0 ?? git(dir, "rev-parse", "--show-toplevel");
   const root = top ?? resolve(dir);
-  const common = git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  const common = common0 ?? git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir");
   const main = common ? (basename(common) === ".git" ? dirname(common) : common.replace(/\.git$/, "")) : root;
   const ed = editorName(editor);
-  const agent = ed ? agentId(dir, ed) : undefined;
+  const agent = ed ? agentId(dir, ed, head) : undefined;
   return { git: top !== undefined, root, graph: graphName(main), agent };
 }
 

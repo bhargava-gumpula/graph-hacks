@@ -3,8 +3,8 @@
 One dated entry per merge or decision. This is the source for the README's "what the human did" and AI-disclosure sections.
 
 ## 2026-10-11 → 10-13: Pre-hackathon planning (no product code)
-- **Researched the hackathon:** rules, dates, tracks, Discord. See HACKATHON.md.
-- **Ran 7 councils** (about 150 independent AI advisors) over 6 ideas. The owner chose **Switchboard**. See COUNCIL.md.
+- **Researched the hackathon:** rules, dates, tracks, Discord. See HACKATHON.md (now on the `archive/process` branch).
+- **Ran 7 councils** (about 150 independent AI advisors) over 6 ideas. The owner chose **Switchboard**. See COUNCIL.md (now on the `archive/process` branch).
 - **Competitor sweep:** Nerveplane, wit, Foremerge, Agent Mail, Claude Code agent teams, graphmem. See research/SWITCHBOARD-COMPETITORS.md.
 - **Wrote PLAN.md** (Fable): phases, task breakdown, risks, demo, judge Q&A.
 - **Installed** OrbStack, cloudflared and the FalkorDB image; smoke-tested a variable-length path query (under 1 ms).
@@ -123,7 +123,7 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Tests:** 43/43. Typecheck and lint clean.
 
 ## 2026-10-17 01:20 PT: UI rebuild started (owner decision)
-- **Owner's decision:** keep the tested engine, rebuild all UI/UX from scratch following 9 Instagram reels (docs/UI-REELS.md). The old UI is saved at tags `archive/cursor-v1` and `archive/cursor-v1-ui-reels`. Plan in docs/UI-REBUILD.md (U1–U4, freeze Sat 10 PM).
+- **Owner's decision:** keep the tested engine, rebuild all UI/UX from scratch following 9 Instagram reels (docs/UI-REELS.md, now on the `archive/process` branch). The old UI is saved at tags `archive/cursor-v1` and `archive/cursor-v1-ui-reels`. Plan in docs/UI-REBUILD.md (U1–U4, freeze Sat 10 PM; now on the `archive/process` branch).
 - **U1:** Tailwind v4 + Motion + GSAP + Phosphor + Geist; one accent (signal orange). The new hero is the **real demo-repo graph drawn in code** (folder columns ui → api → auth → lib): agent A edits crypto.ts, agent B reaches for LoginForm.tsx, the 3-hop path lights up and the edit is refused. Reduced motion shows the final frame. The web tsconfig moved to Bundler resolution (Vite).
 
 ## 2026-10-17 02:15 PT: engine rebuilt, council critique, night packages (autonomous run)
@@ -159,3 +159,15 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **FalkorDB Cloud:** a Free instance in AWS us-west-2 was created for the owner (connection details in the git-ignored .env); a test query round trip from the laptop is about 44 ms.
 - **Fix during merge:** the server now re-checks which repo a graph holds on every edit and save, so another repo parsed into a shared graph can't lose its nodes.
 - **Gates:** 29 files, 197 tests pass; typecheck, lint and build clean.
+
+## 2026-10-17 17:00 PT: live demo kit (Claude Code and Cursor on one repo, FalkorDB Cloud)
+- **Cloud without copying the password:** `SB_CLOUD=1` composes the URL from `FALKORDB_CLOUD_HOST/PORT/USERNAME/PASSWORD` and wins over `FALKORDB_URL`; `SB_ENV_FILE=<path>` reads only those four keys from a .env (the project .env also sets FALKORDB_URL, SB_GRAPH and API keys meant for other things). `init --graph --port --cloud <env file>` writes that into hooks and MCP configs; no config holds a secret.
+- **Demo scripts:** `npm run demo:setup | demo:start | demo:reset | demo:stop` (`scripts/demo-live.mjs`), one folder `~/switchboard-demo` for both editors, graph `sb_demo_live`, dashboard on 8790. Owner guide: `docs/DEMO-LIVE.md`.
+- **Fixes found by the cloud run:** the brief query used a pattern comprehension FalkorDB Cloud rejects (session start failed and said "cannot reach FalkorDB"); now a pattern predicate, and a failed brief no longer claims Switchboard is off. The MCP `claim` tool now records waits like the edit hook, so a Claude agent that checks with `claim` first still gets the holder told and hears "free". The dashboard names a live repo and FalkorDB Cloud instead of "two scripted agents".
+- **E2E:** real `claude -p` (haiku 5.5) agents against the cloud graph with Cursor driven through its exact hook commands: refusals with the import path, wait and free notices, live IMPORTS edges. `cursor-agent` is not logged in on this Mac, so no real Cursor model ran.
+
+## 2026-10-17 22:30 PT: re-rating, demo kit first cut
+- **Wave 2 merged** (per-editor ids, waits and free notices, Bash writes, warn mode, scheduling rounds, memory search, refusal history, per-visitor demo graphs, CORS allowlist, dead code removed). Integration fix: wait and free events pass an empty VIA list. 283 tests.
+- **Re-rating by the same blind council: 67.8/100** (was 63.8): 72, 67, 58, 71, 71. Still bad: npm install paths fail until the package is published, the video and blog are missing, a full re-parse runs from hooks and worktrees can overwrite each other's graph, two sessions in one editor share an id, process notes in the tree make it look AI-made.
+- **Demo kit first cut** (`npm run demo:setup|start|reset|stop`, docs/DEMO-LIVE.md, FalkorDB Cloud through `SB_CLOUD=1` and `SB_ENV_FILE`): its review failed (no import-path refusal in real runs, live-mode UI, doc gaps). A stray copy of `.env` in a worktree was deleted; a scan by count found no other copy and none in git history.
+- **Wave 4 running:** finish the kit with a real Claude Code + Cursor run, hook fixes (per-file updates, worktree safety, cheaper hooks, same-file claims for unparsed files, per-session ids), credibility pass (process notes archived, DESIGN.md, honest benchmark framing, blog).

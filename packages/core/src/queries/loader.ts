@@ -1,7 +1,9 @@
-import { existsSync, watch } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, watch } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { SbGraph } from "../graph.js";
-import { isSourcePath, parseFile, type ParsedImport, type ParseResult } from "../parser.js";
+import { isSourcePath, parseFile, parseRepo, type ParsedImport, type ParseResult } from "../parser.js";
 import { normPath } from "../paths.js";
 import { recordEdit, type EditInput } from "./edits.js";
 import { recordEvent } from "./events.js";
@@ -12,20 +14,23 @@ const BATCH = 500;
 /**
  * Upsert File nodes. `hub` and `rank` default to false/0 so queries can filter on
  * `NOT f.hub` (a missing property would be null, and `NOT null` filters the row out).
- * coalesce, not ON CREATE: a claim or an edit may have created the node first.
+ * coalesce, not ON CREATE: a claim or an edit may have created the node first
+ * (a claim's node for a file not parsed yet loses its `unparsed` flag here).
  * The PageRank job (Q6) sets the real values right after the load.
  */
 export const UPSERT_FILES = `
 UNWIND $rows AS row
 MERGE (f:File {path: row.path})
-SET f.lang = row.lang, f.loc = row.loc, f.hash = row.hash,
+SET f.lang = row.lang, f.loc = row.loc, f.hash = row.hash, f.unparsed = null,
     f.hub = coalesce(f.hub, false), f.rank = coalesce(f.rank, 0.0)
 `;
 
 /**
  * Remove files a previous parse loaded (they have a hash) that this parse no longer has.
  * Files created only by a claim or an edit have no hash and stay: an agent may claim
- * a file before it exists.
+ * a file before it exists, and a claimed README or package.json (`unparsed`) is never parsed.
+ * Only an explicit `switchboard parse` runs this: every worktree of a repo shares one graph, so a
+ * file missing here may be another worktree's new file. Hooks only add and update (updateRepo).
  */
 export const DELETE_STALE_FILES = `
 MATCH (f:File)
@@ -67,18 +72,23 @@ function batches<T>(rows: T[]): T[][] {
 }
 
 /**
- * Load a full parse of the repo into the graph, replacing the previous one.
+ * Load a full parse of the repo into the graph, replacing the previous one (`deleteStale: false` only adds
+ * and updates, for a first load from a hook).
  * Idempotent: loading the same parse twice leaves the same nodes and edges.
  * Order: upsert files, delete files that are gone, delete imports that are gone,
  * upsert imports, recompute hubs, record one `parse` event. Each step is its own
  * query (batches of 500), so the whole load is not one transaction.
  */
-export async function loadParse(g: SbGraph, parsed: ParseResult): Promise<{ files: number; imports: number }> {
+export async function loadParse(
+  g: SbGraph,
+  parsed: ParseResult,
+  opts: { deleteStale?: boolean } = {},
+): Promise<{ files: number; imports: number }> {
   const targets = new Map<string, string[]>(parsed.files.map((f) => [f.path, []]));
   for (const i of parsed.imports) targets.get(i.from)?.push(i.to);
 
   for (const rows of batches(parsed.files)) await g.query(UPSERT_FILES, { rows });
-  await g.query(DELETE_STALE_FILES, { paths: [...targets.keys()] });
+  if (opts.deleteStale ?? true) await g.query(DELETE_STALE_FILES, { paths: [...targets.keys()] });
   const importRows = [...targets].map(([path, to]) => ({ path, targets: to }));
   for (const rows of batches(importRows)) await g.query(DELETE_STALE_IMPORTS, { rows });
   for (const rows of batches(parsed.imports)) await g.query(UPSERT_IMPORTS, { rows });
@@ -116,6 +126,16 @@ export async function resetDemo(g: SbGraph): Promise<void> {
   for (const query of RESET_DEMO) await g.query(query);
 }
 
+/**
+ * A fresh take on a live repo: every agent (with its claims, waits and edits), event, decision, lesson and task
+ * goes; the code graph (File, IMPORTS) and the seq counter stay, so a dashboard's feed keeps counting up.
+ */
+export const CLEAR_ACTIVITY = ["MATCH (a:Agent) DETACH DELETE a", "MATCH (n) WHERE n:Event OR n:Decision OR n:Lesson OR n:Task DETACH DELETE n"];
+
+export async function clearActivity(g: SbGraph): Promise<void> {
+  for (const query of CLEAR_ACTIVITY) await g.query(query);
+}
+
 /** Which of these paths are File nodes already. */
 export const FOUND_FILES = `
 MATCH (f:File)
@@ -151,7 +171,7 @@ RETURN f.hash AS hash,
  */
 export const UPDATE_FILE = `
 MERGE (f:File {path: $path})
-SET f.lang = $lang, f.loc = $loc, f.hash = $hash,
+SET f.lang = $lang, f.loc = $loc, f.hash = $hash, f.unparsed = null,
     f.hub = coalesce(f.hub, false), f.rank = coalesce(f.rank, 0.0)
 WITH f
 OPTIONAL MATCH (f)-[old:IMPORTS]->(t:File)
@@ -263,6 +283,68 @@ MATCH (f:File)
 WHERE f.hash IS NOT NULL
 RETURN f.path AS path
 `;
+
+/** Every parsed file's hash, to find the files on disk that differ. */
+export const PARSED_HASHES = `
+MATCH (f:File)
+WHERE f.hash IS NOT NULL
+RETURN f.path AS path, f.hash AS hash
+`;
+
+/** Files someone claims right now. */
+export const CLAIMED_FILES = `
+MATCH (:Agent)-[c:CLAIMS]->(f:File)
+WHERE c.until > $now
+RETURN DISTINCT f.path AS path
+`;
+
+/**
+ * The cheap check a session start runs: source files of the git checkout at `root` that are new or whose text
+ * differs from the graph's hash. No parser, one query. Null when the graph has no parsed file yet.
+ * A file someone claims is left out: the agent editing it may be in another worktree, whose newer version
+ * the graph holds. Throws outside a git checkout.
+ */
+export async function staleFiles(g: SbGraph, root: string, now = Date.now()): Promise<string[] | null> {
+  const stored = new Map((await g.roQuery(PARSED_HASHES)).map((r) => [String(r.path), String(r.hash)]));
+  if (stored.size === 0) return null;
+  const claimed = new Set((await g.roQuery(CLAIMED_FILES, { now })).map((r) => String(r.path)));
+  const listed = execFileSync("git", ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const out: string[] = [];
+  for (const path of listed.split("\0")) {
+    if (!path || !isSourcePath(path) || claimed.has(path)) continue;
+    let text: string;
+    try {
+      text = readFileSync(join(root, path), "utf8");
+    } catch {
+      continue; // listed by git but deleted on disk: hooks never delete another worktree's file
+    }
+    if (stored.get(path) !== createHash("sha1").update(text).digest("hex")) out.push(path);
+  }
+  return out;
+}
+
+/**
+ * Bring the graph up to date with the checkout at `root` without deleting anything another worktree may
+ * still have: `updateFile` for each of `paths` (a path gone from disk is a file this agent deleted, so its
+ * node goes), or, with no paths, for every stale file (staleFiles), or a first full load when the graph
+ * has no parsed file. Hubs are re-marked when an import changed. What the hooks run, in the background.
+ */
+export async function updateRepo(g: SbGraph, root: string, paths?: string[]): Promise<{ loaded: boolean; updates: FileUpdate[] }> {
+  const abs = resolve(root);
+  const todo = paths ?? (await staleFiles(g, abs));
+  if (todo === null) {
+    await loadParse(g, parseRepo(abs), { deleteStale: false });
+    return { loaded: true, updates: [] };
+  }
+  const updates: FileUpdate[] = [];
+  for (const p of todo) updates.push(await updateFile(g, abs, p));
+  if (updates.some((u) => u.seq !== null)) await markHubs(g);
+  return { loaded: false, updates };
+}
 
 /**
  * Is `root` the repo this graph was parsed from? True for a graph with no parsed files, or when at least

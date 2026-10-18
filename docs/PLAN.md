@@ -4,6 +4,8 @@ Written 2026-10-13 (planning only; no product code before Tue 11:31 AM PT). Sour
 
 Inputs: HACKATHON.md, COUNCIL.md (Council 3 "best version"), research/SWITCHBOARD-COMPETITORS.md, research/IDEA-RESEARCH.md §1.
 
+> **Archived (Oct 17):** the process files this plan mentions (HACKATHON.md, COUNCIL.md, IDEAS.md, research/IDEA-RESEARCH.md, STATUS.md, BLOG-LOG.md, PASEO.md, the briefs in `docs/tasks/` and the other agent briefs) were moved out of the submission tree. They are kept on the git branch `archive/process`. Product decisions and their reasons are in [DESIGN.md](DESIGN.md).
+
 > **Rules check (2026-10-13 evening, site + WeMakeDevs Discord):** the deadline is confirmed as Sun Oct 18, 11:29 AM PDT. Judged projects get a **public score and written feedback**, and the judges will be listed on the site. No rubric yet. The submission form opens at the start, so its fields and any video length limit are unknown: have Aside check it at 11:31 AM Tue. Details are in HACKATHON.md.
 
 ---

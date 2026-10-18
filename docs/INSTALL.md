@@ -12,9 +12,16 @@ session on one repo see each other.
 | Way | For | What you run |
 | --- | --- | --- |
 | Claude Code plugin | Claude Code | `/plugin marketplace add bhargava-gumpula/graph-hacks` then `/plugin install switchboard@switchboard` |
-| Cursor | Cursor | the Add to Cursor button, then `npm i -g switchboard-agents && switchboard init --cursor` in the repo |
-| npm package | any MCP client | `npm i -g switchboard-agents`, then `switchboard init` or `switchboard-mcp` |
-| From source | the demo, the dashboard, hacking on Switchboard | `npm run quickstart` (see the README) |
+| From source | Cursor, Claude Code without the plugin, the demo and the dashboard | clone, `npm ci`, then `npm run switchboard -- init ~/code/my-app` (or `npm run quickstart` for the demo) |
+| npm package | any MCP client | **not on the npm registry yet.** Pack it from a clone (below), then `switchboard init` or `switchboard-mcp` |
+| Cursor button | Cursor | runs `npx -y switchboard-agents mcp`, so it works only once the npm package is published |
+
+The npm package `switchboard-agents` is ready in `packages/npm` but has not been published, so `npm i -g switchboard-agents`, `npx switchboard-agents` and the Add to Cursor button fail with a 404 until it is. Everything below that uses the `switchboard` command works after installing the packed tarball:
+
+```bash
+npm run build:plugin
+(cd packages/npm && npm pack && npm i -g ./switchboard-agents-0.1.0.tgz)
+```
 
 ## What every way needs
 
@@ -37,7 +44,7 @@ The plugin lives in [`plugins/switchboard`](../plugins/switchboard) and the mark
 
 | Part | File | What it does |
 | --- | --- | --- |
-| Hooks | `hooks/hooks.json` | `SessionStart`: register the agent, re-parse the repo in the background, add a brief to the context. `PreToolUse` on `Edit\|MultiEdit\|Write\|NotebookEdit\|Bash`: claim the file (or a shell command's obvious write targets), or deny with the import path and wait. `PostToolUse`: record the edit (for `Bash`, the files `git status` shows it changed) and refresh the import graph in the background. Both tell the agent who waits on its files and which files it waited on are free. `SessionEnd`: release this agent's claims. |
+| Hooks | `hooks/hooks.json` | `SessionStart`: register the agent, re-parse the repo in the background, add a brief to the context. `PreToolUse` on `Edit\|MultiEdit\|Write\|NotebookEdit\|Bash`: claim the file (or a shell command's obvious write targets), or deny with the import path and wait. `PostToolUse`: record the edit (for `Bash`, the files `git status` shows it changed) and update that file's imports in the graph. Both tell the agent who waits on its files and which files it waited on are free. `SessionEnd`: release this agent's claims. |
 | MCP server | `.mcp.json` | `switchboard`, 15 tools (`claim`, `brief_me`, `record_decision`, `search_memory`, `hotspots`, ...). |
 | Skill | `skills/switchboard/SKILL.md` | What Switchboard is, how to read a refusal, what to do next. |
 | Runtime | `dist/*.mjs` | The hook, the MCP server and the CLI, bundled with esbuild by `npm run build:plugin`. |
@@ -46,7 +53,8 @@ Try it from a checkout without installing: `claude --plugin-dir ./plugins/switch
 
 ## Cursor
 
-1. **MCP server.** Click the button, or open the link:
+1. **MCP server.** Once the npm package is published, click the button, or open the link. Until then, use the
+   project `.cursor/mcp.json` that `init` writes in step 2, which starts the server from your install.
 
    [![Add switchboard MCP server to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=switchboard&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInN3aXRjaGJvYXJkLWFnZW50cyIsIm1jcCJdLCJlbnYiOnsiU0JfRURJVE9SIjoiY3Vyc29yIiwiU0JfUFJPSkVDVF9ESVIiOiIke3dvcmtzcGFjZUZvbGRlcn0ifX0=)
 
@@ -57,12 +65,13 @@ Try it from a checkout without installing: `claude --plugin-dir ./plugins/switch
    {"command":"npx","args":["-y","switchboard-agents","mcp"],"env":{"SB_EDITOR":"cursor","SB_PROJECT_DIR":"${workspaceFolder}"}}
    ```
 
-2. **Hooks.** In the repo:
+2. **Hooks.** In the repo, with the packed package installed (above):
 
    ```bash
-   npm i -g switchboard-agents
    switchboard init --cursor
    ```
+
+   From a clone without the package: `npm run switchboard -- init ~/code/my-app` (both editors).
 
    This writes `.cursor/hooks.json` (sessionStart, preToolUse on `Write` and `Delete`, beforeShellExecution,
    afterFileEdit, afterShellExecution, postToolUse on `Write` and `Shell`, sessionEnd) and a project
@@ -88,8 +97,9 @@ What Cursor's hooks can and cannot do (from Cursor's hooks docs, checked 2026-10
 
 ## npm package `switchboard-agents`
 
+Not published yet: install the packed tarball (top of this page), then:
+
 ```bash
-npm i -g switchboard-agents
 switchboard --help
 ```
 
@@ -112,7 +122,7 @@ paths land in the npx cache, which npm may clean; `init` warns about that.
   configs with `npm run switchboard -- init <repo> --npx` from a clone.
 - A file that already holds what `init` wants is left as it is, so a second run writes nothing.
 
-Any other MCP client: run `switchboard-mcp` from the repo, or `npx -y switchboard-agents mcp`.
+Any other MCP client: run `switchboard-mcp` from the repo (`npx -y switchboard-agents mcp` once the package is published).
 
 ## Settings
 
@@ -121,6 +131,8 @@ All optional, as environment variables.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `FALKORDB_URL` | `redis://localhost:6379` | |
+| `SB_CLOUD` | unset | `1` builds the URL from `FALKORDB_CLOUD_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD` (plain `redis://`; `FALKORDB_CLOUD_TLS=1` for TLS) and wins over `FALKORDB_URL`. |
+| `SB_ENV_FILE` | unset | A .env to read those four `FALKORDB_CLOUD_*` keys from at run time (nothing else in it), so configs name the file, never the password. `init --cloud <file>` writes both. |
 | `SB_GRAPH` | `sb_<repo name>` | The name of the main checkout, so every worktree of a repo shares one graph. |
 | `SB_AGENT` | `<editor>@<branch>` | `claude@main`, `cursor@feature-x`. The MCP server, the CLI and the hooks use the same id. |
 | `SB_EDITOR` | set by the configs | `claude` or `cursor`: the editor half of the id for the MCP server and the CLI. The hooks get it from their arguments. |
@@ -178,6 +190,9 @@ From a clone of this repo, `init` wires another repo to this checkout and parses
 `packages/hooks/hook.sh` needs no `jq`: it runs the Node hook (`switchboard hook <editor> <phase>`) through `tsx`.
 
 ## Demo: Claude Code and Cursor on one repo, with the live graph
+
+For the recorded demo on FalkorDB Cloud, `npm run demo:setup` and `npm run demo:start` do all of this; see
+[DEMO-LIVE.md](DEMO-LIVE.md). The manual steps:
 
 Before the npm package is published, install it from this checkout. Run these from the graph-hacks root.
 
@@ -249,8 +264,8 @@ For a new version, bump `version` in `packages/npm/package.json`, `packages/npm/
   `coverage`, dot directories (`.next`, `.turbo`, `.vercel`) and what the repo's root `.gitignore` lists (simple
   patterns; nested `.gitignore` files are not read). A file the parser has not seen (a new file) is allowed,
   with a note that no dependency check ran.
-- The background re-parse runs at most every 20 seconds per graph, so an import added inside that window
-  shows up on the next edit.
+- Each edit updates only the edited file's imports. A file changed some other way (a `git pull`, a save outside
+  the editor) shows up after the next full parse, which runs at session start or with `switchboard parse`.
 - The live dashboard is not in the npm package; run it from source and set `SB_URL`.
 - Tested on macOS with Claude Code 2.1.302. Windows is untested.
 

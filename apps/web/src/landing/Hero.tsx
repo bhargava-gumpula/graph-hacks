@@ -62,6 +62,9 @@ export function Hero() {
           >
             Open the live graph
           </a>
+          <a href="#install" className="px-2 py-3 text-sm font-medium text-[var(--muted)] underline-offset-4 hover:text-[var(--fg)] hover:underline">
+            Install
+          </a>
         </motion.div>
       </div>
       <motion.div

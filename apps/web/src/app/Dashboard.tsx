@@ -12,6 +12,7 @@ import { useLive, type LiveStatus } from "./useLive";
 import { agentName } from "./agents";
 import { importPath, layoutGraph } from "./layoutGraph";
 import { Tour, markTourSeen, tourSeen, type TourStep } from "./Tour";
+import "./dashboard.css";
 
 type Tab = "feed" | "inspect" | "memory" | "brief";
 const TABS: { id: Tab; label: string }[] = [
@@ -471,17 +472,18 @@ export function Dashboard() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="grain relative flex h-[100dvh] flex-col overflow-hidden">
+        <img src="/photos/delta-1200.jpg" alt="" aria-hidden decoding="async" className="dash-photo pointer-events-none fixed inset-0 h-full w-full object-cover" />
         <AsciiField />
 
-        <header className="relative z-20 flex h-14 shrink-0 items-center justify-between gap-3 whitespace-nowrap border-b border-[var(--border)] bg-[var(--bg)]/80 px-4 backdrop-blur-md">
+        <header className="relative z-20 flex h-14 shrink-0 items-center justify-between gap-3 whitespace-nowrap border-b border-[var(--border)] bg-[var(--bg)]/80 px-3 backdrop-blur-md sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
-            <a href="/" className="flex items-center gap-2 font-medium tracking-tight">
+            <a href="/" className="font-display flex items-center gap-2 text-[15px] font-semibold tracking-tight sm:text-base">
               <svg width="20" height="20" viewBox="0 0 22 22" aria-hidden="true">
                 <circle cx="5" cy="16" r="3" fill="var(--fg)" />
                 <circle cx="17" cy="6" r="3" fill="var(--color-signal)" />
                 <path d="M7.5 14 L14.5 8" stroke="var(--fg)" strokeWidth="1.6" strokeLinecap="round" />
               </svg>
-              <span className="sr-only sm:not-sr-only">Switchboard</span>
+              <span className="max-[374px]:sr-only">Switchboard</span>
             </a>
             {liveRepo ? (
               <span className="hidden truncate text-xs text-[var(--muted)] md:inline">
@@ -491,7 +493,7 @@ export function Dashboard() {
             ) : (
               <span className="hidden truncate text-xs text-[var(--muted)] xl:inline">Live demo: two scripted agents on a {files.length || 35}-file repo</span>
             )}
-            <span className="flex items-center gap-1.5 text-xs text-[var(--muted)]" title={`Stream: ${STATUS_LABEL[live.status]}${live.graphName ? ` (graph ${live.graphName})` : ""}`}>
+            <span className="hidden items-center gap-1.5 text-xs text-[var(--muted)] sm:flex" title={`Stream: ${STATUS_LABEL[live.status]}${live.graphName ? ` (graph ${live.graphName})` : ""}`}>
               <span
                 className={`size-1.5 rounded-full transition-colors ${
                   live.status === "live" ? "bg-[var(--fg)]" : live.status === "offline" ? "bg-[var(--color-signal)]" : "bg-[var(--muted)]"
@@ -500,7 +502,7 @@ export function Dashboard() {
               <span className="hidden sm:inline md:hidden lg:inline">{STATUS_LABEL[live.status]}</span>
             </span>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               ref={connectBtn}
               type="button"
@@ -512,9 +514,9 @@ export function Dashboard() {
               aria-haspopup="dialog"
               aria-expanded={connect != null}
               aria-label="Connect your agent"
-              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 lg:px-3"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2 py-1.5 text-xs sm:px-2.5 text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 lg:px-3"
             >
-              <PlugsConnected size={14} /> <span className="hidden lg:inline">Connect</span>
+              <PlugsConnected size={14} className="max-sm:size-4" /> <span className="hidden lg:inline">Connect</span>
             </button>
             {!liveRepo && (
             <button
@@ -522,10 +524,10 @@ export function Dashboard() {
               onClick={() => (tour == null ? startTour(true) : endTour())}
               aria-pressed={tour != null}
               aria-label="Guided tour"
-              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 disabled:opacity-50 md:px-3"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2 py-1.5 text-xs sm:px-2.5 text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 disabled:opacity-50 md:px-3"
               disabled={!live.graph}
             >
-              <Compass size={14} /> <span className="hidden md:inline">Guided tour</span>
+              <Compass size={14} className="max-sm:size-4" /> <span className="hidden md:inline">Guided tour</span>
             </button>
             )}
             {!liveRepo && (
@@ -535,11 +537,11 @@ export function Dashboard() {
               onClick={() => setBatchMode((b) => !b)}
               aria-pressed={batchMode}
               aria-label="Rounds"
-              className={`relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition active:scale-95 md:px-3 ${
+              className={`relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border px-2 py-1.5 text-xs sm:px-2.5 transition active:scale-95 md:px-3 ${
                 batchMode ? "border-[var(--fg)] text-[var(--fg)]" : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--muted)] hover:text-[var(--fg)]"
               }`}
             >
-              <Rows size={14} /> <span className="hidden md:inline">Rounds</span>
+              <Rows size={14} className="max-sm:size-4" /> <span className="hidden md:inline">Rounds</span>
             </button>
             )}
             {!liveRepo && (
@@ -549,13 +551,13 @@ export function Dashboard() {
               disabled={playing || resetting || !live.graph}
               aria-label="Reset demo"
               title="Back to the start: Agent A holds session.ts, B is free"
-              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 disabled:opacity-50 lg:px-3"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2 py-1.5 text-xs sm:px-2.5 text-[var(--muted)] transition-[color,border-color,transform] duration-150 hover:border-[var(--muted)] hover:text-[var(--fg)] active:scale-95 disabled:opacity-50 lg:px-3"
             >
               <ArrowCounterClockwise size={14} className={resetting ? "motion-safe:animate-spin [animation-direction:reverse]" : undefined} />{" "}
               <span className="hidden lg:inline">{resetting ? "Resetting" : "Reset demo"}</span>
             </button>
             )}
-            <div data-tour="actions" className="flex items-center gap-2">
+            <div data-tour="actions" className="flex items-center gap-1 sm:gap-2">
             <button
               ref={tryBtn}
               type="button"
@@ -563,9 +565,9 @@ export function Dashboard() {
               aria-expanded={tryOpen}
               aria-haspopup="dialog"
               aria-label="Try a claim"
-              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1.5 text-xs transition hover:border-[var(--muted)] active:scale-95 sm:px-3"
+              className="relative touch-manipulation before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2 py-1.5 text-xs transition hover:border-[var(--muted)] active:scale-95 sm:px-3"
             >
-              <HandGrabbing size={14} /> <span className="hidden sm:inline">Try a claim</span>
+              <HandGrabbing size={14} className="max-sm:size-4" /> <span className="hidden sm:inline">Try a claim</span>
             </button>
             {!liveRepo && (
             <button
@@ -952,7 +954,7 @@ function Tiles({
             <ChartStatFlow
               value={collisions}
               label="Collisions prevented"
-              valueClassName={`${compact ? "text-lg font-semibold" : "text-4xl font-semibold tracking-tight"} text-[color:var(--color-signal)]`}
+              valueClassName={`font-display ${compact ? "text-lg font-semibold" : "text-4xl font-semibold tracking-tight"} text-[color:var(--color-signal)]`}
               labelClassName={label}
             />
           </div>
@@ -1001,7 +1003,7 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.2, ease: EXPO }}
-      className="absolute left-3 right-3 top-16 z-10 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/90 p-3 backdrop-blur-md sm:right-auto sm:max-w-[420px]"
+      className="absolute left-3 right-3 top-14 z-10 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)]/90 p-2 backdrop-blur-md sm:top-16 sm:right-auto sm:max-w-[420px] sm:p-3"
     >
       {n === 0 ? (
         <p className="text-[13px] text-[var(--muted)]">Planning rounds…</p>
@@ -1016,7 +1018,7 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
               {n > 1 ? `Round 1 goes first. Up to ${widest} agent${widest === 1 ? "" : "s"} at once.` : "Everything can run at once."}
             </span>
           </p>
-          <ul className="mt-2.5 flex flex-wrap gap-1.5">
+          <ul className="flex gap-1.5 overflow-x-auto sm:mt-2.5 sm:flex-wrap" aria-label={`${n} round${n === 1 ? "" : "s"}: tasks in a round run in parallel`}>
             {groups.map((g, i) => (
               <motion.li
                 key={g.componentId}
@@ -1032,7 +1034,7 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
               </motion.li>
             ))}
           </ul>
-          <div className="mt-2">
+          <div className="mt-2 hidden sm:block">
             <CypherDisclosure query={cypher} />
           </div>
         </>

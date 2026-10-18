@@ -88,8 +88,9 @@ const downstream = (k: number) => `p = (g:File)-[:IMPORTS*1..${k}]->(f:File {pat
  *  - SAME: another agent claims the very file I asked for (hop 0, hubs included).
  *  - UPSTREAM: my file imports, within k hops, a file another agent claims.
  *  - DOWNSTREAM: a file another agent claims imports my file within k hops.
- * Paths that pass THROUGH a hub (e.g. lib/utils.ts, imported by everything) are
- * skipped, or every claim would conflict with every other; a hub at either end counts.
+ * Paths that pass THROUGH a hub (a heavily imported file that itself imports code, such as a
+ * barrel/index that re-exports modules) are skipped, or every importer of the barrel would be
+ * chained to everything it re-exports; a hub at either end still counts.
  *
  * Why not shortestPath(): FalkorDB only allows it in WITH/RETURN and it can't carry
  * the hub filter. With k <= 5 on a code graph, enumerating the paths is cheap; the

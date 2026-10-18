@@ -123,7 +123,7 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Tests:** 43/43. Typecheck and lint clean.
 
 ## 2026-10-17 01:20 PT: UI rebuild started (owner decision)
-- **Owner's decision:** keep the tested engine, rebuild all UI/UX from scratch following 9 Instagram reels (docs/UI-REELS.md, now on the `archive/process` branch). The old UI is saved at tags `archive/cursor-v1` and `archive/cursor-v1-ui-reels`. Plan in docs/UI-REBUILD.md (U1–U4, freeze Sat 10 PM).
+- **Owner's decision:** keep the tested engine, rebuild all UI/UX from scratch following 9 Instagram reels (docs/UI-REELS.md, now on the `archive/process` branch). The old UI is saved at tags `archive/cursor-v1` and `archive/cursor-v1-ui-reels`. Plan in docs/UI-REBUILD.md (U1–U4, freeze Sat 10 PM; now on the `archive/process` branch).
 - **U1:** Tailwind v4 + Motion + GSAP + Phosphor + Geist; one accent (signal orange). The new hero is the **real demo-repo graph drawn in code** (folder columns ui → api → auth → lib): agent A edits crypto.ts, agent B reaches for LoginForm.tsx, the 3-hop path lights up and the edit is refused. Reduced motion shows the final frame. The web tsconfig moved to Bundler resolution (Vite).
 
 ## 2026-10-17 02:15 PT: engine rebuilt, council critique, night packages (autonomous run)

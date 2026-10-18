@@ -323,7 +323,7 @@ FOREACH (_ IN CASE WHEN $taskId IS NULL THEN [] ELSE [1] END |
 WITH e, m, a
 UNWIND $paths AS path
 MERGE (f:File {path: path})
-ON CREATE SET f.hub = false, f.rank = 0.0
+ON CREATE SET f.hub = false, f.rank = 0.0, f.unparsed = true
 MERGE (a)-[c:CLAIMS]->(f)
 SET c.since = $at, c.until = $until, c.ttl = $ttl, c.taskId = $taskId, c.intent = $intent
 CREATE (e)-[:ON]->(f)

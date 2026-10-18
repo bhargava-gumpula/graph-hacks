@@ -164,6 +164,14 @@ describe("hook: graph updates, unparsed files and sessions", () => {
     expect(refused.agent_message).toContain("README.md (same file; not in the parsed graph, so only the same file is checked)\nheld by claude@main");
   });
 
+  test("a new file another agent holds can't be overwritten from the shell, even though git doesn't track it yet", async () => {
+    await run("cursor", "pre", cursorWrite("docs/new-notes.md"));
+    const denied = await run("claude", "pre", { tool_name: "Bash", tool_input: { command: "echo hi > docs/new-notes.md" }, tool_use_id: "t-new" });
+    expect(denied.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(denied.hookSpecificOutput.permissionDecisionReason).toContain("held by cursor@main");
+    await run("cursor", "end", {});
+  });
+
   test("two worktrees both run `rm -rf dist` and `npm test > test.log`: no claim, no node; README.md by Edit is still the same file", async () => {
     const tmp = realpathSync(mkdtempSync(join(tmpdir(), "sb-hook-wt-")));
     const [x, y] = [join(tmp, "x"), join(tmp, "y")];

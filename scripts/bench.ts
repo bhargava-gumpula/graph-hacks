@@ -273,13 +273,17 @@ Neither agent touches the other's file and neither edit is wrong on its own. The
 
 ## The two columns
 
-- **Without Switchboard**: a plain file lock, which refuses only a path someone already holds. B asks for a different file, gets its lock, and both edits land. tsc runs on the merge.
+- **Without Switchboard**: a plain file lock, which refuses only a path someone already holds, and no check before merge. B asks for a different file, gets its lock, both agents finish and both edits land. tsc runs on the merge. This is the setup the README warns about, not the best one without Switchboard: a CI run of tsc on the merge would also catch the break, but only after both agents have finished.
 - **With Switchboard**: A claims \`${SESSION}\` through \`claim()\` on a real FalkorDB graph. B's claim on \`${LOGIN}\` is refused, because A's file is within 3 import hops of it. A's edit lands and A releases. B's claim now succeeds, B applies its edit on top of A's and runs its own tsc, which is red, so B's edit does not land. tsc then runs on what did land.
 
-| | Broken builds | What happened |
-|---|---|---|
-| Without Switchboard | ${results.without.brokenBuilds} / ${N} | The lock allowed B ${results.without.editsApplied} / ${N} times, both edits landed |
-| With Switchboard | ${results.with.brokenBuilds} / ${N} | B's claim was refused ${results.with.blocked} / ${N} times; B's own tsc caught the collision after the rebase ${results.with.caught} / ${N} times |
+| | Broken builds | When the clash shows up | What happened |
+|---|---|---|---|
+| Without Switchboard | ${results.without.brokenBuilds} / ${N} | After both edits land, in a build of the merge | The lock allowed B ${results.without.editsApplied} / ${N} times, both edits landed |
+| With Switchboard | ${results.with.brokenBuilds} / ${N} | Before B writes: its claim is refused with the import path | B's claim was refused ${results.with.blocked} / ${N} times; B's own tsc caught the collision after the rebase ${results.with.caught} / ${N} times |
+
+## What Switchboard saves here
+
+Not the broken build as such: any check before merge keeps it out of \`main\`. What changes is when B finds out. Without Switchboard, B does its work in parallel with A on code that is about to change, and learns from a red build after both are done, so its change is reworked on top of A's. With Switchboard, B is refused before it writes a line, the refusal names the import path to A's file, and B starts from A's edit once it lands. The benchmark counts the refusals; it does not time the rework.
 
 ## Check latency
 
@@ -290,7 +294,7 @@ Neither agent touches the other's file and neither edit is wrong on its own. The
 - The run is deterministic. Every trial repeats the same steps on the same files, so ${N} runs show repeatability (the same result every time, a latency range), not a statistic.
 - The agents are scripted, not live LLM sessions. B "waits" and A "releases" by direct calls in sequence, not real concurrency.
 - The latency is the one measured, noisy number (this run: 1-minute load average ${results.loadAvg1m} on ${results.cpus} cores). The build counts are the same every run by construction; what they prove is that the two edits really do collide under the real compiler and that the claim graph really does refuse the second one.
-- Without Switchboard the collision would eventually show up in CI or on the next build. What it costs is a red main branch and a debugging session, not lost data. The benchmark does not model that cost, or the rework B does after its tsc fails.
+- Without Switchboard the collision would show up in CI or on the next build. What it costs is a red main branch, a debugging session and B's rework, not lost data. The benchmark does not model that cost, and it does not include a CI arm.
 `;
 await writeFile(join(ROOT, "bench/REPORT.md"), report);
 console.log(report);

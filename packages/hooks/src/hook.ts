@@ -258,15 +258,24 @@ WHERE f.path IN $paths AND f.hash IS NOT NULL
 RETURN f.path AS path
 `;
 
+/** Paths someone holds a live claim on, parsed or not (a new docs file another agent is writing). */
+const HELD_PATHS = `
+MATCH (f:File)<-[c:CLAIMS]-(:Agent)
+WHERE f.path IN $paths AND c.until > $now
+RETURN DISTINCT f.path AS path
+`;
+
 /**
- * A shell command's targets that are worth a claim: parsed files and files git tracks. The rest are build output,
- * logs and folders (`rm -rf dist`, `npm test > test.log`), and the same name in another worktree is another file,
- * so claiming them would only block other agents. An Edit or Write still claims any file.
+ * A shell command's targets that are worth a claim: parsed files, files git tracks, and files another agent
+ * holds right now. The rest are build output, logs and folders (`rm -rf dist`, `npm test > test.log`), and the
+ * same name in another worktree is another file, so claiming them would only block other agents. An Edit or
+ * Write still claims any file.
  */
 async function shellClaimable(g: SbGraph, dir: string, paths: string[]): Promise<string[]> {
   const parsed = new Set((await g.roQuery(PARSED_PATHS, { paths })).map((r) => String(r.path)));
-  const tracked = trackedFiles(dir, paths.filter((p) => !parsed.has(p)));
-  return paths.filter((p) => parsed.has(p) || tracked.has(p));
+  const held = new Set((await g.roQuery(HELD_PATHS, { paths, now: Date.now() })).map((r) => String(r.path)));
+  const tracked = trackedFiles(dir, paths.filter((p) => !parsed.has(p) && !held.has(p)));
+  return paths.filter((p) => parsed.has(p) || held.has(p) || tracked.has(p));
 }
 
 export async function handle(c: Ctx): Promise<object> {

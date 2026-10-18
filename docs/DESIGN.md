@@ -2,7 +2,7 @@
 
 Each decision below has the choice, the reason, what it costs, and where to check it. The reasons come from the plan ([PLAN.md](PLAN.md) §0.6, §2.1, §3, §4, §9 and the owner answers in §18), the engineering log ([DEVLOG.md](DEVLOG.md)) and the code. Where a choice came from a review rather than from the owner, it says so.
 
-The owner set two requirements: FalkorDB is the only store, and a claim is checked against the dependency graph parsed from the code, not against a list of file names. The rest follows from those two.
+The owner set two requirements: FalkorDB is the only store, and a claim is checked against the dependency graph parsed from the code, not against a list of file names. Sections 1 and 2 follow from those. Sections 3, 4, 5, 6 and 8 were proposed in the plan, which was drafted with an AI chat before the hackathon, or found during the build, and kept after testing. Section 7 came from a review.
 
 ## 1. Why a graph
 

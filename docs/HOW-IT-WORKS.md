@@ -69,6 +69,10 @@ write targets: `>` and `>>` redirections, `tee`, `sed -i`, `mv`, `cp` (the targe
 `git checkout -- <file>`. Those files are claimed exactly like an edit, so `sed -i '' 's/a/b/' auth/session.ts` is
 refused while Cursor holds `ui/LoginForm.tsx`. Anything unclear (globs, variables, `$(...)`, a `cd` first) is left
 out, a read-only command (`cat`, `grep`, `git diff`) never yields a file, and a parse failure allows the command.
+Only targets worth a lock are claimed: files the parser loaded and files git tracks (`README.md`, `package.json`).
+Build output, logs and folders (`rm -rf dist`, `npm test > test.log 2>&1`, `rm -rf node_modules`) are not: they
+are usually gitignored, and the same name in another worktree is another file, so two agents in two worktrees can
+both run them.
 
 A command that surely only reads is skipped before anything else runs: no `git status`, no FalkorDB connection.
 Every part of it must be a known reader (`ls`, `cat`, `grep`, `rg`, `head`, `sed -n`, `find` without `-delete` or

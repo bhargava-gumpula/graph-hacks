@@ -163,6 +163,45 @@ describe("hook: graph updates, unparsed files and sessions", () => {
     expect(refused.agent_message).toContain("README.md (same file; not in the parsed graph, so only the same file is checked)\nheld by claude@main");
   });
 
+  test("two worktrees both run `rm -rf dist` and `npm test > test.log`: no claim, no node; README.md by Edit is still the same file", async () => {
+    const tmp = realpathSync(mkdtempSync(join(tmpdir(), "sb-hook-wt-")));
+    const [x, y] = [join(tmp, "x"), join(tmp, "y")];
+    cpSync(ROOT, x, { recursive: true });
+    writeFileSync(join(x, ".gitignore"), "dist/\n");
+    const git = (...args: string[]) => execFileSync("git", ["-C", x, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdio: "ignore" });
+    git("init", "-q", "-b", "main");
+    git("add", "-A");
+    git("commit", "-qm", "init");
+    git("worktree", "add", "-q", "-b", "other", y);
+    const OTHER = "claude@other";
+    const sh = (command: string, id: string) => ({ tool_name: "Bash", tool_input: { command }, tool_use_id: id, session_id: "s-wt" });
+    const edit = (root: string) => ({ tool_name: "Edit", tool_input: { file_path: join(root, "README.md") } });
+    try {
+      for (const [agent, root] of [[CLAUDE, x], [OTHER, y], [CLAUDE, x]] as const) {
+        for (const command of ["rm -rf dist", "npm test > test.log 2>&1", "rm -rf node_modules"]) {
+          const call = sh(command, `${agent}-${root}-${command}-${Math.random()}`);
+          expect(await as(agent, undefined, "pre", call, root)).toEqual({});
+          if (command.includes("test.log")) writeFileSync(join(root, "test.log"), `${agent}\n`);
+          await as(agent, undefined, "post", call, root);
+        }
+      }
+      expect(await claimsOf(CLAUDE)).toEqual([]);
+      expect(await claimsOf(OTHER)).toEqual([]);
+      expect(await g().roQuery("MATCH (f:File) WHERE f.path IN ['dist', 'node_modules'] RETURN f.path AS path")).toEqual([]);
+
+      // README.md is tracked: an Edit in X claims it, and Y is refused for the same file, by Edit or by sed -i.
+      expect((await as(CLAUDE, undefined, "pre", edit(x), x)).systemMessage).toContain("README.md is not in the parsed graph");
+      const refused = await as(OTHER, undefined, "pre", edit(y), y);
+      expect(refused.hookSpecificOutput.permissionDecision).toBe("deny");
+      expect(refused.hookSpecificOutput.permissionDecisionReason).toContain("README.md (same file; not in the parsed graph");
+      const sed = await as(OTHER, undefined, "pre", sh("sed -i '' 's/a/b/' README.md", "sed-readme"), y);
+      expect(sed.hookSpecificOutput.permissionDecision).toBe("deny");
+    } finally {
+      await release(g(), { agent: OTHER });
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("two Claude Code sessions on one branch are two agents; ending one keeps the other's claims", async () => {
     const [s1, s2, s3] = [randomUUID(), randomUUID(), randomUUID()];
     const a = await sessionAgent(g(), CLAUDE, s1, "test");

@@ -3,8 +3,9 @@
 // Usage: hook <claude|cursor> <start|pre|post|notify|end>   (JSON event on stdin)
 //   start   register the agent, put a brief in the context; files changed since the graph last saw them are
 //           re-read in the background (a full load only when the graph has no parsed file yet).
-//   pre     claim the file (Edit/Write) or the obvious write targets of a shell command; on a conflict,
-//           deny with the import path and wait on the blocking file. SB_MODE=warn allows it with the text.
+//   pre     claim the file (Edit/Write) or the obvious write targets of a shell command (parsed or git-tracked
+//           files only: not `dist` or a log); on a conflict, deny with the import path and wait on the
+//           blocking file. SB_MODE=warn allows it with the text.
 //   post    record the edit, or the files a shell command changed (git status before and after), minus
 //           files another agent claims or edited meanwhile: the checkout is shared, those edits are theirs.
 //           Each edited file is re-read alone (core updateFile); a hook never deletes another file's node.
@@ -40,7 +41,7 @@ import { endSession, othersOn, takeAgentId } from "../../core/src/queries/claims
 import { recordLiveEdit, staleFiles } from "../../core/src/queries/loader.js";
 import { formatNotices, recordWaits, waitNotices } from "../../core/src/queries/waits.js";
 import { configure } from "../../npm/src/env.js";
-import { changedFiles, dirtyFiles, readOnly, writeTargets } from "./shell.js";
+import { changedFiles, dirtyFiles, readOnly, trackedFiles, writeTargets } from "./shell.js";
 
 export type Editor = "claude" | "cursor";
 export type Phase = "start" | "pre" | "post" | "notify" | "end";
@@ -250,6 +251,24 @@ async function recordEdits(c: Ctx, paths: string[]): Promise<void> {
   if (hubs) await markHubs(c.g);
 }
 
+/** Of `$paths`, the files a parse loaded (they have a hash; a node an edit or a claim made has none). */
+const PARSED_PATHS = `
+MATCH (f:File)
+WHERE f.path IN $paths AND f.hash IS NOT NULL
+RETURN f.path AS path
+`;
+
+/**
+ * A shell command's targets that are worth a claim: parsed files and files git tracks. The rest are build output,
+ * logs and folders (`rm -rf dist`, `npm test > test.log`), and the same name in another worktree is another file,
+ * so claiming them would only block other agents. An Edit or Write still claims any file.
+ */
+async function shellClaimable(g: SbGraph, dir: string, paths: string[]): Promise<string[]> {
+  const parsed = new Set((await g.roQuery(PARSED_PATHS, { paths })).map((r) => String(r.path)));
+  const tracked = trackedFiles(dir, paths.filter((p) => !parsed.has(p)));
+  return paths.filter((p) => parsed.has(p) || tracked.has(p));
+}
+
 export async function handle(c: Ctx): Promise<object> {
   const { editor, phase, input, g, agent } = c;
   const cwd = str(input.cwd) ?? c.root;
@@ -331,7 +350,8 @@ export async function handle(c: Ctx): Promise<object> {
     const file = [tool.file_path, tool.notebook_path, tool.path, input.file_path].map(str).find(Boolean);
     files = file ? [file] : [];
   }
-  const paths = inRepo(files);
+  let paths = inRepo(files);
+  if (command !== undefined && paths.length > 0) paths = await shellClaimable(g, join(c.root, c.prefix), paths);
   if (paths.length === 0) return answer(editor, phase, { context: notices });
 
   const res = await claim(g, { agent, paths });

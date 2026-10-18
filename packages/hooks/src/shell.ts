@@ -140,6 +140,22 @@ export function readOnly(command: string): boolean {
   return true;
 }
 
+/** Of `paths` (relative to `dir`), the files git tracks: exact files only, so a folder (`dist`) or an ignored log is not one. */
+export function trackedFiles(dir: string, paths: string[]): Set<string> {
+  if (paths.length === 0) return new Set();
+  try {
+    const out = execFileSync("git", ["--literal-pathspecs", "-C", dir, "ls-files", "-z", "--", ...paths], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    });
+    const listed = new Set(out.split("\0"));
+    return new Set(paths.filter((p) => listed.has(p)));
+  } catch {
+    return new Set();
+  }
+}
+
 /** Dirty and untracked files of the git checkout around `dir`, by absolute path, each with its mtime (0 once deleted). */
 export function dirtyFiles(dir: string): Record<string, number> {
   const git = (...args: string[]) =>

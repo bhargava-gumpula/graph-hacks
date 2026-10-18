@@ -64,6 +64,10 @@ export interface Health {
   dbMs?: number;
   uptimeS?: number;
   lastResetAt?: number | null;
+  /** Where the graph lives; host only off the public link. */
+  db?: { where: "local" | "cloud" | "remote"; host?: string };
+  /** A real repo's folder name (the server's SB_REPO); absent on the scripted demo. */
+  repo?: string;
   /** Public link only: "own" is this visitor's private copy of the demo, "shared" means the copies ran out. */
   visitor?: "own" | "shared";
 }

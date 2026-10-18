@@ -121,6 +121,8 @@ All optional, as environment variables.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `FALKORDB_URL` | `redis://localhost:6379` | |
+| `SB_CLOUD` | unset | `1` builds the URL from `FALKORDB_CLOUD_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD` (plain `redis://`; `FALKORDB_CLOUD_TLS=1` for TLS) and wins over `FALKORDB_URL`. |
+| `SB_ENV_FILE` | unset | A .env to read those four `FALKORDB_CLOUD_*` keys from at run time (nothing else in it), so configs name the file, never the password. `init --cloud <file>` writes both. |
 | `SB_GRAPH` | `sb_<repo name>` | The name of the main checkout, so every worktree of a repo shares one graph. |
 | `SB_AGENT` | `<editor>@<branch>` | `claude@main`, `cursor@feature-x`. The MCP server, the CLI and the hooks use the same id. |
 | `SB_EDITOR` | set by the configs | `claude` or `cursor`: the editor half of the id for the MCP server and the CLI. The hooks get it from their arguments. |
@@ -178,6 +180,9 @@ From a clone of this repo, `init` wires another repo to this checkout and parses
 `packages/hooks/hook.sh` needs no `jq`: it runs the Node hook (`switchboard hook <editor> <phase>`) through `tsx`.
 
 ## Demo: Claude Code and Cursor on one repo, with the live graph
+
+For the recorded demo on FalkorDB Cloud, `npm run demo:setup` and `npm run demo:start` do all of this; see
+[DEMO-LIVE.md](DEMO-LIVE.md). The manual steps:
 
 Before the npm package is published, install it from this checkout. Run these from the graph-hacks root.
 

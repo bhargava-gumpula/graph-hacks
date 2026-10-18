@@ -20,9 +20,11 @@ import {
   claim,
   codeGraphCounts,
   connect,
+  dbUrl,
   ensureSchema,
   formatBrief,
   recordEdit,
+  redactUrl,
   registerAgent,
   release,
   type Conflict,
@@ -329,8 +331,15 @@ export async function main(editorArg = "claude", phaseArg = "pre"): Promise<void
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(editor, phase, `error, allowed: ${msg}`);
+    // Only a failed connect means Switchboard is off; a failed brief query still leaves every edit checked.
+    if (phase === "start" && !/^(Cannot connect|SB_CLOUD=|SB_ENV_FILE=)/.test(msg)) return done(answer(editor, phase, { context: `Switchboard's session brief failed (${msg}). Edits are still checked.` }));
     if (phase === "start") {
-      const url = process.env.FALKORDB_URL ?? "redis://localhost:6379";
+      let url: string;
+      try {
+        url = redactUrl(dbUrl());
+      } catch {
+        url = `(${msg})`;
+      }
       return done(
         answer(editor, phase, {
           context:

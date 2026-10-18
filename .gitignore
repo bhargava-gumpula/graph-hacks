@@ -13,3 +13,8 @@ bench/runs/
 shots/
 .claude/settings.local.json
 .claude/skills/
+
+# Agent-process notes (briefs, council rounds) live on the archive/process branch, not in the submission tree
+docs/tasks/
+docs/council-loop/
+docs/council/

@@ -29,6 +29,14 @@ export function agentId(cwd?: string, editor: string | undefined = process.env.S
   return branch ?? "unknown";
 }
 
+/**
+ * The id of a second session in the same editor on the same branch, while the first holds `base`:
+ * `claude@main#1a2b`, from the first 4 letters or digits of the editor's session id.
+ */
+export function sessionAgentId(base: string, session: string): string {
+  return `${base}#${session.replace(/[^A-Za-z0-9]/g, "").slice(0, 4)}`;
+}
+
 function git(cwd: string | undefined, ...args: string[]): string {
   return execFileSync("git", ["-C", cwd ?? process.cwd(), "rev-parse", ...args], {
     encoding: "utf8",

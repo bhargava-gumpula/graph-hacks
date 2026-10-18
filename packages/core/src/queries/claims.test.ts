@@ -206,20 +206,27 @@ describe("path normalisation and unknown files", () => {
     expect(await ghosts()).toBe(0);
   });
 
-  test("an unknown path is returned as unknown, not claimed, and creates no File", async () => {
-    const files = async () => (await g().roQuery("MATCH (f:File) RETURN count(f) AS n"))[0]?.n;
-    const before = await files();
-    const res = await claim(g(), { agent: "B", paths: ["ui/NewThing.tsx"] });
-    expect(res).toMatchObject({ ok: true, unknown: ["ui/NewThing.tsx"] });
-    expect(await files()).toBe(before);
+  test("a file outside the parsed graph is claimed as unparsed: same-file check only, and a re-parse keeps it", async () => {
+    const res = await claim(g(), { agent: "B", paths: ["README.md"] });
+    expect(res).toMatchObject({ ok: true, unknown: ["README.md"] });
+    const node = () => g().roQuery("MATCH (f:File {path: 'README.md'}) OPTIONAL MATCH (a:Agent)-[:CLAIMS]->(f) RETURN f.unparsed AS unparsed, f.hash AS hash, a.id AS holder");
+    expect(await node()).toEqual([{ unparsed: true, hash: null, holder: "B" }]);
 
-    // Known paths in the same request are still checked and claimed.
-    const mixed = await claim(g(), { agent: "B", paths: ["ui/AboutPage.tsx", "demo-repo/ui/Nope.tsx"] });
+    // Another agent's edit of the same file is refused as SAME; it is still listed as outside the graph.
+    const other = await claim(g(), { agent: "A", paths: ["./README.md"] });
+    expect(other).toMatchObject({ ok: false, unknown: ["README.md"] });
+    if (!other.ok) expect(other.conflicts).toMatchObject([{ file: "README.md", type: "SAME", claimed: "README.md", agent: "B", hops: 0 }]);
+    // No import edges: a parsed neighbour is not blocked by it.
+    expect((await claim(g(), { agent: "A", paths: ["ui/AboutPage.tsx"] })).ok).toBe(true);
+
+    // A full parse deletes files it no longer finds, never an unparsed one (it has no hash).
+    await loadParse(g(), parseRepo(join(import.meta.dirname, "../../../../demo-repo")));
+    expect(await node()).toEqual([{ unparsed: true, hash: null, holder: "B" }]);
+
+    // Known paths in the same request are checked as before.
+    const mixed = await claim(g(), { agent: "B", paths: ["ui/Footer.tsx", "demo-repo/ui/Nope.tsx"] });
     expect(mixed).toMatchObject({ ok: true, unknown: ["ui/Nope.tsx"] });
-    const [held] = await g().roQuery("MATCH (:Agent {id:'B'})-[:CLAIMS]->(f:File) RETURN collect(f.path) AS paths");
-    expect(held?.paths).toEqual(["ui/AboutPage.tsx"]);
-    expect(await files()).toBe(before);
-    expect(await unknownPaths(g(), ["./lib/utils.ts", "x/y.ts"])).toEqual(["x/y.ts"]);
+    expect(await unknownPaths(g(), ["./lib/utils.ts", "x/y.ts", "README.md"])).toEqual(["x/y.ts", "README.md"]);
   });
 });
 

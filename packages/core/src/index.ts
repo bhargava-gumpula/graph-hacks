@@ -19,7 +19,7 @@ export type { EditInput, EditResult } from "./queries/edits.js";
 export { isSourcePath, parseFile, parseRepo } from "./parser.js";
 export type { ParsedFile, ParsedImport, ParseResult } from "./parser.js";
 
-export { clearActivity, codeGraphCounts, hubMarker, isRepoOf, loadParse, missingFiles, recordLiveEdit, resetDemo, updateFile, watchRepo } from "./queries/loader.js";
+export { clearActivity, codeGraphCounts, hubMarker, isRepoOf, loadParse, missingFiles, recordLiveEdit, resetDemo, staleFiles, updateFile, updateRepo, watchRepo } from "./queries/loader.js";
 export type { FileUpdate } from "./queries/loader.js";
 
 export { findConflicts, conflictQuery, conflictGuard, hops, MAX_HOPS } from "./queries/conflict.js";

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, expect, test } from "vitest";
-import { agentId, editorName } from "./agent-id.js";
+import { agentId, editorName, sessionAgentId } from "./agent-id.js";
 
 const saved = { agent: process.env.SB_AGENT, editor: process.env.SB_EDITOR };
 beforeEach(() => {
@@ -67,4 +67,9 @@ test("one id per editor: <editor>@<branch>, so Claude Code and Cursor on one bra
   expect(agentId(tempDir(), "cursor")).toBe("cursor");
   expect(editorName(" Claude-Code ")).toBe("claude");
   expect(editorName("")).toBeUndefined();
+});
+
+test("a second session's id: the base id and 4 letters or digits of the session id", () => {
+  expect(sessionAgentId("claude@main", "3f9c1a2e-77b0-4c1d")).toBe("claude@main#3f9c");
+  expect(sessionAgentId("cursor@feat/x", "-_a-b-c-d-e")).toBe("cursor@feat/x#abcd");
 });

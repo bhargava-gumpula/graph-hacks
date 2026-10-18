@@ -28,6 +28,7 @@ import {
   planTask,
   recordDecision,
   recordLiveEdit,
+  updateRepo,
   recordLesson,
   release,
   searchMemory,
@@ -81,7 +82,11 @@ Setup
                                             run the editor hook (JSON event on stdin, JSON answer on stdout)
 
 Planning
-  parse [dir]                               load a repo's import graph (default demo-repo)
+  parse [dir]                               load a repo's import graph (default demo-repo), replacing the
+                                            last one: files it no longer finds are deleted. Every worktree
+                                            of a repo shares one graph, so run it from the main checkout
+  parse <dir> --update [file...]            what the hooks run: re-read these files (or every file whose
+                                            text changed) and delete nothing another worktree may have
   watch [dir]                               keep the graph live: re-parse each file as it is saved,
                                             by an agent or a person (default: the parsed repo)
   blast <file>                              files that import <file>, hop by hop
@@ -113,6 +118,7 @@ interface Flags {
   kind?: string;
   dryRun: boolean;
   npx: boolean;
+  update: boolean;
   help: boolean;
   graph?: string;
   port?: string;
@@ -147,6 +153,7 @@ function parseArgs(argv: string[]): Flags {
   let help = false;
   let dryRun = false;
   let npx = false;
+  let update = false;
   let graph: string | undefined;
   let port: string | undefined;
   let cloud: string | undefined;
@@ -171,13 +178,14 @@ function parseArgs(argv: string[]): Flags {
     else if (arg === "--help" || arg === "-h") help = true;
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--npx") npx = true;
+    else if (arg === "--update") update = true;
     else if (arg === "--graph") graph = take(arg, i++);
     else if (arg === "--port") port = take(arg, i++);
     else if (arg === "--cloud") cloud = take(arg, i++);
     else if (arg.startsWith("--")) throw new Error(`unknown flag ${arg}`);
     else positional.push(arg);
   }
-  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, dryRun, npx, help, graph, port, cloud };
+  return { positional, task, intent, agent, why, affects, about, prefix, to, note, title, kind, dryRun, npx, update, help, graph, port, cloud };
 }
 
 function agentOf(flags: Flags): string {
@@ -356,6 +364,14 @@ async function run(flags: Flags): Promise<number> {
         console.log(`  ${c.agent} ${c.path} until=${new Date(c.until).toISOString()} task=${c.taskId ?? "-"}`);
       }
       if (s.claims.length === 0) console.log("  (none)");
+      return 0;
+    }
+
+    if (command === "parse" && flags.update) {
+      const dir = resolve(files[0] ?? repoDir());
+      const res = await updateRepo(g, dir, files.length > 1 ? files.slice(1) : undefined);
+      const changed = res.updates.filter((u) => u.status !== "unchanged" && u.status !== "skipped");
+      console.log(res.loaded ? `loaded ${dir} (nothing deleted)` : `updated=${changed.length} checked=${res.updates.length}`);
       return 0;
     }
 

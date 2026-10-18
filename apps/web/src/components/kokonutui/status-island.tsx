@@ -203,7 +203,7 @@ function TaskRow({ task }: { task: IslandTask }) {
       <span className="min-w-0 flex-1 truncate text-[13px] leading-4">
         {task.label}
         {task.detail ? (
-          <span className="text-white/50"> · {task.detail}</span>
+          <span className="text-white/50 max-sm:hidden"> · {task.detail}</span>
         ) : null}
       </span>
       <TaskTrailing task={task} />
@@ -407,7 +407,7 @@ export function StatusIsland({
                           <span className="min-w-0 flex-1 truncate text-[13px] leading-4">
                             {current.label}
                             {current.detail ? (
-                              <span className="text-white/50">
+                              <span className="text-white/50 max-sm:hidden">
                                 {" "}
                                 · {current.detail}
                               </span>

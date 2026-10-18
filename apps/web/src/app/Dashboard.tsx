@@ -1007,7 +1007,7 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
         <p className="text-[13px] text-[var(--muted)]">Planning rounds…</p>
       ) : (
         <>
-          <p className="text-[13px] leading-snug">
+          <p className="hidden text-[13px] leading-snug sm:block">
             <span className="font-medium">
               {n} round{n === 1 ? "" : "s"}: tasks in a round run in parallel.
             </span>
@@ -1023,9 +1023,9 @@ function BatchLegend({ groups, cypher }: { groups: Batch[]; cypher?: string }) {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.1 + i * 0.06, duration: 0.3, ease: EXPO }}
-                className="flex items-center gap-1.5 rounded-full border border-[var(--border)] py-0.5 pl-1 pr-2 font-mono text-[11px]"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--border)] py-0.5 pl-1 pr-2 font-mono text-[11px]"
               >
-                <span className="grid h-4 place-items-center rounded-full px-1.5 text-[9px] font-semibold" style={{ background: `color-mix(in oklab, var(--fg) ${36 - (i % 4) * 8}%, transparent)` }}>
+                <span className="grid h-[18px] place-items-center rounded-full px-1.5 text-[11px] font-semibold" style={{ background: `color-mix(in oklab, var(--fg) ${36 - (i % 4) * 8}%, transparent)` }}>
                   R{i + 1}
                 </span>
                 {g.tasks.join(", ")}

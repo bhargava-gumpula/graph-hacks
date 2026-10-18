@@ -133,19 +133,21 @@ export async function waitNotices(g: SbGraph, agent: string, now = Date.now()): 
   return { waiting, freed };
 }
 
+/** How the holder lets go: the MCP `release` tool first (what an agent has), the CLI when it has no MCP. */
+const releaseHint = (held: string, me: string) =>
+  `When you're done with it, release it: call the switchboard MCP tool \`release\` with paths ["${held}"] ` +
+  `(no MCP: \`switchboard release ${held} --agent ${me}\`). Ending your session releases it too.`;
+
 /** The notices as plain sentences for the agent's context. `me` is the agent being told. */
 export function formatNotices(n: Notices, me: string): string {
   const lines: string[] = [];
   for (const w of n.waiting) {
     if (w.wanted === w.held) {
-      lines.push(`${w.waiter} is waiting on ${w.held}, which you hold. Release it when you're done: switchboard release ${w.held} --agent ${me}`);
+      lines.push(`${w.waiter} is waiting on ${w.held}, which you hold. ${releaseHint(w.held, me)}`);
       continue;
     }
     const hops = Math.max(w.via.length - 1, 1);
-    lines.push(
-      `${w.waiter} is waiting on ${w.held}: it wants ${w.wanted}, ${hops} import${hops === 1 ? "" : "s"} from your claim. ` +
-        `Release it when you're done: switchboard release ${w.held} --agent ${me}`,
-    );
+    lines.push(`${w.waiter} is waiting on ${w.held}: it wants ${w.wanted}, ${hops} import${hops === 1 ? "" : "s"} from your claim. ${releaseHint(w.held, me)}`);
   }
   for (const f of n.freed) {
     lines.push(f.wanted === f.held ? `${f.held} is free now; you can retry.` : `${f.held} is free now; you can retry ${f.wanted}.`);

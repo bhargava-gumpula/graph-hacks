@@ -74,11 +74,13 @@ export type WaitState = { kind: "waiting"; path: string; holder: string } | { ki
 /**
  * Who is waiting for a file and who may go now, from the newest events: a `wait` (refused, waiting for its
  * holder) until a `free` naming the agent, which lasts until that agent claims, is refused again or releases.
+ * A claim or release after the refusal maps the agent to null: it moved on, so it is neither waiting nor
+ * blocked (a freed waiter whose session ends must not show its old refusal again).
  */
-export function waitStates(events: FeedItem[]): Map<string, WaitState> {
-  const out = new Map<string, WaitState>();
+export function waitStates(events: FeedItem[]): Map<string, WaitState | null> {
+  const out = new Map<string, WaitState | null>();
   const settled = new Set<string>();
-  const set = (agent: string, w: WaitState) => {
+  const set = (agent: string, w: WaitState | null) => {
     if (!settled.has(agent)) out.set(agent, w);
     settled.add(agent);
   };
@@ -89,7 +91,8 @@ export function waitStates(events: FeedItem[]): Map<string, WaitState> {
       if (agent && p.path) set(agent, { kind: "waiting", path: p.path, holder: p.holder ?? "" });
     } else if (e.kind === "free" && p.path) {
       for (const agent of p.waiters ?? []) set(agent, { kind: "free", path: p.path });
-    } else if ((e.kind === "claim" || e.kind === "conflict" || e.kind === "release") && e.agentId) settled.add(e.agentId);
+    } else if ((e.kind === "claim" || e.kind === "release") && e.agentId) set(e.agentId, null);
+    else if (e.kind === "conflict" && e.agentId) settled.add(e.agentId);
   }
   return out;
 }
@@ -202,6 +205,7 @@ export function AgentsPanel({
   events,
   status,
   hit,
+  repo = null,
   onPick,
   onPath,
 }: {
@@ -209,6 +213,8 @@ export function AgentsPanel({
   claims: Claim[];
   events: FeedItem[];
   status: LiveStatus;
+  /** A live graph's repo: real editors, so no Play to point at. */
+  repo?: string | null;
   hit: Hit | null;
   onPick: (path: string) => void;
   onPath: (path: string[]) => void;
@@ -244,6 +250,10 @@ export function AgentsPanel({
       <p className="p-5 text-sm leading-relaxed text-[var(--muted)]">
         {status === "offline" ? (
           "No agents to show while the server is unreachable."
+        ) : repo ? (
+          <>
+            No agents yet. Start Claude Code or Cursor in <span className="font-mono text-[var(--fg)]">{repo}</span>: each one shows up here with its claims.
+          </>
         ) : (
           <>
             No agents yet. Press <span className="text-[var(--fg)]">Play the demo</span>, or connect Claude Code or Cursor through the MCP server.
@@ -263,7 +273,7 @@ export function AgentsPanel({
           const tool = scripted || namesEditor(id) ? null : agentTool(a, events);
           const w = waits.get(id);
           // A wait (or the free after it) is newer than the refusal it follows, so it replaces the blocked row.
-          const b = !w && blocked?.agent === id ? blocked.conflict : null;
+          const b = !waits.has(id) && blocked?.agent === id ? blocked.conflict : null;
           return (
             <motion.li
               key={a.id}

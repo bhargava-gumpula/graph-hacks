@@ -43,7 +43,8 @@ describe("hook: refusal becomes coordination", () => {
       hookEventName: "PostToolUse",
       additionalContext:
         "cursor@main is waiting on auth/session.ts: it wants ui/LoginForm.tsx, 2 imports from your claim. " +
-        "Release it when you're done: switchboard release auth/session.ts --agent claude@main",
+        'When you\'re done with it, release it: call the switchboard MCP tool `release` with paths ["auth/session.ts"] ' +
+        "(no MCP: `switchboard release auth/session.ts --agent claude@main`). Ending your session releases it too.",
     });
     // Told once.
     expect(await run("claude", "pre", claudeEdit("auth/session.ts"))).toEqual({});

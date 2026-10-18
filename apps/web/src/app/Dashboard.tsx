@@ -52,6 +52,10 @@ export function Dashboard() {
   const [playing, setPlaying] = useState(false);
   const [run, setRun] = useState(0);
   const [health, setHealth] = useState<Health | null>(null);
+  // Health answered (or failed) once: until then the page cannot tell the scripted demo from a live graph.
+  const [healthDone, setHealthDone] = useState(false);
+  /** The real repo this server watches (SB_REPO): a live graph of real editors, not the scripted demo. */
+  const liveRepo = health?.repo ?? null;
   const [hoverAgent, setHoverAgent] = useState<string | null>(null);
   const [demoErr, setDemoErr] = useState<string | null>(null);
   // Open: a key per opening, so a reopen during the exit animation mounts a fresh dialog. Closed: null.
@@ -147,7 +151,8 @@ export function Dashboard() {
       api
         .health()
         .then((h) => on && setHealth(h))
-        .catch(() => on && setHealth(null));
+        .catch(() => on && setHealth(null))
+        .finally(() => on && setHealthDone(true));
     void load();
     const t = setInterval(load, 15000);
     return () => {
@@ -258,15 +263,15 @@ export function Dashboard() {
   // /app?play=1 plays once, as soon as the first data is on screen, then drops the param.
   const autoPlayed = useRef(false);
   useEffect(() => {
-    if (autoPlayed.current || !live.graph || (live.status !== "live" && live.status !== "replay")) return;
+    if (autoPlayed.current || !healthDone || !live.graph || (live.status !== "live" && live.status !== "replay")) return;
     autoPlayed.current = true;
     const url = new URL(window.location.href);
-    if (!url.searchParams.has("play")) return;
+    if (!url.searchParams.has("play") || liveRepo) return;
     void playDemo();
     url.searchParams.delete("play");
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live.graph, live.status]);
+  }, [live.graph, live.status, healthDone]);
 
   /* ------------------------------ Guided tour ------------------------------ */
 
@@ -295,8 +300,9 @@ export function Dashboard() {
   // First visit (or ?tour=1) opens the tour once the graph is on screen. ?play=1 wins: it plays instead.
   const autoTour = useRef(false);
   useEffect(() => {
-    if (autoTour.current || !live.graph || (live.status !== "live" && live.status !== "replay")) return;
+    if (autoTour.current || !healthDone || !live.graph || (live.status !== "live" && live.status !== "replay")) return;
     autoTour.current = true;
+    if (liveRepo) return; // the tour plays the scripted demo, which a live graph does not have
     const asked = params.get("tour") === "1";
     if (asked) {
       const url = new URL(window.location.href);
@@ -305,7 +311,7 @@ export function Dashboard() {
     }
     if (asked || (!params.has("play") && !tourSeen())) startTour();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live.graph, live.status]);
+  }, [live.graph, live.status, healthDone]);
 
   const steps: TourStep[] = [
     {
@@ -450,7 +456,7 @@ export function Dashboard() {
 
   const onPath = (p: string[]) => setSelected(p[p.length - 1] ?? null);
   const tiles = live.graph
-    ? { collisions, checkMs: story?.checkMs ?? null, groups: groups.length || null, files: files.length, imports, shared: health?.visitor === "shared" }
+    ? { collisions, checkMs: story?.checkMs ?? null, groups: groups.length || null, files: files.length, imports, shared: health?.visitor === "shared", live: liveRepo != null }
     : null;
 
   return (
@@ -468,11 +474,14 @@ export function Dashboard() {
               </svg>
               <span className="sr-only sm:not-sr-only">Switchboard</span>
             </a>
-            <span className="hidden truncate text-xs text-[var(--muted)] xl:inline">
-              {health?.repo
-                ? `${health.repo}: live agents on a ${files.length}-file repo${health.db?.where === "cloud" ? ", graph in FalkorDB Cloud" : ""}`
-                : `Live demo: two scripted agents on a ${files.length || 35}-file repo`}
-            </span>
+            {liveRepo ? (
+              <span className="hidden truncate text-xs text-[var(--muted)] md:inline">
+                Live graph · <span className="text-[var(--fg)]">{liveRepo}</span> · {files.length} files
+                {health?.db?.where === "cloud" ? " · FalkorDB Cloud" : ""}
+              </span>
+            ) : (
+              <span className="hidden truncate text-xs text-[var(--muted)] xl:inline">Live demo: two scripted agents on a {files.length || 35}-file repo</span>
+            )}
             <span className="flex items-center gap-1.5 text-xs text-[var(--muted)]" title={`Stream: ${STATUS_LABEL[live.status]}${live.graphName ? ` (graph ${live.graphName})` : ""}`}>
               <span
                 className={`size-1.5 rounded-full transition-colors ${
@@ -498,6 +507,7 @@ export function Dashboard() {
             >
               <PlugsConnected size={14} /> <span className="hidden lg:inline">Connect</span>
             </button>
+            {!liveRepo && (
             <button
               type="button"
               onClick={() => (tour == null ? startTour(true) : endTour())}
@@ -508,6 +518,8 @@ export function Dashboard() {
             >
               <Compass size={14} /> <span className="hidden md:inline">Guided tour</span>
             </button>
+            )}
+            {!liveRepo && (
             <button
               type="button"
               data-tour="batches"
@@ -520,6 +532,8 @@ export function Dashboard() {
             >
               <Rows size={14} /> <span className="hidden md:inline">Rounds</span>
             </button>
+            )}
+            {!liveRepo && (
             <button
               type="button"
               onClick={resetDemo}
@@ -531,6 +545,7 @@ export function Dashboard() {
               <ArrowCounterClockwise size={14} className={resetting ? "motion-safe:animate-spin [animation-direction:reverse]" : undefined} />{" "}
               <span className="hidden lg:inline">{resetting ? "Resetting" : "Reset demo"}</span>
             </button>
+            )}
             <div data-tour="actions" className="flex items-center gap-2">
             <button
               ref={tryBtn}
@@ -543,6 +558,7 @@ export function Dashboard() {
             >
               <HandGrabbing size={14} /> <span className="hidden sm:inline">Try a claim</span>
             </button>
+            {!liveRepo && (
             <button
               type="button"
               onClick={playDemo}
@@ -554,6 +570,7 @@ export function Dashboard() {
                 Play<span className="hidden sm:inline"> the demo</span>
               </span>
             </button>
+            )}
             </div>
           </div>
         </header>
@@ -635,7 +652,7 @@ export function Dashboard() {
                   setHoverAgent(li?.getAttribute("data-agent") ?? null);
                 }}
               >
-                <AgentsPanel agents={agents} claims={shownClaims} events={events} status={live.status} hit={fresh ? null : shown} onPick={setSelected} onPath={onPath} />
+                <AgentsPanel agents={agents} claims={shownClaims} events={events} status={live.status} hit={fresh ? null : shown} repo={liveRepo} onPick={setSelected} onPath={onPath} />
               </div>
             </div>
           </aside>
@@ -698,7 +715,7 @@ export function Dashboard() {
 
             {live.graph && tour == null && (
               <div className="pointer-events-none absolute bottom-4 left-4 z-10 hidden w-[min(440px,calc(100%-10rem))] sm:block">
-                <StoryCaption demo={story} hold={waiting || Boolean(health?.repo)} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
+                <StoryCaption demo={story} hold={waiting || liveRepo != null} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
               </div>
             )}
           </main>
@@ -706,7 +723,7 @@ export function Dashboard() {
           <aside data-tour="panels" className="flex min-h-0 flex-col border-t border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-sm lg:border-l lg:border-t-0">
             {live.graph && tour == null && (
               <div className="shrink-0 border-b border-[var(--border)] p-3 sm:hidden">
-                <StoryCaption demo={story} hold={waiting || Boolean(health?.repo)} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
+                <StoryCaption demo={story} hold={waiting || liveRepo != null} run={run} cypher={cypher?.conflict} onTour={() => startTour(true)} />
               </div>
             )}
             <div
@@ -885,6 +902,7 @@ function Tiles({
   imports,
   shared = false,
   compact = false,
+  live = false,
 }: {
   collisions: number;
   checkMs: number | null;
@@ -894,6 +912,8 @@ function Tiles({
   /** Every private copy of the demo is taken, so this tab shares one with other visitors. */
   shared?: boolean;
   compact?: boolean;
+  /** A live graph (real editors): no Play, so the timed check and the rounds tiles do not apply. */
+  live?: boolean;
 }) {
   const value = compact ? "text-lg font-semibold" : "text-2xl font-semibold tracking-tight";
   const label = "text-[11px] text-[color:var(--muted)]";
@@ -903,7 +923,7 @@ function Tiles({
         initial="hidden"
         animate="show"
         variants={{ show: { transition: { staggerChildren: 0.07 } } }}
-        className={compact ? "grid grid-cols-[1.3fr_1fr_1fr] gap-2" : "grid grid-cols-2 gap-2"}
+        className={live ? "grid gap-2" : compact ? "grid grid-cols-[1.3fr_1fr_1fr] gap-2" : "grid grid-cols-2 gap-2"}
       >
         <Tile accent className={compact ? "" : "col-span-2"}>
           {/* Backlight: flares each time the count changes. */}
@@ -928,6 +948,8 @@ function Tiles({
             />
           </div>
         </Tile>
+        {!live && (
+        <>
         <Tile>
           {checkMs == null ? (
             <Pending label="Graph check" />
@@ -946,6 +968,8 @@ function Tiles({
             </div>
           )}
         </Tile>
+        </>
+        )}
       </motion.div>
       {!compact && (
         <p className="mt-3 font-mono text-[11px] text-[var(--muted)]">

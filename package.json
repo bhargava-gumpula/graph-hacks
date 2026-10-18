@@ -33,6 +33,8 @@
     "demo:setup": "tsx scripts/demo-live.mjs setup",
     "demo:start": "tsx scripts/demo-live.mjs start",
     "demo:reset": "tsx scripts/demo-live.mjs reset",
+    "demo:cursor": "tsx scripts/demo-live.mjs cursor",
+    "demo:log": "tsx scripts/demo-live.mjs log",
     "demo:stop": "tsx scripts/demo-live.mjs stop"
   },
   "bin": {

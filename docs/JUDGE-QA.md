@@ -28,7 +28,7 @@ No, not beyond parsing our own repo once (60 files and 81 imports on Oct 15). Th
 
 ## 7. Who wrote what?
 
-AI coding agents wrote almost all of the code: Cursor with Claude Opus 5.5 and Grok 4.7, and Claude Code with Claude Opus 5.5. The owner made the product decisions in `docs/PLAN.md` §0.6 (the idea, the two tracks, FalkorDB as the only store, checking claims against the parsed import graph, the AI briefing summary, the benchmark), ran the editor tests that needed a person, and directed the UI rebuild, while the main Opus 5.5 chat wrote the task briefs and reviewed and merged the branches; `docs/DESIGN.md` gives the reason for each design choice.
+AI coding agents wrote almost all of the code: Cursor with Claude Opus 5.5 and Grok 4.7, and Claude Code with Claude Opus 5.5. The owner made the product decisions recorded in `docs/PLAN.md` §0.6 (the idea, the two tracks, the name, the coding setup, the AI briefing summary, the benchmark), ran the editor tests that needed a person, and directed the UI rebuild. Checking claims against the parsed import graph is the core of the idea he chose (PLAN §0.3). FalkorDB as the only store is a project rule for the coding agents (PLAN §17.6), not a recorded owner decision. The main Opus 5.5 chat wrote the task briefs and reviewed and merged the branches; `docs/DESIGN.md` gives the reason for each design choice.
 
 ## 8. What breaks without FalkorDB?
 

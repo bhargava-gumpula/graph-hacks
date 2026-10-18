@@ -75,7 +75,9 @@ On the last full day, a blind panel of five AI reviewers, each given a different
 
 ## PageRank and hubs
 
-`lib/utils.ts` is imported by 20 of the 35 files. If a path through it counted, every claim would conflict with every other. `algo.pageRank` scores each file over the import edges, and a rule flags the hubs: 10 or more importers, or at least 3 importers and a score at least 4 times the average. A path that runs through a hub in the middle does not count. Claiming the hub itself still conflicts with everything that imports it.
+The plan worried about a "utils problem". `lib/utils.ts` is imported by 20 of the 35 files, so a path through it would surely make every claim conflict. It would not. The conflict query follows imports in their direction, and a file sits in the middle of a path only if it imports something. `lib/utils.ts` imports nothing, so its importers were never linked through it, and on the demo repo the hub rule changes no result.
+
+The rule is for hubs that import other code, like an `index.ts` barrel that re-exports other modules. Without it, every file that imports the barrel is chained to everything the barrel imports. `algo.pageRank` scores each file over the import edges, and a rule flags the hubs: 10 or more importers, or at least 3 importers and a score at least 4 times the average. A path that runs through a hub in the middle does not count. Claiming the hub itself still conflicts with everything that imports it. The price is that a real chain through a barrel, `A → index.ts → B`, goes unchecked.
 
 ## Four FalkorDB gotchas
 
@@ -120,4 +122,4 @@ Next is a tree-sitter parser for more languages, symbol-level claims (the import
 
 ## AI disclosure
 
-AI coding agents wrote almost all of the code: Cursor (Claude Opus 5.5 and Grok 4.7) and Claude Code. They also drafted this post. I chose the idea and the tracks, required that FalkorDB be the only store and that claims be checked against the parsed import graph, chose to add the benchmark and the optional AI summary, ran the editor tests that needed a person, and directed the UI rebuild. The first code commit came after the hackathon start, and every earlier commit is notes. The only model call inside the product is an optional Claude Haiku summary of a briefing, off unless an API key is set.
+AI coding agents wrote almost all of the code: Cursor (Claude Opus 5.5 and Grok 4.7) and Claude Code. They also drafted this post. I chose the idea, whose core is checking claims against the parsed import graph, and the tracks, chose to add the benchmark and the optional AI summary, ran the editor tests that needed a person, and directed the UI rebuild. The first code commit came after the hackathon start, and every earlier commit is notes. The only model call inside the product is an optional Claude Haiku summary of a briefing, off unless an API key is set.

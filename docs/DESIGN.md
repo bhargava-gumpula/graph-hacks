@@ -2,7 +2,7 @@
 
 Each decision below has the choice, the reason, what it costs, and where to check it. The reasons come from the plan ([PLAN.md](PLAN.md) §0.6, §2.1, §3, §4, §9 and the owner answers in §18), the engineering log ([DEVLOG.md](DEVLOG.md)) and the code. Where a choice came from a review rather than from the owner, it says so.
 
-The owner set two requirements: FalkorDB is the only store, and a claim is checked against the dependency graph parsed from the code, not against a list of file names. Section 1 follows from those. Sections 2, 3, 4, 5, 6 and 8 were proposed in the plan, which was drafted with an AI chat before the hackathon, or found during the build, and kept after testing. Section 7 came from a review.
+Two starting points shape the rest. Checking a claim against the dependency graph parsed from the code, not against a list of file names, is the core of the idea the owner chose: the plan gives "its dependency data is real (parsed from code)" as a reason Switchboard was picked (PLAN §0.3), and the owner's choice of the idea is recorded in §0.6. Keeping FalkorDB as the only store is a project rule in the plan's execution manual for the coding agents (PLAN §17.6, rule 4), not a separate owner decision. Section 1 follows from those two. Sections 2, 3, 4, 5, 6 and 8 were proposed in the plan, which was drafted with an AI chat before the hackathon, or found during the build, and kept after testing. Section 7 came from a review.
 
 ## 1. Why a graph
 
@@ -58,9 +58,9 @@ The owner set two requirements: FalkorDB is the only store, and a claim is check
 
 **Choice.** A file is a hub when 10 or more files import it, or when at least 3 do and its PageRank score is at least 4 times the average. A conflict path may not pass through a hub. A claim on the hub itself still conflicts.
 
-**Why.** Almost every file imports something like `lib/utils.ts`. If a path through it counted, every claim would conflict with every other (PLAN §4 Q6 and §9 question 11). PageRank over `IMPORTS` is one built-in call, `algo.pageRank`. We also tried `algo.betweenness` with the same kind of rule. On the demo repo it also flagged `api/notes.ts` and `api/users.ts` and dropped 10 of the 72 linked pairs, so we kept PageRank (README, Limits).
+**Why.** The plan expected a "utils problem": a file nearly everything imports, like `lib/utils.ts`, would make every claim conflict (PLAN §4 Q6 and §9 question 11). That is not how the conflict query behaves. It follows import edges only in their direction, from my file through what it imports to a claimed file, or from a claimed file through what it imports to mine. A file can sit in the middle of such a path only if it imports something. `lib/utils.ts` imports nothing, so in the demo repo the hub rule changes no result. The rule is for hubs that import other code, such as an index or barrel file that re-exports other modules. Without it, every file that imports the barrel would be chained to everything the barrel imports. On this repo's `apps/web` it flags 3 files and drops 13 of the 292 linked pairs (README, Limits). PageRank over `IMPORTS` is one built-in call, `algo.pageRank`. We also tried `algo.betweenness` with the same kind of rule. On the demo repo it also flagged `api/notes.ts` and `api/users.ts` and dropped 10 of the 72 linked pairs, so we kept PageRank (README, Limits).
 
-**Cost.** Two files that share only a hub never conflict, even when a change to the hub's behaviour affects both. The thresholds were tuned on the 35-file demo repo.
+**Cost.** A dependency chain through a hub that imports other code goes unchecked: if `A` imports a barrel file and the barrel imports `B`, agents editing `A` and `B` are not told about each other. Two importers of a hub never conflict with each other, but that comes from edge direction, not from the hub rule: neither imports the other, so no path joins them. A change to the hub itself still conflicts with its importers, because a hub at either end of a path counts. The thresholds were tuned on the 35-file demo repo, and how many of the skipped chains were real collisions is not measured.
 
 **Where.** `packages/core/src/queries/hubs.ts`.
 

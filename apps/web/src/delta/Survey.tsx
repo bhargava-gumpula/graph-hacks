@@ -444,6 +444,7 @@ export function Survey() {
       // How chapter: leader lines from the map key to the live objects they name.
       const leadOn = chs[i]!.id === "how" && k < 0.05 && !small;
       leads.current!.style.opacity = leadOn ? "1" : "0";
+      gateChip.style.display = leadOn ? "none" : "";
       if (leadOn) {
         const tgt: Record<string, [number, number]> = {
           edge: [legMid[0], legMid[1]],
@@ -495,7 +496,8 @@ export function Survey() {
         },
       );
       st.dataset.phase = phase;
-      gate.style.opacity = phase === "held" ? "1" : "0";
+      const hideGate = underCopy && chs[i]!.id !== "story";
+      gate.style.opacity = phase === "held" && !hideGate ? "1" : "0";
       const tag = phase === "free" ? "Agent B, free" : "Agent B";
       if (bTagT.textContent !== tag) bTagT.textContent = tag;
       // The tag takes the first spot around the boat that clears the route chips, the frame and the nav.

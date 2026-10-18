@@ -1,0 +1,38 @@
+{
+	"cold": {
+		"text": "Your coding agents can't see each other.",
+		"seconds": 2.186803
+	},
+	"worktrees": {
+		"text": "Each agent gets its own worktree. Agent A makes the session label an object. Agent B shows that label on login. Both type check alone.",
+		"seconds": 8.391701
+	},
+	"chain": {
+		"text": "But the repo is a graph. The login form imports login, and login imports the session module. Two imports apart, and neither agent can see that link.",
+		"seconds": 8.978776
+	},
+	"without": {
+		"text": "A file lock sees two different files and says yes. Merge both, and the build breaks with a real type error.",
+		"seconds": 6.161633
+	},
+	"with": {
+		"text": "Switchboard keeps one FalkorDB graph of the repo's imports and of who is editing what. Before each edit, a hook asks the graph whether an import path links that file to another agent's claim. If one does, the edit is refused with the exact path, and the agent is told when the file is free.",
+		"seconds": 16.416372
+	},
+	"demo": {
+		"text": "Here is the live site. The agents are scripted, but the graph and the check are real. Agent A is changing the session module. Agent B wants the login form, a different file in a different folder. Switchboard follows the imports, two hops, and refuses the edit before any code is written. The same graph remembers decisions and lessons. Tasks are put in rounds by the imports between their files, and tasks in one round run at the same time.",
+		"seconds": 25.656825
+	},
+	"bench": {
+		"text": "The proof. Ten runs, same two edits, real TypeScript compiler. Without Switchboard, ten of ten merged builds broke. With it, zero, and the median check takes 0.7 milliseconds. CI would catch this too, after the merge. Switchboard stops it before a line is written.",
+		"seconds": 17.85161
+	},
+	"install": {
+		"text": "To install in Claude Code, add the marketplace and install the plugin. Or clone the repo and run npm run quickstart.",
+		"seconds": 7.070385
+	},
+	"outro": {
+		"text": "Try the live demo at switchboard-agents.xyz. Switchboard, built on FalkorDB.",
+		"seconds": 5.433696
+	}
+}

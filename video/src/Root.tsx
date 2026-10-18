@@ -1,5 +1,7 @@
 import {Composition, Folder} from 'remotion';
+import {DEMO_FRAMES, Demo} from './Demo';
 import {Explainer, Short} from './Films';
+import {LIVE_FRAMES, Live} from './Live';
 import {Bench} from './scenes/Bench';
 import {Chain} from './scenes/Chain';
 import {ColdOpen} from './scenes/ColdOpen';
@@ -13,6 +15,8 @@ import {Worktrees} from './scenes/Worktrees';
 export const RemotionRoot: React.FC = () => (
 	<>
 		<Composition id="Explainer" component={Explainer} width={1920} height={1080} fps={30} durationInFrames={2140} defaultProps={{guides: true}} />
+		<Composition id="Demo" component={Demo} width={1920} height={1080} fps={30} durationInFrames={DEMO_FRAMES} />
+		<Composition id="Live" component={Live} width={1920} height={1080} fps={30} durationInFrames={LIVE_FRAMES} />
 		<Composition id="Short" component={Short} width={1080} height={1920} fps={30} durationInFrames={450} defaultProps={{guides: false}} />
 		<Folder name="Scenes">
 			<Composition id="ColdOpen" component={ColdOpen} width={1920} height={1080} fps={30} durationInFrames={150} defaultProps={{style: {backgroundColor: '#0b0b0d'}}} />

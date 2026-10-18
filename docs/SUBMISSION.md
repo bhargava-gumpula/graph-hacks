@@ -2,7 +2,7 @@
 
 The form at https://www.wemakedevs.org/hackathons/falkordb/submit is open. The owner is signed in and registered. Submissions can be edited until **Sun Oct 18, 11:29 AM PT**. Paste these in, then check every number against the merged code.
 
-Rules to remember: the repo must be **public** with a README (setup steps, graph data model, the Cypher used, the demo video, a live deployment or full local setup, the track). AI coding tools are allowed but must be disclosed. You must be able to explain the code and the graph model, and mostly AI-generated projects may be rejected. Read `docs/JUDGE-QA.md` before recording the video.
+Rules to remember: the repo must be **public** with a README (setup steps, graph data model, the Cypher used, the demo video, a live deployment or full local setup, the track). AI coding tools are allowed but must be disclosed. You must be able to explain the code and the graph model, and mostly AI-generated projects may be rejected. Read `docs/DESIGN.md` and `docs/JUDGE-QA.md` before recording the video.
 
 ## Project title (required)
 Switchboard
@@ -10,7 +10,7 @@ Switchboard
 ## Description (required)
 > Hint: what problem does your project solve, and who is it for?
 
-Teams that run several AI coding agents at once (Claude Code, Cursor) hit a quiet failure: each agent's change is fine alone, but two changes two imports apart break the build after both merge. Worktrees and file locks don't see it, because the agents never touch the same file.
+Teams that run several AI coding agents at once (Claude Code, Cursor) hit a quiet failure: each agent's change is fine alone, but two changes two imports apart break the build after both merge. Worktrees and file locks don't see it, because the agents never touch the same file. CI finds it, but only after both agents are done, and then one of them redoes its work.
 
 Switchboard gives the agents one shared FalkorDB graph: the repo's import graph, who has claimed which file, and the team's decisions, lessons and events. Before an agent edits a file, a hook asks the graph whether any import path connects that file to another agent's claim. If one does, the edit is refused and the agent is told the exact path and who holds the other end. The same graph briefs a replacement agent, explains why a file looks the way it does, shows the blast radius of a change, and splits tasks into rounds that can safely run in parallel.
 
@@ -21,7 +21,7 @@ It's for developers and small teams who already run more than one coding agent o
 - [x] Agents That Act on Connected Data
 
 ## Repository (required)
-https://github.com/bhargava-gumpula/graph-hacks (make it public first)
+https://github.com/bhargava-gumpula/graph-hacks (public since Oct 17). Design decisions and the reasons: `docs/DESIGN.md`.
 
 ## Demo video (required)
 YouTube link, public or unlisted. Script: `docs/DEMO.md`. Draft cut: `video/out/explainer.mp4`.

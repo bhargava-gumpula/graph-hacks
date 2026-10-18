@@ -551,7 +551,7 @@ export function Survey() {
             className="sv-photo"
             src="/photos/delta-2400.jpg"
             srcSet="/photos/delta-1200.jpg 1200w, /photos/delta-2400.jpg 2400w"
-            sizes="(max-width: 700px) 400px, 2400px"
+            sizes="2400px"
             width={PW}
             height={PH}
             alt=""

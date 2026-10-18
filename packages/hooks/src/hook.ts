@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   brief,
@@ -176,14 +176,23 @@ export interface Ctx {
   base?: string;
 }
 
+/** The real path of a file that may not exist yet (a Write of a new file): its folder's real path plus its name. */
+function realFile(abs: string): string {
+  try {
+    return realpathSync(abs);
+  } catch {
+    return join(realpathSync(dirname(abs)), basename(abs));
+  }
+}
+
 /** A path the agent sent, as the graph stores it; null when it is outside the parsed repo. */
 export function repoPath(file: string, cwd: string, root: string, prefix: string): string | null {
   const abs = resolve(cwd, file);
   let rel = relative(root, abs).split("\\").join("/");
-  // git reports real paths (/private/var on macOS); the root may not be one.
+  // git reports real paths (/private/var on macOS) and the editor may not (/var, a symlinked folder): compare real ones.
   if (rel.startsWith("../")) {
     try {
-      rel = relative(realpathSync(root), abs).split("\\").join("/");
+      rel = relative(realpathSync(root), realFile(abs)).split("\\").join("/");
     } catch {
       // keep the first answer
     }

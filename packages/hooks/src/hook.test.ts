@@ -1,7 +1,7 @@
 // The hook's answers for crafted Claude Code and Cursor events, against a real FalkorDB graph of demo-repo.
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
@@ -195,6 +195,18 @@ describe("hook helpers", () => {
     expect(repoPath("/r/packages/x.ts", "/r", "/r", "demo")).toBeNull();
     expect(repoPath("/elsewhere/x.ts", "/r", "/r", "")).toBeNull();
     expect(repoPath("src/x.ts", "/r", "/r", "")).toBe("src/x.ts");
+    // The editor's path through a symlink (macOS /var is /private/var); git gives the real root. A new file too.
+    const real = realpathSync(mkdtempSync(join(tmpdir(), "sb-real-")));
+    const link = `${real}-link`;
+    symlinkSync(real, link);
+    try {
+      writeFileSync(join(real, "a.ts"), "");
+      expect(repoPath(join(link, "a.ts"), link, real, "")).toBe("a.ts");
+      expect(repoPath(join(link, "new.ts"), link, real, "")).toBe("new.ts");
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
   });
 
   test("answer uses each editor's documented fields", () => {

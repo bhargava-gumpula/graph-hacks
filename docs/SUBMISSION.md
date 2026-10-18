@@ -38,6 +38,10 @@ https://switchboard-agents.xyz/app?play=1 (local setup is in the README too).
 - **Parallel rounds.** One read query finds every pair of open tasks whose files sit within 3 import hops of each other, by the claim check's rules. A greedy colouring puts the tasks into rounds: tasks in a round run at the same time, round 0 first. On a chain A-B-C, A and C share a round. Reading the rounds writes nothing to the graph.
 - **Memory in the same graph.** Decisions, lessons and events are nodes linked to files, agents and tasks. A why-trace walks file → edit → task → decision; a briefing for a new agent gathers claims, recent decisions and lessons near the files it will touch.
 - **Live feed.** Every claim, refusal and edit is an event node with a gapless sequence number that the dashboard streams.
+- **Waiting, not just refusing.** A refused agent gets a `(:Agent)-[:WAITS_FOR]->(:File)` edge; the holder is told someone is waiting, and the waiter is told the moment the claim is released.
+- **Full-text memory search.** `db.idx.fulltext.queryNodes` over decisions and lessons backs the `search_memory` tool and adds related decisions to an agent's briefing.
+- **Refusal history as a graph.** Each refusal event links `-[:VIA]->` every file on its path, so a `hotspots` query shows which files block agents most often.
+- **One graph per visitor.** The public demo gives each visitor a private copy with `GRAPH.COPY`, and FalkorDB Cloud hosts a shared graph so agents on different machines coordinate through one live graph.
 
 ## Blog link (optional)
 The published post (dev.to or Hashnode). Draft: `docs/blog.md`. Best blog wins AirPods 5.

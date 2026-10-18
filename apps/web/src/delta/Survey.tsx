@@ -289,7 +289,7 @@ export function Survey() {
       raf = requestAnimationFrame(frame);
       const vw = innerWidth;
       const vh = innerHeight;
-      const small = vw < 760;
+      const small = vw < 760 || vw / vh < 0.85;
       const s0 = Math.max(vw / PW, vh / PH);
       const line = vh * 0.55;
 
@@ -325,7 +325,7 @@ export function Survey() {
       const drift = reduce
         ? 1
         : 1 + 0.018 * (0.5 - 0.5 * Math.cos((time / 26) * Math.PI * 2));
-      s = s0 * cur.z * drift;
+      s = s0 * Math.max(cur.z, 1) * drift;
       tx = clamp(cur.ax * vw - cur.x * s, vw - PW * s, 0);
       ty =
         PH * s < vh
@@ -442,7 +442,7 @@ export function Survey() {
       const { a: pa, b: pb, aOn, phase } = story(ls);
 
       // How chapter: leader lines from the map key to the live objects they name.
-      const leadOn = chs[i]!.id === "how" && k < 0.05;
+      const leadOn = chs[i]!.id === "how" && k < 0.05 && !small;
       leads.current!.style.opacity = leadOn ? "1" : "0";
       if (leadOn) {
         const tgt: Record<string, [number, number]> = {

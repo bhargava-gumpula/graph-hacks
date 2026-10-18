@@ -46,6 +46,7 @@ const lensEdges = edges.map((e, i) => {
 });
 const HULL =
   "M24,0 C17,-9 -10,-10 -20,-8 L-20,8 C-10,10 17,9 24,0Z M2,-4 L-12,-4 L-12,4 L2,4Z";
+const legMid = along(legA.pts, 0.5);
 const deg = (r: number) => (r * 180) / Math.PI;
 // One import, as a scale bar: the median edge length in photo pixels.
 const HOP = [
@@ -138,6 +139,7 @@ export function Survey() {
   const plate = useRef<HTMLSpanElement>(null);
   const scale = useRef<HTMLSpanElement>(null);
   const scaleL = useRef<HTMLSpanElement>(null);
+  const leads = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     const st = stage.current!;
@@ -411,6 +413,35 @@ export function Survey() {
         ls = w1 > w0 ? w0 + (time % (w1 - w0)) : w0;
       } else ls = time % LOOP;
       const { a: pa, b: pb, aOn, phase } = story(ls);
+
+      // How chapter: leader lines from the map key to the live objects they name.
+      const leadOn = st.dataset.show === "all" && k < 0.05;
+      leads.current!.style.opacity = leadOn ? "1" : "0";
+      if (leadOn) {
+        const tgt: Record<string, [number, number]> = {
+          edge: [legMid[0], legMid[1]],
+          claim: [pa[0], pa[1]],
+          gate: [hold[0], hold[1]],
+          boat: [pb[0], pb[1]],
+        };
+        const lines = leads.current!.querySelectorAll("polyline");
+        const ends = leads.current!.querySelectorAll("circle");
+        document
+          .querySelectorAll<HTMLElement>("[data-lead]")
+          .forEach((li, j) => {
+            const r = li.getBoundingClientRect();
+            const [gx, gy] = tgt[li.dataset.lead!]!;
+            const x1 = gx * s + tx;
+            const y1 = gy * s + ty;
+            const x0 = r.right + 16;
+            const y0 = r.top + 12;
+            const pts = `${x0},${y0} ${x0 + 28},${y0} ${x1},${y1}`;
+            for (const l of [lines[j * 2], lines[j * 2 + 1]])
+              l?.setAttribute("points", pts);
+            ends[j]?.setAttribute("cx", x1.toFixed(1));
+            ends[j]?.setAttribute("cy", y1.toFixed(1));
+          });
+      }
       boatA.setAttribute(
         "transform",
         `translate(${pa[0].toFixed(1)} ${pa[1].toFixed(1)})`,
@@ -681,6 +712,15 @@ export function Survey() {
         <div ref={tip} className="sv-tip" role="status" />
       </div>
       <div className="sv-frame" aria-hidden="true">
+        <svg ref={leads} className="sv-leads">
+          {[0, 1, 2, 3].map((j) => (
+            <g key={j}>
+              <polyline className="sv-lead-u" />
+              <polyline className="sv-lead" />
+              <circle r="5" cx="-99" cy="-99" />
+            </g>
+          ))}
+        </svg>
         <span ref={plate} className="sv-plate" />
         <span className="sv-scale">
           <span ref={scale} className="sv-scale-bar" />

@@ -44,21 +44,25 @@ const F = ({ children }: { children: string }) => (
 const KEY = [
   {
     sym: "imports",
+    lead: "edge",
     t: "Imports",
     d: "Parsed from your code into FalkorDB. One edge per import, file to file.",
   },
   {
     sym: "claims",
+    lead: "claim",
     t: "Claims",
     d: "Every edit claims its file for 30 minutes, renewed while the agent works.",
   },
   {
     sym: "refusal",
+    lead: "gate",
     t: "Refusals",
     d: "An edit is refused when an import path of up to 3 hops links it to another agent's claim. The path is the reason.",
   },
   {
     sym: "wait",
+    lead: "boat",
     t: "Waiting",
     d: "The refused agent waits on that file and is told the moment it is free.",
   },
@@ -214,7 +218,7 @@ export function Landing() {
             </h2>
             <ul className="dl-key">
               {KEY.map((k) => (
-                <li key={k.t}>
+                <li key={k.t} data-lead={"lead" in k ? k.lead : undefined}>
                   <span className={`sym sym-${k.sym}`} aria-hidden="true" />
                   <div>
                     <p className="dl-key-t">{k.t}</p>

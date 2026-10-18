@@ -12,14 +12,16 @@ export function editorName(editor: string | undefined): string | undefined {
  * `SB_AGENT` wins; otherwise `<editor>@<branch>` of `cwd` (the checkout the agent is in), where the
  * editor is the argument or `SB_EDITOR`. So Claude Code and Cursor on one branch are two agents:
  * `claude@main` and `cursor@main`. With no editor it is the bare branch, as before.
+ * A second live session in the same editor on one branch gets `sessionAgentId` (the hook decides).
  */
-export function agentId(cwd?: string, editor: string | undefined = process.env.SB_EDITOR): string {
+export function agentId(cwd?: string, editor: string | undefined = process.env.SB_EDITOR, head?: string): string {
   const fromEnv = process.env.SB_AGENT?.trim();
   if (fromEnv) return fromEnv;
   const ed = editorName(editor);
   let branch: string | undefined;
   try {
-    const b = git(cwd, "--abbrev-ref", "HEAD");
+    // `head`: what `git rev-parse --abbrev-ref HEAD` printed, when the caller already asked git.
+    const b = head ?? git(cwd, "--abbrev-ref", "HEAD");
     // A detached HEAD prints "HEAD"; every detached checkout would then share one id.
     branch = b === "HEAD" ? `detached-${git(cwd, "--short", "HEAD")}` : b || undefined;
   } catch {

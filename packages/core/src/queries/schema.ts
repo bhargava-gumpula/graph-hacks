@@ -48,12 +48,28 @@ const INDEXES = [
   INDEX_LESSON_FULLTEXT,
 ];
 
+/** Bump when INDEXES changes, so every graph runs the new statements once. */
+export const SCHEMA_VERSION = 1;
+
+/** The marker ensureSchema leaves once a graph has every index: one read instead of nine writes. */
+export const SCHEMA_MARKER = "MATCH (m:Meta {key:'schema'}) RETURN m.version AS version";
+export const SET_SCHEMA_MARKER = "MERGE (m:Meta {key:'schema'}) SET m.version = $version";
+
 function alreadyIndexed(err: unknown): boolean {
   return err instanceof Error && err.message.includes("already indexed");
 }
 
-/** Create indexes and the seq counter. Safe to call again. */
+/**
+ * Create indexes and the seq counter, once per graph: a graph marked with this SCHEMA_VERSION costs one read.
+ * Safe to call again. (Events MERGE the seq counter themselves, so nothing breaks before this has run.)
+ */
 export async function ensureSchema(g: SbGraph): Promise<void> {
+  try {
+    const [row] = await g.roQuery(SCHEMA_MARKER);
+    if (row?.version === SCHEMA_VERSION) return;
+  } catch {
+    // a graph that does not exist yet: create it below
+  }
   for (const cypher of INDEXES) {
     try {
       await g.query(cypher);
@@ -62,4 +78,5 @@ export async function ensureSchema(g: SbGraph): Promise<void> {
     }
   }
   await g.query(SEQ_COUNTER);
+  await g.query(SET_SCHEMA_MARKER, { version: SCHEMA_VERSION });
 }

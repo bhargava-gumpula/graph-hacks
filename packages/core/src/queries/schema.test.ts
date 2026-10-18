@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { useTestGraph } from "../test-helpers.js";
-import { ensureSchema } from "./schema.js";
+import type { SbGraph } from "../graph.js";
+import { ensureSchema, SCHEMA_MARKER } from "./schema.js";
 
 const graph = useTestGraph("sb_test_schema");
 
@@ -45,4 +46,18 @@ test("the seq counter starts at 0 on a fresh graph", async () => {
   await graph().query("MATCH (m:Meta) DELETE m");
   await ensureSchema(graph());
   expect(await graph().roQuery("MATCH (m:Meta {key:'seq'}) RETURN m.value AS value")).toEqual([{ value: 0 }]);
+});
+
+test("ensureSchema runs once per graph: once marked, a call is one read and no write", async () => {
+  await ensureSchema(graph());
+  const g = graph();
+  const calls: string[] = [];
+  const spy: SbGraph = {
+    ...g,
+    query: (c, p, o) => (calls.push(c), g.query(c, p, o)),
+    roQuery: (c, p, o) => (calls.push(c), g.roQuery(c, p, o)),
+  };
+  await ensureSchema(spy);
+  await ensureSchema(spy);
+  expect(calls).toEqual([SCHEMA_MARKER, SCHEMA_MARKER]);
 });

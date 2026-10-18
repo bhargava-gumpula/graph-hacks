@@ -96,6 +96,66 @@ export function writeTargets(command: string): string[] {
   }
 }
 
+/** Commands that only read, whatever their arguments (`find`, `sed`, `sort` and `git` are checked below). */
+const READERS = new Set(
+  ("ls cat head tail wc grep egrep fgrep rg ag pwd echo printf which type file stat du df date whoami uname tree " +
+    "diff cmp cut tr nl jq less more basename dirname realpath readlink true false test [ sleep cd pushd popd").split(" "),
+);
+const GIT_READERS = new Set(["status", "diff", "log", "show", "rev-parse", "ls-files", "blame", "grep", "shortlog", "describe", "branch", "remote"]);
+
+/**
+ * True when a shell command surely changes no file: every part of it is a known reader (`ls`, `cat`, `grep`,
+ * `sed -n`, `git diff`...) and nothing is redirected to a file. The hook then skips it before git or the graph.
+ * Conservative: command substitution, a heredoc, `&`, subshells, loops or any other command read as a write.
+ */
+export function readOnly(command: string): boolean {
+  if (/\$\(|`|<<|<\(/.test(command)) return false;
+  for (const segment of command.split(/&&|\|\||[;|\n]/)) {
+    const w = words(segment.trim());
+    if (!w) return false;
+    if (w.length === 0) continue;
+    const rest: string[] = [];
+    for (let i = 0; i < w.length; i++) {
+      if (w[i] === "&") return false;
+      if (/^(\d|&)?>[>|]?$/.test(w[i]!)) {
+        const target = w[++i] ?? "";
+        if (!target.startsWith("/dev/") && !/^&\d$/.test(target)) return false;
+      } else rest.push(w[i]!);
+    }
+    while (rest.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(rest[0]!)) rest.shift();
+    const [cmd, ...args] = rest;
+    if (cmd === undefined) continue;
+    if (READERS.has(cmd)) continue;
+    if (cmd === "find" && !args.some((a) => /^-(delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/.test(a))) continue;
+    if (cmd === "sort" && !args.some((a) => a === "-o" || a.startsWith("--output"))) continue;
+    // `sed -n '1,40p' f`, not `sed -i` and not a script with a `w file` command.
+    if (cmd === "sed" && !args.some((a) => /^-[a-zA-Z]*i/.test(a) || a.startsWith("--in-place") || /(^|[/;}\s])w\s/.test(a))) continue;
+    if (cmd === "git") {
+      let i = 0;
+      while (args[i] === "-C" || args[i] === "-c" || args[i] === "--no-pager") i += args[i] === "--no-pager" ? 1 : 2;
+      if (GIT_READERS.has(args[i] ?? "") && !args.some((a) => a.startsWith("--output"))) continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+/** Of `paths` (relative to `dir`), the files git tracks: exact files only, so a folder (`dist`) or an ignored log is not one. */
+export function trackedFiles(dir: string, paths: string[]): Set<string> {
+  if (paths.length === 0) return new Set();
+  try {
+    const out = execFileSync("git", ["--literal-pathspecs", "-C", dir, "ls-files", "-z", "--", ...paths], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    });
+    const listed = new Set(out.split("\0"));
+    return new Set(paths.filter((p) => listed.has(p)));
+  } catch {
+    return new Set();
+  }
+}
+
 /** Dirty and untracked files of the git checkout around `dir`, by absolute path, each with its mtime (0 once deleted). */
 export function dirtyFiles(dir: string): Record<string, number> {
   const git = (...args: string[]) =>

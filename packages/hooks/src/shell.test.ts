@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, unlinkSync, utimesSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
-import { changedFiles, dirtyFiles, writeTargets } from "./shell.js";
+import { changedFiles, dirtyFiles, readOnly, writeTargets } from "./shell.js";
 
 describe("writeTargets", () => {
   test.each([
@@ -76,4 +76,37 @@ describe("dirtyFiles / changedFiles", () => {
     expect(changedFiles(before, dirtyFiles(repo))).toEqual(["a.ts", "b.ts", "c.ts", "new.ts"].map((f) => join(top, f)));
     expect(changedFiles(dirtyFiles(repo), dirtyFiles(repo))).toEqual([]);
   });
+});
+
+describe("readOnly", () => {
+  test.each([
+    "ls -la",
+    "cat a.ts && grep -n x b.ts | head -5",
+    "git status --short",
+    "git -C /r --no-pager diff HEAD~1",
+    "sed -n '1,40p' src/a.ts",
+    "find . -name '*.ts' 2>/dev/null | wc -l",
+    "cd packages && ls",
+    "rg foo src > /dev/null 2>&1",
+    "FOO=1 cat x",
+  ])("reads only: %s", (command) => expect(readOnly(command)).toBe(true));
+
+  test.each([
+    "npm test",
+    "echo hi > out.txt",
+    "cat a | tee b",
+    "sed -i '' 's/a/b/' f.ts",
+    "sed 's/a/b/w out' f.ts",
+    "find . -name x -delete",
+    "sort -o out.txt in.txt",
+    "ls $(cat list)",
+    "cat <<EOF > f.ts",
+    "sleep 1 & rm x",
+    "git checkout main",
+    "git diff --output=patch.txt",
+    "(cd x; rm y)",
+    "for f in *; do rm $f; done",
+    "rm -rf build",
+    'echo "unterminated',
+  ])("may write: %s", (command) => expect(readOnly(command)).toBe(false));
 });

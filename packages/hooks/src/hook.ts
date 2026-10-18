@@ -1,11 +1,15 @@
 // The editor hook, in Node: `switchboard hook <editor> <phase>`, the plugin's dist/hook.mjs, and what
 // packages/hooks/hook.sh runs. It talks to FalkorDB directly; the dashboard server reads the same graph.
 // Usage: hook <claude|cursor> <start|pre|post|notify|end>   (JSON event on stdin)
-//   start   register the agent, re-parse in the background, put a brief in the context.
-//   pre     claim the file (Edit/Write) or the obvious write targets of a shell command; on a conflict,
-//           deny with the import path and wait on the blocking file. SB_MODE=warn allows it with the text.
+//   start   register the agent, put a brief in the context; files changed since the graph last saw them are
+//           re-read in the background (a full load only when the graph has no parsed file yet).
+//   pre     claim the file (Edit/Write) or the obvious write targets of a shell command (parsed or git-tracked
+//           files only: not `dist` or a log); on a conflict, deny with the import path and wait on the
+//           blocking file. SB_MODE=warn allows it with the text.
 //   post    record the edit, or the files a shell command changed (git status before and after), minus
 //           files another agent claims or edited meanwhile: the checkout is shared, those edits are theirs.
+//           Each edited file is re-read alone (core updateFile); a hook never deletes another file's node.
+// A read-only shell command (`ls`, `git diff`, `grep`...) is skipped before git or the graph.
 //   notify  Cursor postToolUse: only the notices (who waits on your files, which files are free now).
 //   end     release this agent's claims; files others waited on are free, and its own waits end.
 // Fails open: FalkorDB down, a timeout, a parse failure or any error allows the edit. SWITCHBOARD_OFF=1 disables it.
@@ -13,7 +17,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   brief,
@@ -23,6 +27,7 @@ import {
   dbUrl,
   ensureSchema,
   formatBrief,
+  markHubs,
   recordEdit,
   redactUrl,
   registerAgent,
@@ -30,11 +35,13 @@ import {
   type Conflict,
   type SbGraph,
 } from "@switchboard/core";
-import { agentId } from "../../core/src/agent-id.js";
-import { othersOn } from "../../core/src/queries/claims.js";
+import { agentId, sessionAgentId } from "../../core/src/agent-id.js";
+import { isSourcePath } from "../../core/src/parser.js";
+import { endSession, othersOn, takeAgentId } from "../../core/src/queries/claims.js";
+import { recordLiveEdit, staleFiles } from "../../core/src/queries/loader.js";
 import { formatNotices, recordWaits, waitNotices } from "../../core/src/queries/waits.js";
 import { configure } from "../../npm/src/env.js";
-import { changedFiles, dirtyFiles, writeTargets } from "./shell.js";
+import { changedFiles, dirtyFiles, readOnly, trackedFiles, writeTargets } from "./shell.js";
 
 export type Editor = "claude" | "cursor";
 export type Phase = "start" | "pre" | "post" | "notify" | "end";
@@ -43,8 +50,8 @@ const PHASES: Phase[] = ["start", "pre", "post", "notify", "end"];
 const HERE = import.meta.dirname;
 /** Hooks must answer fast; past this the edit is allowed. SessionEnd may take longer: nobody waits on it. */
 const LIMIT_MS: Record<Phase, number> = { start: 4000, pre: 3000, post: 3000, notify: 3000, end: 8000 };
-/** A background re-parse at most this often per graph. */
-const PARSE_EVERY_MS = 20_000;
+/** A first full load of an empty graph at most this often per graph. */
+const LOAD_EVERY_MS = 20_000;
 /** A shell command that changed more files than this records only the first ones. */
 const MAX_SHELL_EDITS = 50;
 
@@ -57,11 +64,12 @@ const log = (editor: Editor, phase: Phase, msg: string) => {
   }
 };
 
-/** The refusal: the import path, then who holds it and for how long. */
-export function denyReason(conflicts: Conflict[], safe: string[] | undefined, now = Date.now()): string {
+/** The refusal: the import path, then who holds it and for how long. `unparsed`: requested files outside the parsed graph. */
+export function denyReason(conflicts: Conflict[], safe: string[] | undefined, now = Date.now(), unparsed: string[] = []): string {
   const lines = ["✗ Switchboard blocked this edit"];
   for (const c of conflicts) {
-    lines.push(c.path.join(" ─imports→ ") + (c.type === "SAME" ? " (same file)" : ""));
+    const same = unparsed.includes(c.file) ? " (same file; not in the parsed graph, so only the same file is checked)" : " (same file)";
+    lines.push(c.path.join(" ─imports→ ") + (c.type === "SAME" ? same : ""));
     let held = `held by ${c.agent}`;
     if (c.taskId) held += ` · task ${c.taskId}`;
     if (c.intent) held += ` "${c.intent}"`;
@@ -96,22 +104,60 @@ export function answer(editor: Editor, phase: Phase, a: { deny?: string; context
   return out;
 }
 
+const CLI = join(HERE, "switchboard.mjs");
+/** The plugin and the npm package ship the CLI (with the parser) next to this bundle; the hook itself has no parser. */
+const bundled = () => existsSync(CLI);
+const tmpName = (kind: string, ...parts: string[]) =>
+  join(tmpdir(), `switchboard-${kind}-${createHash("sha1").update(parts.join("\0")).digest("hex").slice(0, 16)}`);
+
 /**
- * Re-parse the repo in a detached process so the import graph follows every edit without slowing the
- * editor. Only where the CLI bundle sits next to this one (the plugin, the npm package).
- * ponytail: a lock file's mtime rate-limits it per graph; a queue would catch edits inside the window.
+ * `switchboard parse <dir> --update [files]` in a detached process (core updateRepo): each file re-read alone
+ * with core updateFile, or with no files a first full load that deletes nothing. The editor never waits for
+ * the parser, and no hook replaces the graph: every worktree shares it.
+ * ponytail: two quick edits of one file are two processes; the later reads the newer text but may finish first.
  */
-function reparse(root: string, graph: string): void {
-  const cli = join(HERE, "switchboard.mjs");
-  const lock = join(tmpdir(), `switchboard-parse-${graph}.lock`);
+function updateInBackground(dir: string, files: string[]): void {
   try {
-    if (!existsSync(cli)) return;
-    if (existsSync(lock) && Date.now() - statSync(lock).mtimeMs < PARSE_EVERY_MS) return;
-    writeFileSync(lock, String(process.pid));
-    spawn(process.execPath, [cli, "parse", root], { detached: true, stdio: "ignore", env: process.env }).unref();
+    spawn(process.execPath, [CLI, "parse", dir, "--update", ...files], { detached: true, stdio: "ignore", env: process.env }).unref();
   } catch {
     // the next edit tries again
   }
+}
+
+/** A first load of an empty graph, at most every LOAD_EVERY_MS per graph and directory. */
+function loadInBackground(dir: string, graph: string): void {
+  const lock = tmpName("load", graph, dir);
+  try {
+    if (existsSync(lock) && Date.now() - statSync(lock).mtimeMs < LOAD_EVERY_MS) return;
+    writeFileSync(lock, String(process.pid));
+  } catch {
+    return;
+  }
+  updateInBackground(dir, []);
+}
+
+/**
+ * This session's agent id. SB_AGENT pins it; otherwise `<editor>@<branch>`, unless another live session in the
+ * same editor holds that id: then `<editor>@<branch>#<4 characters of the session id>`. Remembered per session in
+ * the temp dir, so only a session's first hook call asks the graph.
+ * ponytail: a session idle past the stale window (30 min) can lose its id to a new one; both share it until one ends.
+ */
+export async function sessionAgent(g: SbGraph, base: string, session: string | undefined, graph: string): Promise<string> {
+  if (!session) return base;
+  const file = tmpName("agent", graph, base, session);
+  try {
+    const id = readFileSync(file, "utf8").trim();
+    if (id) return id;
+  } catch {
+    // first call of this session
+  }
+  const id = (await takeAgentId(g, { id: base, session })) ? base : sessionAgentId(base, session);
+  try {
+    writeFileSync(file, id);
+  } catch {
+    // asked again next call
+  }
+  return id;
 }
 
 export interface Ctx {
@@ -125,16 +171,29 @@ export interface Ctx {
   prefix: string;
   graph: string;
   warn: boolean;
+  /** The editor's session id (Claude Code `session_id`, Cursor `conversation_id`), when it sent one. */
+  session?: string;
+  /** `<editor>@<branch>`, which `agent` extends with `#xxxx` for a second session (see sessionAgent). */
+  base?: string;
+}
+
+/** The real path of a file that may not exist yet (a Write of a new file): its folder's real path plus its name. */
+function realFile(abs: string): string {
+  try {
+    return realpathSync(abs);
+  } catch {
+    return join(realpathSync(dirname(abs)), basename(abs));
+  }
 }
 
 /** A path the agent sent, as the graph stores it; null when it is outside the parsed repo. */
 export function repoPath(file: string, cwd: string, root: string, prefix: string): string | null {
   const abs = resolve(cwd, file);
   let rel = relative(root, abs).split("\\").join("/");
-  // git reports real paths (/private/var on macOS); the root may not be one.
+  // git reports real paths (/private/var on macOS) and the editor may not (/var, a symlinked folder): compare real ones.
   if (rel.startsWith("../")) {
     try {
-      rel = relative(realpathSync(root), abs).split("\\").join("/");
+      rel = relative(realpathSync(root), realFile(abs)).split("\\").join("/");
     } catch {
       // keep the first answer
     }
@@ -152,23 +211,62 @@ function snapshotFile(input: Record<string, unknown>, command: string): string {
   return join(tmpdir(), `switchboard-sh-${createHash("sha1").update(id).digest("hex").slice(0, 16)}.json`);
 }
 
-async function record(c: Ctx, path: string): Promise<void> {
+/** The repo's own server (SB_EDIT_URL) records the edit and re-parses the file itself. False when there is none or it failed. */
+async function postLive(c: Ctx, path: string): Promise<boolean> {
   const live = process.env.SB_EDIT_URL;
-  if (live) {
-    // The repo's own server re-parses the file first, so the live graph follows the edit.
-    try {
-      const res = await fetch(`${live.replace(/\/+$/, "")}/api/edits`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ agent: c.agent, path }),
-        signal: AbortSignal.timeout(1000),
-      });
-      if (res.ok) return;
-    } catch {
-      // fall through to the graph
+  if (!live) return false;
+  try {
+    const res = await fetch(`${live.replace(/\/+$/, "")}/api/edits`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ agent: c.agent, path }),
+      signal: AbortSignal.timeout(1000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Record the edits and bring each edited file's node and imports up to date (core updateFile; a file the
+ * agent deleted loses its node, nothing else does). In the plugin the parser runs in the background; from
+ * source it runs here.
+ */
+async function recordEdits(c: Ctx, paths: string[]): Promise<void> {
+  const dir = join(c.root, c.prefix);
+  const later: string[] = [];
+  let hubs = false;
+  for (const path of paths) {
+    if (await postLive(c, path)) continue;
+    if (bundled()) {
+      await recordEdit(c.g, { agentId: c.agent, path });
+      if (isSourcePath(path)) later.push(path);
+    } else {
+      const { graph } = await recordLiveEdit(c.g, dir, { agentId: c.agent, path });
+      hubs ||= (graph?.seq ?? null) !== null;
     }
   }
-  await recordEdit(c.g, { agentId: c.agent, path });
+  if (later.length > 0) updateInBackground(dir, later);
+  if (hubs) await markHubs(c.g);
+}
+
+/** Of `$paths`, the files a parse loaded (they have a hash; a node an edit or a claim made has none). */
+const PARSED_PATHS = `
+MATCH (f:File)
+WHERE f.path IN $paths AND f.hash IS NOT NULL
+RETURN f.path AS path
+`;
+
+/**
+ * A shell command's targets that are worth a claim: parsed files and files git tracks. The rest are build output,
+ * logs and folders (`rm -rf dist`, `npm test > test.log`), and the same name in another worktree is another file,
+ * so claiming them would only block other agents. An Edit or Write still claims any file.
+ */
+async function shellClaimable(g: SbGraph, dir: string, paths: string[]): Promise<string[]> {
+  const parsed = new Set((await g.roQuery(PARSED_PATHS, { paths })).map((r) => String(r.path)));
+  const tracked = trackedFiles(dir, paths.filter((p) => !parsed.has(p)));
+  return paths.filter((p) => parsed.has(p) || tracked.has(p));
 }
 
 export async function handle(c: Ctx): Promise<object> {
@@ -178,9 +276,13 @@ export async function handle(c: Ctx): Promise<object> {
   if (phase === "start") {
     await registerAgent(g, { id: agent, kind: editor });
     const { files } = await codeGraphCounts(g);
-    reparse(c.root, c.graph);
+    // The cheap check: hash the checkout's source files against the graph; only changed ones are re-read.
+    const dir = join(c.root, c.prefix);
+    const stale = await staleFiles(g, dir).catch(() => []);
+    if (bundled() && stale === null) loadInBackground(dir, c.graph);
+    else if (bundled() && stale && stale.length > 0) updateInBackground(dir, stale);
     const head =
-      files === 0
+      stale === null
         ? `Switchboard is indexing ${c.root} into graph ${c.graph} in the background. Edits are checked once it finishes.`
         : `Switchboard is on: graph ${c.graph}, ${files} files. You are ${agent}. Every edit is claimed for you; a refusal names the file, the holder and the import path.`;
     const dashboard = process.env.SB_URL ? `\nLive graph: ${process.env.SB_URL.replace(/\/+$/, "")}/app` : "";
@@ -191,6 +293,10 @@ export async function handle(c: Ctx): Promise<object> {
 
   if (phase === "end") {
     const res = await release(g, { agent });
+    if (c.session) {
+      await endSession(g, { id: agent, session: c.session });
+      rmSync(tmpName("agent", c.graph, c.base ?? agent, c.session), { force: true });
+    }
     log(editor, phase, `${agent} released ${res.released}`);
     return {};
   }
@@ -224,11 +330,8 @@ export async function handle(c: Ctx): Promise<object> {
       const file = [tool.file_path, tool.notebook_path, tool.path, input.file_path].map(str).find(Boolean);
       paths = file ? inRepo([file]) : [];
     }
-    for (const p of paths) await record(c, p);
-    if (paths.length > 0) {
-      reparse(c.root, c.graph);
-      log(editor, phase, `edit ${paths.join(", ")} by ${agent}`);
-    }
+    await recordEdits(c, paths);
+    if (paths.length > 0) log(editor, phase, `edit ${paths.join(", ")} by ${agent}`);
     return answer(editor, phase, { context: notices });
   }
 
@@ -247,20 +350,22 @@ export async function handle(c: Ctx): Promise<object> {
     const file = [tool.file_path, tool.notebook_path, tool.path, input.file_path].map(str).find(Boolean);
     files = file ? [file] : [];
   }
-  const paths = inRepo(files);
+  let paths = inRepo(files);
+  if (command !== undefined && paths.length > 0) paths = await shellClaimable(g, join(c.root, c.prefix), paths);
   if (paths.length === 0) return answer(editor, phase, { context: notices });
 
   const res = await claim(g, { agent, paths });
   if (res.ok) {
-    const unknown = res.unknown ?? [];
+    // A new source file is parsed once written (PostToolUse); the rest are never parsed.
+    const unknown = (res.unknown ?? []).filter((p) => !isSourcePath(p));
     log(editor, phase, unknown.length ? `allow ${paths.join(", ")} for ${agent}: not all in the parsed graph` : `allow ${paths.join(", ")} for ${agent} (claimed)`);
-    // A shell command often writes files no parser sees (logs, build output): no note for those.
-    const note = unknown.length && command === undefined
-      ? `Switchboard: ${unknown.join(", ")} ${unknown.length === 1 ? "is" : "are"} not in the parsed graph, no dependency check`
+    // A shell command often writes files no parser sees (logs, build output): no note for those. Once per session.
+    const note = unknown.length && command === undefined && firstNote(c)
+      ? `Switchboard: ${unknown.join(", ")} ${unknown.length === 1 ? "is" : "are"} not in the parsed graph: claimed, but only an edit of the same file conflicts (no import check)`
       : undefined;
     return answer(editor, phase, { context: notices, note });
   }
-  const reason = denyReason(res.conflicts, res.safe);
+  const reason = denyReason(res.conflicts, res.safe, Date.now(), res.unknown);
   if (c.warn) {
     log(editor, phase, `warn ${paths.join(", ")} for ${agent}: ${reason.replaceAll("\n", " | ")}`);
     const warning = reason.replace("✗ Switchboard blocked this edit", "⚠ Switchboard warning (SB_MODE=warn, the edit goes ahead)");
@@ -272,6 +377,19 @@ export async function handle(c: Ctx): Promise<object> {
   const wait = held && `You are now waiting on ${held}; Switchboard tells you here when it is free.`;
   log(editor, phase, `deny ${paths.join(", ")} for ${agent}: ${reason.replaceAll("\n", " | ")}`);
   return answer(editor, phase, { deny: [reason, wait, notices].filter(Boolean).join("\n") });
+}
+
+/** True the first time this session is told that a file is outside the parsed graph (always without a session id). */
+function firstNote(c: Ctx): boolean {
+  if (!c.session) return true;
+  const file = tmpName("note", c.graph, c.session);
+  if (existsSync(file)) return false;
+  try {
+    writeFileSync(file, "");
+  } catch {
+    // told again next time
+  }
+  return true;
 }
 
 async function readStdin(): Promise<Record<string, unknown>> {
@@ -309,23 +427,33 @@ export async function main(editorArg = "claude", phaseArg = "pre"): Promise<void
     const input = await readStdin();
     // Cursor also runs Claude Code hooks; its own hook already handled this event.
     if (editor === "claude" && "cursor_version" in input) return done({});
+    // `ls`, `git diff`, `grep`: nothing to claim or record, so no git status and no graph connection.
+    const tool = (input.tool_input ?? {}) as Record<string, unknown>;
+    const command = input.tool_name === "Bash" ? str(tool.command) : str(input.command);
+    if ((phase === "pre" || phase === "post") && command !== undefined && readOnly(command)) return done(fallback);
     const cwd = str(input.cwd) ?? process.env.CLAUDE_PROJECT_DIR ?? process.env.CURSOR_PROJECT_DIR ?? process.cwd();
     const chosen = process.env.SB_GRAPH;
+    const pinned = process.env.SB_AGENT?.trim();
     const p = configure(cwd, editor);
     // A plugin is on in every session; outside a git repo (say, ~) there is no project to parse or guard.
     if (!p.git && !chosen) return done(fallback);
     const g = await connect();
-    await ensureSchema(g);
+    // Once per graph (a marker makes later calls one read), and only where a session starts.
+    if (phase === "start") await ensureSchema(g);
+    const session = str(input.session_id) ?? str(input.conversation_id);
+    const base = agentId(cwd, editor);
     const ctx: Ctx = {
       editor,
       phase,
       input,
       g,
-      agent: agentId(cwd, editor),
+      agent: pinned || (await sessionAgent(g, base, session, p.graph)),
       root: p.root,
       prefix: (process.env.SB_PREFIX ?? "").replace(/\/+$/, ""),
       graph: p.graph,
       warn: process.env.SB_MODE === "warn",
+      session,
+      base,
     };
     done(await handle(ctx));
   } catch (err) {

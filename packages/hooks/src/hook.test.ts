@@ -1,12 +1,14 @@
 // The hook's answers for crafted Claude Code and Cursor events, against a real FalkorDB graph of demo-repo.
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { cpSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { latestSeq, loadParse, parseRepo, release } from "@switchboard/core";
 import { useTestGraph } from "../../core/src/test-helpers.js";
-import { answer, handle, repoPath, type Ctx, type Editor, type Phase } from "./hook.js";
+import { sessionAgentId } from "../../core/src/agent-id.js";
+import { answer, handle, repoPath, sessionAgent, type Ctx, type Editor, type Phase } from "./hook.js";
 
 const g = useTestGraph("sb_test_hook");
 const ROOT = join(import.meta.dirname, "../../../demo-repo");
@@ -25,6 +27,13 @@ const run = (editor: Editor, phase: Phase, input: Record<string, unknown>, warn 
   handle({ editor, phase, input: { cwd: ROOT, ...input }, g: g(), agent: editor === "claude" ? CLAUDE : CURSOR, root: ROOT, prefix: "", graph: "test", warn } satisfies Ctx) as Promise<
     Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
   >;
+/** One hook call as `agent` in editor session `session`, in the checkout `root`. */
+const as = (agent: string, session: string | undefined, phase: Phase, input: Record<string, unknown>, root = ROOT) =>
+  handle({ editor: "claude", phase, input: { cwd: root, ...input }, g: g(), agent, root, prefix: "", graph: "test", warn: false, session } satisfies Ctx) as Promise<
+    Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  >;
+const claimsOf = async (agent: string) =>
+  (await g().roQuery("MATCH (:Agent {id: $agent})-[:CLAIMS]->(f:File) RETURN f.path AS path ORDER BY path", { agent })).map((r) => r.path);
 const claudeEdit = (file: string) => ({ tool_name: "Edit", tool_input: { file_path: join(ROOT, file) } });
 const cursorWrite = (file: string) => ({ tool_name: "Write", tool_input: { file_path: join(ROOT, file) } });
 
@@ -118,6 +127,107 @@ describe("hook: refusal becomes coordination", () => {
   });
 });
 
+describe("hook: graph updates, unparsed files and sessions", () => {
+  test("PostToolUse re-reads the edited file alone: its new import is in the graph, every other file stays", async () => {
+    const repo = join(realpathSync(mkdtempSync(join(tmpdir(), "sb-hook-up-"))), "demo");
+    cpSync(ROOT, repo, { recursive: true });
+    const count = async () => (await g().roQuery("MATCH (f:File) RETURN count(f) AS n"))[0]?.n as number;
+    try {
+      const before = await count();
+      const write = { tool_name: "Write", tool_input: { file_path: join(repo, "ui/Fresh.tsx") } };
+      expect(await as(CLAUDE, undefined, "pre", write, repo)).toEqual({});
+      writeFileSync(join(repo, "ui/Fresh.tsx"), 'import { sessionLabel } from "../auth/session";\nexport const label = sessionLabel;\n');
+      await as(CLAUDE, undefined, "post", write, repo);
+      const [row] = await g().roQuery(
+        "MATCH (f:File {path: 'ui/Fresh.tsx'})-[:IMPORTS]->(t:File) RETURN f.hash IS NOT NULL AS parsed, f.unparsed AS unparsed, collect(t.path) AS imports",
+      );
+      expect(row).toEqual({ parsed: true, unparsed: null, imports: ["auth/session.ts"] });
+      expect(await count()).toBe(before + 1);
+      // The new edge counts at once: Cursor's edit of session.ts is refused through it.
+      const refused = await run("cursor", "pre", cursorWrite("auth/session.ts"));
+      expect(refused.agent_message).toContain("ui/Fresh.tsx ─imports→ auth/session.ts");
+    } finally {
+      rmSync(join(repo, ".."), { recursive: true, force: true });
+      await g().query("MATCH (f:File {path: 'ui/Fresh.tsx'}) DETACH DELETE f");
+    }
+  });
+
+  test("README.md is outside the parsed graph: claimed, refused for the same file only, and the note comes once per session", async () => {
+    const session = randomUUID();
+    const readme = { tool_name: "Edit", tool_input: { file_path: join(ROOT, "README.md") } };
+    expect(await as(CLAUDE, session, "pre", readme)).toEqual({
+      systemMessage: "Switchboard: README.md is not in the parsed graph: claimed, but only an edit of the same file conflicts (no import check)",
+    });
+    expect(await as(CLAUDE, session, "pre", readme)).toEqual({});
+    const refused = await run("cursor", "pre", { tool_name: "Write", tool_input: { file_path: join(ROOT, "README.md") } });
+    expect(refused.permission).toBe("deny");
+    expect(refused.agent_message).toContain("README.md (same file; not in the parsed graph, so only the same file is checked)\nheld by claude@main");
+  });
+
+  test("two worktrees both run `rm -rf dist` and `npm test > test.log`: no claim, no node; README.md by Edit is still the same file", async () => {
+    const tmp = realpathSync(mkdtempSync(join(tmpdir(), "sb-hook-wt-")));
+    const [x, y] = [join(tmp, "x"), join(tmp, "y")];
+    cpSync(ROOT, x, { recursive: true });
+    writeFileSync(join(x, ".gitignore"), "dist/\n");
+    const git = (...args: string[]) => execFileSync("git", ["-C", x, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdio: "ignore" });
+    git("init", "-q", "-b", "main");
+    git("add", "-A");
+    git("commit", "-qm", "init");
+    git("worktree", "add", "-q", "-b", "other", y);
+    const OTHER = "claude@other";
+    const sh = (command: string, id: string) => ({ tool_name: "Bash", tool_input: { command }, tool_use_id: id, session_id: "s-wt" });
+    const edit = (root: string) => ({ tool_name: "Edit", tool_input: { file_path: join(root, "README.md") } });
+    try {
+      for (const [agent, root] of [[CLAUDE, x], [OTHER, y], [CLAUDE, x]] as const) {
+        for (const command of ["rm -rf dist", "npm test > test.log 2>&1", "rm -rf node_modules"]) {
+          const call = sh(command, `${agent}-${root}-${command}-${Math.random()}`);
+          expect(await as(agent, undefined, "pre", call, root)).toEqual({});
+          if (command.includes("test.log")) writeFileSync(join(root, "test.log"), `${agent}\n`);
+          await as(agent, undefined, "post", call, root);
+        }
+      }
+      expect(await claimsOf(CLAUDE)).toEqual([]);
+      expect(await claimsOf(OTHER)).toEqual([]);
+      expect(await g().roQuery("MATCH (f:File) WHERE f.path IN ['dist', 'node_modules'] RETURN f.path AS path")).toEqual([]);
+
+      // README.md is tracked: an Edit in X claims it, and Y is refused for the same file, by Edit or by sed -i.
+      expect((await as(CLAUDE, undefined, "pre", edit(x), x)).systemMessage).toContain("README.md is not in the parsed graph");
+      const refused = await as(OTHER, undefined, "pre", edit(y), y);
+      expect(refused.hookSpecificOutput.permissionDecision).toBe("deny");
+      expect(refused.hookSpecificOutput.permissionDecisionReason).toContain("README.md (same file; not in the parsed graph");
+      const sed = await as(OTHER, undefined, "pre", sh("sed -i '' 's/a/b/' README.md", "sed-readme"), y);
+      expect(sed.hookSpecificOutput.permissionDecision).toBe("deny");
+    } finally {
+      await release(g(), { agent: OTHER });
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("two Claude Code sessions on one branch are two agents; ending one keeps the other's claims", async () => {
+    const [s1, s2, s3] = [randomUUID(), randomUUID(), randomUUID()];
+    const a = await sessionAgent(g(), CLAUDE, s1, "test");
+    const b = await sessionAgent(g(), CLAUDE, s2, "test");
+    expect(a).toBe(CLAUDE);
+    expect(b).toBe(sessionAgentId(CLAUDE, s2));
+    expect(await sessionAgent(g(), CLAUDE, s2, "test")).toBe(b);
+    expect(await sessionAgent(g(), CLAUDE, undefined, "test")).toBe(CLAUDE);
+
+    expect(await as(a, s1, "pre", claudeEdit("auth/session.ts"))).toEqual({});
+    const refused = await as(b, s2, "pre", claudeEdit("ui/LoginForm.tsx"));
+    expect(refused.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(refused.hookSpecificOutput.permissionDecisionReason).toContain("held by claude@main");
+    expect(await as(b, s2, "pre", claudeEdit("ui/Footer.tsx"))).toEqual({});
+
+    // Session A ends: its claims go, B's stay, and the next session may take claude@main again.
+    expect(await as(a, s1, "end", {})).toEqual({});
+    expect(await claimsOf(a)).toEqual([]);
+    expect(await claimsOf(b)).toEqual(["ui/Footer.tsx"]);
+    expect(await sessionAgent(g(), CLAUDE, s3, "test")).toBe(CLAUDE);
+    await as(b, s2, "end", {});
+    await as(CLAUDE, s3, "end", {});
+  });
+});
+
 describe("hook helpers", () => {
   test("repoPath keeps files inside the parsed repo only", () => {
     expect(repoPath("/r/demo/ui/a.ts", "/x", "/r", "demo")).toBe("ui/a.ts");
@@ -125,6 +235,18 @@ describe("hook helpers", () => {
     expect(repoPath("/r/packages/x.ts", "/r", "/r", "demo")).toBeNull();
     expect(repoPath("/elsewhere/x.ts", "/r", "/r", "")).toBeNull();
     expect(repoPath("src/x.ts", "/r", "/r", "")).toBe("src/x.ts");
+    // The editor's path through a symlink (macOS /var is /private/var); git gives the real root. A new file too.
+    const real = realpathSync(mkdtempSync(join(tmpdir(), "sb-real-")));
+    const link = `${real}-link`;
+    symlinkSync(real, link);
+    try {
+      writeFileSync(join(real, "a.ts"), "");
+      expect(repoPath(join(link, "a.ts"), link, real, "")).toBe("a.ts");
+      expect(repoPath(join(link, "new.ts"), link, real, "")).toBe("new.ts");
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
   });
 
   test("answer uses each editor's documented fields", () => {

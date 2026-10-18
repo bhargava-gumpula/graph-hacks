@@ -1,9 +1,8 @@
 import type { SbGraph } from "../graph.js";
 import { normPath } from "../paths.js";
-import { releaseStaleAgents } from "./agents.js";
+import { DEFAULT_STALE_MS, releaseStaleAgents } from "./agents.js";
 import { type Conflict, conflictGuard, findConflicts } from "./conflict.js";
 import { ALLOCATE_EVENT, readSeq, recordEvent } from "./events.js";
-import { latestSeq } from "./feed.js";
 import { dropWaits, freeFiles, waitedOn } from "./waits.js";
 
 /** Default claim lifetime. An agent that dies stops blocking others after this. */
@@ -23,8 +22,9 @@ export interface ClaimInput {
 }
 
 /**
- * `unknown`: requested paths with no File node. They are neither checked nor claimed
- * (no ghost File is created), so callers must warn that nothing was checked.
+ * `unknown`: requested paths outside the parsed graph (a README, package.json, a .py or .css file, a file
+ * not written yet). They are still claimed, as `(:File {path, unparsed: true})`, but only another claim on the
+ * very same file conflicts with them: they have no imports to follow. Callers say so.
  */
 export type ClaimResult =
   | { ok: true; until: number; seq: number; unknown?: string[] }
@@ -49,14 +49,14 @@ async function safeNow(g: SbGraph, agent: string, asked: string[], now: number, 
   return candidates.filter((p) => !blocked.has(p)).slice(0, SAFE_LIMIT);
 }
 
-/** Which of `$paths` are File nodes in the parsed graph. */
+/** Which of `$paths` are File nodes of the code graph (not a node a claim made for an unparsed file). */
 export const KNOWN_FILES = `
 MATCH (f:File)
-WHERE f.path IN $paths
+WHERE f.path IN $paths AND NOT coalesce(f.unparsed, false)
 RETURN f.path AS path
 `;
 
-/** The requested paths (normalised) that are not in the parsed graph. */
+/** The requested paths (normalised) that are not in the parsed graph: a claim checks them for the same file only. */
 export async function unknownPaths(g: SbGraph, paths: string[]): Promise<string[]> {
   const want = [...new Set(paths.map(normPath))];
   const known = new Set((await g.roQuery(KNOWN_FILES, { paths: want })).map((row) => String(row.path)));
@@ -84,7 +84,7 @@ FOREACH (_ IN CASE WHEN $taskId IS NULL THEN [] ELSE [1] END |
 WITH e, m, a
 UNWIND $paths AS path
 MERGE (f:File {path: path})
-ON CREATE SET f.hub = false, f.rank = 0.0
+ON CREATE SET f.hub = false, f.rank = 0.0, f.unparsed = true
 MERGE (a)-[c:CLAIMS]->(f)
 SET c.since = $at, c.until = $until, c.ttl = $ttl, c.taskId = $taskId, c.intent = $intent
 CREATE (e)-[:ON]->(f)
@@ -122,9 +122,10 @@ RETURN m.value AS seq, size(claims) AS released
  * claim on, or linked through the import graph to, any of these files; the
  * check and the write are one query, so two racing claims on linked files
  * cannot both win. A denied claim writes nothing but a `conflict` event that
- * carries the paths. Paths are normalised first (see paths.ts); unknown ones are
- * returned in `unknown` and skipped. A denial also lists `safe`: open-task files
- * the agent could claim instead right now.
+ * carries the paths. Paths are normalised first (see paths.ts). Paths outside the
+ * parsed graph are claimed too, with the same-file check only, and listed in
+ * `unknown`. A denial also lists `safe`: open-task files the agent could claim
+ * instead right now.
  */
 export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult> {
   const requested = [...new Set(input.paths.map(normPath))];
@@ -134,9 +135,7 @@ export async function claim(g: SbGraph, input: ClaimInput): Promise<ClaimResult>
   const ttl = input.ttlMs ?? DEFAULT_TTL_MS;
   const until = now + ttl;
   const unknown = await unknownPaths(g, requested);
-  const paths = requested.filter((p) => !unknown.includes(p));
-  // Nothing in the graph: nothing to check or claim. Not a silent OK: `unknown` says so.
-  if (paths.length === 0) return { ok: true, until, seq: await latestSeq(g), unknown };
+  const paths = requested;
   // A crashed agent with a long TTL must not block this claim.
   await releaseStaleAgents(g, { now });
 
@@ -226,4 +225,35 @@ export async function othersOn(
   const rows = await g.roQuery(OTHERS_ON, { agent: input.agent, paths: norm, since: input.since, now: input.now ?? Date.now() });
   const theirs = new Set(rows.map((r) => r.path as string));
   return input.paths.filter((_, i) => theirs.has(norm[i]!));
+}
+
+/**
+ * One session takes an agent id (`claude@main`) unless another live session holds it. The write is atomic, so
+ * two sessions starting at once cannot both win. Free: nobody holds it, this session already does, or the
+ * holder went quiet (`lastSeen` before `$stale`) or ended (END_SESSION).
+ */
+export const TAKE_AGENT_ID = `
+MERGE (a:Agent {id: $id})
+ON CREATE SET a.startedAt = $now, a.status = 'active', a.lastSeen = $now
+WITH a, (a.session IS NULL OR a.session = $session OR coalesce(a.lastSeen, 0) < $stale) AS free
+SET a.session = CASE WHEN free THEN $session ELSE a.session END
+RETURN free
+`;
+
+/** The session let go of its id: the next session on this branch may take it. */
+export const END_SESSION = `
+MATCH (a:Agent {id: $id})
+WHERE a.session = $session
+SET a.session = null
+`;
+
+/** True when `session` may use `id` (and now holds it); false when another live session does. */
+export async function takeAgentId(g: SbGraph, input: { id: string; session: string; now?: number }): Promise<boolean> {
+  const now = input.now ?? Date.now();
+  const [row] = await g.query(TAKE_AGENT_ID, { id: input.id, session: input.session, now, stale: now - DEFAULT_STALE_MS });
+  return row?.free === true;
+}
+
+export async function endSession(g: SbGraph, input: { id: string; session: string }): Promise<void> {
+  await g.query(END_SESSION, input);
 }

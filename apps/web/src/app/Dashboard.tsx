@@ -313,6 +313,15 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live.graph, live.status, healthDone]);
 
+  // On load the stored run's refusal is the opening scene, as after Reset demo: the counter, feed and canvas wait for Play.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || !healthDone || !live.graph || live.status !== "live" || !live.seqAtLoad) return;
+    opened.current = true;
+    if (!liveRepo && run === 0) setScene((s) => (s.to ? s : { from: 0, to: live.seqAtLoad }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.graph, live.status, live.seqAtLoad, healthDone]);
+
   const steps: TourStep[] = [
     {
       id: "graph",

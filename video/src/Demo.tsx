@@ -120,7 +120,7 @@ const CMDS: {label: string; lines: string[]}[] = [
 ];
 
 /** 08: install card. */
-const Install: React.FC = () => {
+export const Install: React.FC = () => {
 	const f = useCurrentFrame();
 	return (
 		<Seam>

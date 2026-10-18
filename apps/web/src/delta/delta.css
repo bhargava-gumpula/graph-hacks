@@ -107,7 +107,7 @@ html { background: #0a0f0e; }
 /* Nav */
 .dl-nav { position: fixed; inset: 0 0 auto; z-index: 30; padding: 14px clamp(16px, 4vw, 48px); }
 .dl-nav nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.dl-brand { display: inline-flex; align-items: center; gap: 10px; font: 650 17px/1 var(--dl-display); font-stretch: 112%; letter-spacing: -0.01em; color: var(--dl-ink); }
+.dl-brand { display: inline-flex; align-items: center; gap: 10px; height: 50px; padding: 0 18px 0 14px; border-radius: 999px; background: var(--dl-panel); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); font: 650 17px/1 var(--dl-display); font-stretch: 112%; letter-spacing: -0.01em; color: var(--dl-ink); }
 .dl-links { display: flex; align-items: center; gap: clamp(10px, 2.4vw, 28px); padding: 8px 8px 8px 18px; border-radius: 999px; background: var(--dl-panel); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); font-size: 14px; }
 .dl-links a { color: var(--dl-ink-2); transition: color 160ms ease; }
 .dl-links a:hover { color: var(--dl-ink); }
@@ -118,7 +118,7 @@ html { background: #0a0f0e; }
 main { position: relative; z-index: 10; }
 .ch { position: relative; min-height: 100dvh; display: grid; padding: 96px clamp(16px, 4vw, 56px) 64px; }
 .dl-panel { background: var(--dl-panel); backdrop-filter: blur(18px) saturate(1.15); -webkit-backdrop-filter: blur(18px) saturate(1.15); border-radius: 18px; padding: clamp(20px, 2.6vw, 32px); box-shadow: 0 30px 90px rgb(0 0 0 / 0.28); }
-@media (prefers-reduced-transparency: reduce) { .dl-panel, .dl-links { background: var(--dl-panel-solid); backdrop-filter: none; } }
+@media (prefers-reduced-transparency: reduce) { .dl-panel, .dl-links, .dl-brand { background: var(--dl-panel-solid); backdrop-filter: none; } }
 
 .dl-h1, .dl-h2 { font-family: var(--dl-display); font-stretch: 118%; font-weight: 640; letter-spacing: -0.03em; text-wrap: balance; }
 .dl-h1 { font-size: clamp(34px, 3.5vw, 54px); line-height: 1.04; }

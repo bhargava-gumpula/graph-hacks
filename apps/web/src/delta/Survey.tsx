@@ -112,8 +112,13 @@ export function Survey() {
       for (const c of chips) {
         const n = byId.get(c.dataset.id!)!;
         const w = Number(c.dataset.w);
-        const opts: [number, number][] = [[12, -11], [-12 - w, -11], [-w / 2, -34], [-w / 2, 12], [12, 4], [-12 - w, 4]];
-        const pick = opts.find(([dx, dy]) => !boxes.some((b) => hit(b, { x: n.x * s + dx, y: n.y * s + dy, w, h: 23 }))) ?? opts[0]!;
+        const opts: [number, number][] = [[12, -11], [-12 - w, -11], [-w / 2, -34], [-w / 2, 12], [-10, -36], [-10, 14], [10 - w, -36], [10 - w, 14], [12, 4], [-12 - w, 4]];
+        const free = (from: number) => opts.find(([dx, dy]) => !boxes.slice(from).some((b) => hit(b, { x: n.x * s + dx, y: n.y * s + dy, w, h: 23 })));
+        // Clear of every dot if it can be; otherwise only clear of copy, the frame edge and the other chips.
+        const pick = free(0) ?? free(nodes.length);
+        // A chip with nowhere clear to sit (under copy, off the frame) hides rather than clips.
+        c.style.display = pick ? "" : "none";
+        if (!pick) continue;
         boxes.push({ x: n.x * s + pick[0], y: n.y * s + pick[1], w, h: 23 });
         c.setAttribute("transform", `translate(${pick[0]} ${pick[1]})`);
       }
@@ -201,7 +206,7 @@ export function Survey() {
         lensC.setAttribute("cy", py.toFixed(1));
         lensC.setAttribute("r", String((small ? 120 : 190) / s));
         // Only labels well inside the lens show, so none is cut in half by its edge.
-        const rr = ((small ? 120 : 190) / s) * 0.78;
+        const rr = ((small ? 120 : 190) / s) * 0.62;
         for (const l of labels) {
           const n = byId.get(l.dataset.id!)!;
           l.style.opacity = Math.hypot(n.x - px, n.y - py) < rr ? "1" : "0";

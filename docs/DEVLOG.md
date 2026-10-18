@@ -183,3 +183,9 @@ One dated entry per merge or decision. This is the source for the README's "what
 - **Video:** a live take with real Claude Code and the Cursor agent CLI on the FalkorDB Cloud demo graph (Cursor refused through the MCP claim tool, since the CLI doesn't run hooks; Claude told someone was waiting and released through MCP), replayed from transcripts with the headless dashboard recording; ElevenLabs voice, music and sound effects. https://youtu.be/JeX7zCreNYI
 - **Overnight design contest:** 17 landing-page designs scored by a blind council; top 5 spider web, savanna, beehive, deep ocean, koi. Not merged; the live landing page is unchanged.
 - **Submitted** by the owner at about 11:12 AM PT.
+
+## 2026-10-18 16:35 PT: final landing page and polish (project wrap-up)
+- **Landing redesign:** after 17 overnight designs and a council, the owner asked for realistic backgrounds. A photo-led round (free-license Unsplash photos, credited in the footer) produced the **river delta** design: an aerial photo with the real import graph traced along the river channels, the refusal path numbered along it, a hover lens over real files, and 7 scroll plates. Panel score 87 (previous best 82.6). Now live.
+- **Final polish:** an audit of the live landing page and dashboard, fixes in two worktrees, and an independent check (no console errors, no horizontal scroll, desktop and phone, light and dark). The dashboard now shares the landing's display font and colours and opens on a clean scene.
+- **Ops:** the server and the named tunnel run as launch agents (`xyz.switchboard.server`, `xyz.switchboard.tunnel`), OrbStack starts at login, so the site survives restarts. After a network outage the tunnel can stall: `launchctl kickstart -k gui/$UID/xyz.switchboard.tunnel`.
+- **Gates:** typecheck and lint clean; 39 files, 328 tests pass; web build clean.

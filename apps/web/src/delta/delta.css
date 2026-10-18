@@ -31,7 +31,7 @@
     --dl-label-halo: rgb(246 248 246 / 0.92);
     --dl-chip: rgb(248 250 248 / 0.92);
     --dl-signal-text: #bf4219;
-    --dl-photo-filter: saturate(0.92) brightness(1.04) contrast(1.02);
+    --dl-photo-filter: saturate(0.9) brightness(1.1) contrast(0.96);
     --dl-tint: #e8eee9;
     --dl-tint-mode: screen;
     --dl-tint-a: 0.22;
@@ -169,8 +169,8 @@ main { position: relative; z-index: 10; }
 /* One scrim rule for every plate: solid under the copy column wherever the camera stops, then a long fade into the photo. */
 .ch-problem::before, .ch-how::before, .ch-story::before, .ch-proof::before, .ch-install::before {
   content: ""; position: absolute; inset: 0; pointer-events: none; --cw: 560px; --dir: 90deg;
-  background: linear-gradient(var(--dir), var(--dl-scrim) 0, var(--dl-scrim) calc(var(--cw) + 48px), transparent calc(var(--cw) + 240px));
-  -webkit-mask-image: linear-gradient(180deg, transparent, #000 110px, #000 calc(100% - 110px), transparent); mask-image: linear-gradient(180deg, transparent, #000 110px, #000 calc(100% - 110px), transparent);
+  background: linear-gradient(var(--dir), var(--dl-scrim) 0, var(--dl-scrim) calc(var(--cw) + 48px), transparent calc(var(--cw) + 360px));
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 160px, #000 calc(100% - 160px), transparent); mask-image: linear-gradient(180deg, transparent, #000 160px, #000 calc(100% - 160px), transparent);
 }
 .ch-problem::before { --cw: 520px; --dir: 270deg; }
 .ch-story::before { --cw: 480px; }
@@ -286,21 +286,23 @@ main { position: relative; z-index: 10; }
 @media (max-width: 560px) { .proof-duel { grid-template-columns: 1fr; } .dl-num { font-size: 84px; } .dl-num-ms { font-size: 48px; } }
 
 /* 6. Install: two columns of commands on the still meadow above the road. */
-.ch-install { align-content: center; justify-items: start; }
-.install-sheet { max-width: 1100px; width: 100%; display: grid; gap: 20px; }
-.install-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 32px; }
+.ch-install { align-content: center; justify-items: start; grid-template-columns: minmax(0, 1fr); }
+.install-sheet { max-width: 1100px; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.install-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px 32px; }
 .install-t { font-weight: 650; font-size: 15px; margin: 22px 0 8px; }
 .install-cols > div > .install-t:first-child { margin-top: 0; }
 .dl-cmd { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-radius: 10px; padding: 6px 6px 6px 14px; background: rgb(0 0 0 / 0.32); margin-bottom: 8px; }
 @media (prefers-color-scheme: light) { .dl-cmd { background: rgb(18 30 26 / 0.07); } }
-.dl-cmd code { font: 500 13px/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.dl-cmd code { font: 500 13px/1.5 var(--font-mono); flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+.dl-cmd code::-webkit-scrollbar { display: none; }
+@media (max-width: 760px) { .dl-cmd code { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); } }
 .dl-cmd button { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; color: var(--dl-ink-2); transition: background-color 160ms ease, transform 120ms ease; }
 .dl-cmd button:hover { background: rgb(127 127 127 / 0.18); color: var(--dl-ink); }
 .dl-cmd button:active { transform: scale(0.94); }
 .dl-small { font-size: 14px; color: var(--dl-ink-2); line-height: 1.55; }
 .dl-small a, .dl-foot a { color: var(--dl-ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgb(127 127 127 / 0.5); }
 .dl-body code { font: 500 0.88em var(--font-mono); color: var(--dl-ink); overflow-wrap: anywhere; }
-@media (max-width: 760px) { .install-cols { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .install-cols { grid-template-columns: minmax(0, 1fr); } }
 
 /* 7. End: the full survey again. */
 .ch-end { align-content: start; justify-items: start; padding-top: clamp(96px, 16vh, 168px); }

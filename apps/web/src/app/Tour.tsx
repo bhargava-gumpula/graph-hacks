@@ -211,7 +211,7 @@ export function Tour({
           width="100%"
           height="100%"
           mask="url(#tour-mask)"
-          style={{ fill: "color-mix(in oklab, var(--bg) 70%, transparent)" }}
+          style={{ fill: "var(--tour-dim)" }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -282,7 +282,7 @@ export function Tour({
                 exit={{ opacity: 0, y: reduce ? 0 : -4, filter: reduce ? "none" : "blur(2px)", transition: { duration: 0.12 } }}
                 transition={{ duration: 0.24, ease: EASE_OUT }}
               >
-                <h2 id="tour-title" className="text-balance text-[15px] font-medium leading-snug tracking-tight text-[var(--fg)]">
+                <h2 id="tour-title" className="font-display text-balance text-[15px] font-semibold leading-snug tracking-tight text-[var(--fg)]">
                   {step.title}
                 </h2>
                 <div id="tour-body" className="mt-1.5 text-[13px] leading-relaxed text-[var(--fg)]/75">

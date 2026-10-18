@@ -152,7 +152,7 @@ export function Landing() {
           id="top"
           className="ch-hero"
           cam="1430 850 2.05 0.64 0.6"
-          camSm="1425 848 0.8 0.5 0.75"
+          camSm="1425 848 1.0 0.5 0.75"
           plate="Plate 1. The confluence, numbered along the import path"
         >
           <div data-obstacle className="hero-copy">
@@ -239,8 +239,8 @@ export function Landing() {
           id="story"
           className="ch-story"
           cam="1440 850 1.7 0.66 0.5"
-          camSm="1235 1060 1.45 0.5 0.3"
-          plate="Plate 4. Agent B held at the gate on login.ts"
+          camSm="1330 980 1.2 0.5 0.2"
+          plate="Plate 4. Agent B held at the gate short of session.ts"
         >
           {[
             <>
@@ -261,7 +261,7 @@ export function Landing() {
               </p>
               <div className="dl-refusal" role="note">
                 <p>
-                  Refused, {bench.conflict.type.toLowerCase()},{" "}
+                  Refused: {bench.conflict.type.toLowerCase()} import,{" "}
                   {bench.conflict.hops} hops
                 </p>
                 <p>{bench.conflict.path.join(" → ")}</p>
@@ -388,7 +388,7 @@ export function Landing() {
           plate="Plate 6. The road in"
         >
           <div data-obstacle className="install-sheet dl-panel">
-            <h2 className="dl-h2">Install in two commands.</h2>
+            <h2 className="dl-h2">Start FalkorDB, then pick your agent.</h2>
             <p className="dl-body">
               Needs Node 22 or newer and a FalkorDB it can reach:
             </p>
@@ -425,7 +425,7 @@ export function Landing() {
           id="end"
           className="ch-end"
           cam="1260 720 1.0 0.5 0.56"
-          camSm="1420 860 0.8 0.5 0.66"
+          camSm="1420 860 1.0 0.5 0.66"
           show="all"
           plate={`Plate 7. The whole delta: ${bench.graph.files} files, ${bench.graph.imports} imports, one map`}
         >
